@@ -1,0 +1,230 @@
+# Scalar types for custom data
+scalar DateTime
+scalar BigInt
+scalar Decimal
+scalar JSON
+
+# ============================================================================
+# Market Types
+# ============================================================================
+
+type Market {
+  id: ID!
+  marketAddress: String!
+  curator: String!
+  collateralDenom: String!
+  debtDenom: String!
+  oracle: String!
+  createdAt: DateTime!
+  createdAtBlock: Int!
+
+  # Parameters
+  loanToValue: Decimal!
+  liquidationThreshold: Decimal!
+  liquidationBonus: Decimal!
+  liquidationProtocolFee: Decimal!
+  closeFactor: Decimal!
+  interestRateModel: JSON!
+  protocolFee: Decimal!
+  curatorFee: Decimal!
+  supplyCap: BigInt
+  borrowCap: BigInt
+  enabled: Boolean!
+  isMutable: Boolean!
+
+  # Current State
+  borrowIndex: Decimal!
+  liquidityIndex: Decimal!
+  borrowRate: Decimal!
+  liquidityRate: Decimal!
+  totalSupply: BigInt!
+  totalDebt: BigInt!
+  totalCollateral: BigInt!
+  utilization: Decimal!
+  availableLiquidity: BigInt!
+  lastUpdate: Int!
+
+  # Relations
+  positions(limit: Int, offset: Int): [UserPosition!]!
+  transactions(limit: Int, offset: Int): [Transaction!]!
+  snapshots(limit: Int, orderBy: SnapshotOrderBy): [MarketSnapshot!]!
+}
+
+enum SnapshotOrderBy {
+  TIMESTAMP_ASC
+  TIMESTAMP_DESC
+}
+
+# ============================================================================
+# User Position Types
+# ============================================================================
+
+type UserPosition {
+  id: ID!
+  market: Market!
+  userAddress: String!
+
+  # Balances (scaled)
+  supplyScaled: BigInt!
+  debtScaled: BigInt!
+  collateral: BigInt!
+
+  # Computed (with current indices)
+  supplyAmount: BigInt!
+  debtAmount: BigInt!
+  healthFactor: Decimal
+
+  # Metadata
+  firstInteraction: DateTime!
+  lastInteraction: DateTime!
+
+  # Relations
+  transactions(limit: Int, offset: Int): [Transaction!]!
+}
+
+# ============================================================================
+# Transaction Types
+# ============================================================================
+
+enum TransactionAction {
+  SUPPLY
+  WITHDRAW
+  SUPPLY_COLLATERAL
+  WITHDRAW_COLLATERAL
+  BORROW
+  REPAY
+  LIQUIDATE
+}
+
+type Transaction {
+  id: ID!
+  txHash: String!
+  blockHeight: Int!
+  timestamp: DateTime!
+  market: Market!
+  userAddress: String!
+  action: TransactionAction!
+
+  # Common fields
+  amount: BigInt
+  scaledAmount: BigInt
+  recipient: String
+
+  # Liquidation-specific
+  liquidator: String
+  borrower: String
+  debtRepaid: BigInt
+  collateralSeized: BigInt
+  protocolFee: BigInt
+
+  # Market state at time of txn
+  totalSupply: BigInt
+  totalDebt: BigInt
+  totalCollateral: BigInt
+  utilization: Decimal
+}
+
+# ============================================================================
+# Historical Data Types
+# ============================================================================
+
+type MarketSnapshot {
+  id: ID!
+  market: Market!
+  timestamp: DateTime!
+  blockHeight: Int!
+
+  borrowIndex: Decimal!
+  liquidityIndex: Decimal!
+  borrowRate: Decimal!
+  liquidityRate: Decimal!
+  totalSupply: BigInt!
+  totalDebt: BigInt!
+  totalCollateral: BigInt!
+  utilization: Decimal!
+
+  loanToValue: Decimal!
+  liquidationThreshold: Decimal!
+  enabled: Boolean!
+}
+
+type InterestAccrualEvent {
+  id: ID!
+  market: Market!
+  txHash: String!
+  timestamp: DateTime!
+  blockHeight: Int!
+
+  borrowIndex: Decimal!
+  liquidityIndex: Decimal!
+  borrowRate: Decimal!
+  liquidityRate: Decimal!
+}
+
+# ============================================================================
+# Queries
+# ============================================================================
+
+type Query {
+  # Markets
+  market(id: ID!): Market
+  marketByAddress(address: String!): Market
+  markets(
+    limit: Int = 20
+    offset: Int = 0
+    curator: String
+    collateralDenom: String
+    debtDenom: String
+    enabledOnly: Boolean = false
+  ): [Market!]!
+  marketCount: Int!
+
+  # User Positions
+  userPosition(marketId: ID!, userAddress: String!): UserPosition
+  userPositions(
+    userAddress: String!
+    hasDebt: Boolean
+  ): [UserPosition!]!
+
+  # Liquidatable positions
+  liquidatablePositions(
+    limit: Int = 20
+    offset: Int = 0
+  ): [UserPosition!]!
+
+  # Transactions
+  transaction(id: ID!): Transaction
+  transactions(
+    limit: Int = 20
+    offset: Int = 0
+    marketId: ID
+    userAddress: String
+    action: TransactionAction
+  ): [Transaction!]!
+
+  # Snapshots
+  marketSnapshots(
+    marketId: ID!
+    fromTime: DateTime
+    toTime: DateTime
+    limit: Int = 100
+  ): [MarketSnapshot!]!
+
+  # Interest accrual
+  interestAccrualEvents(
+    marketId: ID!
+    fromTime: DateTime
+    toTime: DateTime
+    limit: Int = 100
+  ): [InterestAccrualEvent!]!
+}
+
+# ============================================================================
+# Subscriptions
+# ============================================================================
+
+type Subscription {
+  marketUpdated(marketId: ID!): Market!
+  newTransaction(marketId: ID): Transaction!
+  positionUpdated(userAddress: String!): UserPosition!
+}
