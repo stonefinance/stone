@@ -102,7 +102,13 @@ mod tests {
     use cosmwasm_std::Decimal;
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market_with_supply(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_market_with_supply(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let api = MockApi::default();
         let config = MarketConfig {
             factory: api.addr_make("factory"),
@@ -151,20 +157,16 @@ mod tests {
         let user1 = MockApi::default().addr_make("user1");
         let info = message_info(&user1, &[]);
 
-        let res = execute_withdraw(
-            deps.as_mut(),
-            env,
-            info,
-            Some(Uint128::new(500)),
-            None,
-        )
-        .unwrap();
+        let res =
+            execute_withdraw(deps.as_mut(), env, info, Some(Uint128::new(500)), None).unwrap();
 
         // Should have transfer message
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // Check user's remaining supply
-        let supply = SUPPLIES.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        let supply = SUPPLIES
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
         assert_eq!(supply, Uint128::new(500));
     }
 
@@ -179,7 +181,7 @@ mod tests {
 
         let res = execute_withdraw(deps.as_mut(), env, info, None, None).unwrap();
 
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // User's supply should be removed
         assert!(!SUPPLIES.has(deps.as_ref().storage, user1.as_str()));
@@ -205,7 +207,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "recipient" && a.value == user2.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "recipient" && a.value == user2.as_str()));
     }
 
     #[test]
@@ -230,14 +235,8 @@ mod tests {
         let user1 = MockApi::default().addr_make("user1");
         let info = message_info(&user1, &[]);
 
-        let err = execute_withdraw(
-            deps.as_mut(),
-            env,
-            info,
-            Some(Uint128::zero()),
-            None,
-        )
-        .unwrap_err();
+        let err =
+            execute_withdraw(deps.as_mut(), env, info, Some(Uint128::zero()), None).unwrap_err();
         assert!(matches!(err, ContractError::ZeroAmount));
     }
 
@@ -255,14 +254,8 @@ mod tests {
         let user1 = MockApi::default().addr_make("user1");
         let info = message_info(&user1, &[]);
 
-        let err = execute_withdraw(
-            deps.as_mut(),
-            env,
-            info,
-            Some(Uint128::new(1000)),
-            None,
-        )
-        .unwrap_err();
+        let err =
+            execute_withdraw(deps.as_mut(), env, info, Some(Uint128::new(1000)), None).unwrap_err();
         assert!(matches!(err, ContractError::InsufficientLiquidity { .. }));
     }
 
@@ -286,6 +279,9 @@ mod tests {
         .unwrap();
 
         // Should only withdraw user's actual supply (1000)
-        assert!(res.attributes.iter().any(|a| a.key == "amount" && a.value == "1000"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "amount" && a.value == "1000"));
     }
 }

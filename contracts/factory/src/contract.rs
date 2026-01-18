@@ -50,7 +50,16 @@ pub fn execute(
             oracle,
             params,
             salt,
-        } => create_market(deps, env, info, collateral_denom, debt_denom, oracle, params, salt),
+        } => create_market(
+            deps,
+            env,
+            info,
+            collateral_denom,
+            debt_denom,
+            oracle,
+            *params,
+            salt,
+        ),
         FactoryExecuteMsg::UpdateConfig {
             protocol_fee_collector,
             market_creation_fee,
@@ -82,7 +91,12 @@ pub fn query(deps: Deps, _env: Env, msg: FactoryQueryMsg) -> Result<Binary, Cont
             curator,
             start_after,
             limit,
-        } => to_json_binary(&query::markets_by_curator(deps, curator, start_after, limit)?)?,
+        } => to_json_binary(&query::markets_by_curator(
+            deps,
+            curator,
+            start_after,
+            limit,
+        )?)?,
         FactoryQueryMsg::MarketsByCollateral {
             collateral_denom,
             start_after,
@@ -97,7 +111,12 @@ pub fn query(deps: Deps, _env: Env, msg: FactoryQueryMsg) -> Result<Binary, Cont
             debt_denom,
             start_after,
             limit,
-        } => to_json_binary(&query::markets_by_debt(deps, debt_denom, start_after, limit)?)?,
+        } => to_json_binary(&query::markets_by_debt(
+            deps,
+            debt_denom,
+            start_after,
+            limit,
+        )?)?,
         FactoryQueryMsg::MarketCount {} => to_json_binary(&query::market_count(deps)?)?,
         FactoryQueryMsg::ComputeMarketId {
             collateral_denom,

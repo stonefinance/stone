@@ -43,7 +43,10 @@ pub enum ContractError {
     NotLiquidatable { health_factor: String },
 
     #[error("Insufficient liquidity: available {available}, requested {requested}")]
-    InsufficientLiquidity { available: String, requested: String },
+    InsufficientLiquidity {
+        available: String,
+        requested: String,
+    },
 
     #[error("Supply cap exceeded: cap {cap}, current {current}, adding {adding}")]
     SupplyCapExceeded {

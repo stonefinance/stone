@@ -62,7 +62,11 @@ pub fn execute_liquidate(
     let actual_debt_repaid = debt_to_repay.min(max_liquidatable).min(borrower_debt);
 
     // Get prices
-    let collateral_price = query_price(deps.as_ref(), config.oracle.as_str(), &config.collateral_denom)?;
+    let collateral_price = query_price(
+        deps.as_ref(),
+        config.oracle.as_str(),
+        &config.collateral_denom,
+    )?;
     let debt_price = query_price(deps.as_ref(), config.oracle.as_str(), &config.debt_denom)?;
 
     // Calculate collateral to seize
@@ -75,25 +79,40 @@ pub fn execute_liquidate(
     let collateral_needed = Uint128::new(collateral_needed_value.to_uint_floor().u128());
 
     let bonus_amount = collateral_needed.checked_mul_floor(params.liquidation_bonus)?;
-    let protocol_fee_amount = collateral_needed.checked_mul_floor(params.liquidation_protocol_fee)?;
-    let total_collateral_seized = collateral_needed.checked_add(bonus_amount)?.checked_add(protocol_fee_amount)?;
+    let protocol_fee_amount =
+        collateral_needed.checked_mul_floor(params.liquidation_protocol_fee)?;
+    let total_collateral_seized = collateral_needed
+        .checked_add(bonus_amount)?
+        .checked_add(protocol_fee_amount)?;
 
     // Cap at available collateral
     let total_collateral_seized = total_collateral_seized.min(borrower_collateral);
 
     // Recalculate amounts if capped
-    let uncapped_total = collateral_needed.checked_add(bonus_amount)?.checked_add(protocol_fee_amount)?;
+    let uncapped_total = collateral_needed
+        .checked_add(bonus_amount)?
+        .checked_add(protocol_fee_amount)?;
     let (final_collateral_seized, final_protocol_fee, final_debt_repaid) =
         if total_collateral_seized < uncapped_total {
             // We're capped by collateral, need to scale down
             let scale = Decimal::from_ratio(total_collateral_seized, uncapped_total);
             let scaled_collateral = collateral_needed.checked_mul_floor(scale)?;
             let scaled_protocol = protocol_fee_amount.checked_mul_floor(scale)?;
-            let scaled_debt_value = Decimal::from_ratio(scaled_collateral, 1u128).checked_mul(collateral_price)?;
-            let scaled_debt = Uint128::new(scaled_debt_value.checked_div(debt_price)?.to_uint_floor().u128());
+            let scaled_debt_value =
+                Decimal::from_ratio(scaled_collateral, 1u128).checked_mul(collateral_price)?;
+            let scaled_debt = Uint128::new(
+                scaled_debt_value
+                    .checked_div(debt_price)?
+                    .to_uint_floor()
+                    .u128(),
+            );
             (total_collateral_seized, scaled_protocol, scaled_debt)
         } else {
-            (total_collateral_seized, protocol_fee_amount, actual_debt_repaid)
+            (
+                total_collateral_seized,
+                protocol_fee_amount,
+                actual_debt_repaid,
+            )
         };
 
     let liquidator_collateral = final_collateral_seized.saturating_sub(final_protocol_fee);
@@ -102,7 +121,9 @@ pub fn execute_liquidate(
 
     // Update borrower's debt (scaled)
     let scaled_debt_decrease = stone_types::amount_to_scaled(final_debt_repaid, state.borrow_index);
-    let current_debt_scaled = DEBTS.may_load(deps.storage, borrower_str)?.unwrap_or_default();
+    let current_debt_scaled = DEBTS
+        .may_load(deps.storage, borrower_str)?
+        .unwrap_or_default();
     let new_debt_scaled = current_debt_scaled.saturating_sub(scaled_debt_decrease);
     if new_debt_scaled.is_zero() {
         DEBTS.remove(deps.storage, borrower_str);
@@ -121,7 +142,9 @@ pub fn execute_liquidate(
     // Update market totals
     let mut state = STATE.load(deps.storage)?;
     state.total_debt_scaled = state.total_debt_scaled.saturating_sub(scaled_debt_decrease);
-    state.total_collateral = state.total_collateral.saturating_sub(final_collateral_seized);
+    state.total_collateral = state
+        .total_collateral
+        .saturating_sub(final_collateral_seized);
     STATE.save(deps.storage, &state)?;
 
     // Calculate unscaled totals for event
@@ -185,8 +208,12 @@ pub fn execute_liquidate(
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi, MockQuerier};
-    use cosmwasm_std::{coins, from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery};
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse};
+    use cosmwasm_std::{
+        coins, from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery,
+    };
+    use stone_types::{
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse,
+    };
 
     fn setup_liquidatable_position(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -234,10 +261,18 @@ mod tests {
 
         // User has 1000 collateral and 5000 debt
         COLLATERAL
-            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(1000))
+            .save(
+                deps.as_mut().storage,
+                borrower.as_str(),
+                &Uint128::new(1000),
+            )
             .unwrap();
         DEBTS
-            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(5000))
+            .save(
+                deps.as_mut().storage,
+                borrower.as_str(),
+                &Uint128::new(5000),
+            )
             .unwrap();
 
         // Setup oracle mock with variable collateral price
@@ -273,7 +308,8 @@ mod tests {
     fn test_liquidate_success() {
         let mut deps = mock_dependencies();
         // Set price to $5, making HF = (1000 * 5 * 0.85) / 5000 = 0.85 (liquidatable)
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
         let env = mock_env();
         let info = message_info(&liquidator, &coins(2500, "uusdc")); // 50% of debt
@@ -281,18 +317,25 @@ mod tests {
         let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
 
         // Should have transfer messages
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // Check attributes
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "liquidate"));
-        assert!(res.attributes.iter().any(|a| a.key == "borrower" && a.value == borrower.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "liquidate"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "borrower" && a.value == borrower.as_str()));
     }
 
     #[test]
     fn test_liquidate_not_liquidatable() {
         let mut deps = mock_dependencies();
         // Set price to $10, making HF = (1000 * 10 * 0.85) / 5000 = 1.7 (healthy)
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(10u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(10u128, 1u128));
 
         let env = mock_env();
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
@@ -304,7 +347,8 @@ mod tests {
     #[test]
     fn test_liquidate_zero_amount() {
         let mut deps = mock_dependencies();
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
         let env = mock_env();
         let info = message_info(&liquidator, &[]);
@@ -316,39 +360,50 @@ mod tests {
     #[test]
     fn test_liquidate_reduces_debt() {
         let mut deps = mock_dependencies();
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
-        let initial_debt = DEBTS.load(deps.as_ref().storage, borrower.as_str()).unwrap();
+        let initial_debt = DEBTS
+            .load(deps.as_ref().storage, borrower.as_str())
+            .unwrap();
 
         let env = mock_env();
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
 
-        let final_debt = DEBTS.load(deps.as_ref().storage, borrower.as_str()).unwrap();
+        let final_debt = DEBTS
+            .load(deps.as_ref().storage, borrower.as_str())
+            .unwrap();
         assert!(final_debt < initial_debt);
     }
 
     #[test]
     fn test_liquidate_reduces_collateral() {
         let mut deps = mock_dependencies();
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
-        let initial_collateral = COLLATERAL.load(deps.as_ref().storage, borrower.as_str()).unwrap();
+        let initial_collateral = COLLATERAL
+            .load(deps.as_ref().storage, borrower.as_str())
+            .unwrap();
 
         let env = mock_env();
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
 
-        let final_collateral = COLLATERAL.load(deps.as_ref().storage, borrower.as_str()).unwrap();
+        let final_collateral = COLLATERAL
+            .load(deps.as_ref().storage, borrower.as_str())
+            .unwrap();
         assert!(final_collateral < initial_collateral);
     }
 
     #[test]
     fn test_liquidate_market_disabled() {
         let mut deps = mock_dependencies();
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
         let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
         params.enabled = false;
@@ -364,7 +419,8 @@ mod tests {
     #[test]
     fn test_liquidate_no_debt() {
         let mut deps = mock_dependencies();
-        let (borrower, liquidator, _) = setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
+        let (borrower, liquidator, _) =
+            setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
         // Remove borrower's debt
         DEBTS.remove(deps.as_mut().storage, borrower.as_str());

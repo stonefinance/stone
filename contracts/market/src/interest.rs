@@ -1,4 +1,4 @@
-use cosmwasm_std::{BankMsg, Coin, Decimal, DepsMut, Env, Response, Storage, Uint128};
+use cosmwasm_std::{BankMsg, Coin, Decimal, Storage, Uint128};
 
 use crate::error::ContractError;
 use crate::state::{CONFIG, PARAMS, STATE};
@@ -37,16 +37,23 @@ pub fn apply_accumulated_interest(
     let utilization = state.utilization();
 
     // Get borrow rate from interest rate model
-    let borrow_rate = params.interest_rate_model.calculate_borrow_rate(utilization);
+    let borrow_rate = params
+        .interest_rate_model
+        .calculate_borrow_rate(utilization);
 
     // Calculate borrow index increase
     // Linear interest: index_new = index_old * (1 + rate * time / year)
     let time_fraction = Decimal::from_ratio(time_elapsed, SECONDS_PER_YEAR);
-    let borrow_index_delta = state.borrow_index.checked_mul(borrow_rate)?.checked_mul(time_fraction)?;
+    let borrow_index_delta = state
+        .borrow_index
+        .checked_mul(borrow_rate)?
+        .checked_mul(time_fraction)?;
     let new_borrow_index = state.borrow_index.checked_add(borrow_index_delta)?;
 
     // Calculate interest earned (in debt token units)
-    let interest_earned = state.total_debt_scaled.checked_mul_floor(borrow_index_delta)?;
+    let interest_earned = state
+        .total_debt_scaled
+        .checked_mul_floor(borrow_index_delta)?;
 
     // Calculate fee amounts
     let protocol_fee_amount = interest_earned.checked_mul_floor(params.protocol_fee)?;
@@ -59,7 +66,9 @@ pub fn apply_accumulated_interest(
         state.liquidity_index
     } else {
         // Suppliers receive their share of interest
-        let current_supply = state.total_supply_scaled.checked_mul_floor(state.liquidity_index)?;
+        let current_supply = state
+            .total_supply_scaled
+            .checked_mul_floor(state.liquidity_index)?;
         if current_supply.is_zero() {
             state.liquidity_index
         } else {
@@ -75,7 +84,9 @@ pub fn apply_accumulated_interest(
         let fee_share = Decimal::one()
             .checked_sub(params.protocol_fee)?
             .checked_sub(params.curator_fee)?;
-        borrow_rate.checked_mul(utilization)?.checked_mul(fee_share)?
+        borrow_rate
+            .checked_mul(utilization)?
+            .checked_mul(fee_share)?
     };
 
     // Update state
@@ -140,18 +151,6 @@ pub fn get_user_collateral(storage: &dyn Storage, user: &str) -> Result<Uint128,
         .unwrap_or_default())
 }
 
-/// Convert amount to scaled amount using current liquidity index.
-pub fn amount_to_scaled_supply(storage: &dyn Storage, amount: Uint128) -> Result<Uint128, ContractError> {
-    let state = STATE.load(storage)?;
-    Ok(stone_types::amount_to_scaled(amount, state.liquidity_index))
-}
-
-/// Convert amount to scaled amount using current borrow index.
-pub fn amount_to_scaled_debt(storage: &dyn Storage, amount: Uint128) -> Result<Uint128, ContractError> {
-    let state = STATE.load(storage)?;
-    Ok(stone_types::amount_to_scaled(amount, state.borrow_index))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,7 +158,13 @@ mod tests {
     use cosmwasm_std::Addr;
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_market(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let config = MarketConfig {
             factory: Addr::unchecked("factory"),
             curator: Addr::unchecked("curator"),
@@ -238,11 +243,8 @@ mod tests {
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Advance one year
-        let _messages = apply_accumulated_interest(
-            deps.as_mut().storage,
-            1000 + SECONDS_PER_YEAR,
-        )
-        .unwrap();
+        let _messages =
+            apply_accumulated_interest(deps.as_mut().storage, 1000 + SECONDS_PER_YEAR).unwrap();
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
 
@@ -303,20 +305,5 @@ mod tests {
 
         let collateral = get_user_collateral(deps.as_ref().storage, "user1").unwrap();
         assert_eq!(collateral, Uint128::new(1000));
-    }
-
-    #[test]
-    fn test_amount_to_scaled_supply() {
-        let mut deps = mock_dependencies();
-        setup_market(&mut deps);
-
-        // Set liquidity index to 1.1
-        let mut state = STATE.load(deps.as_ref().storage).unwrap();
-        state.liquidity_index = Decimal::from_ratio(11u128, 10u128);
-        STATE.save(deps.as_mut().storage, &state).unwrap();
-
-        // 1100 actual should become ~1000 scaled
-        let scaled = amount_to_scaled_supply(deps.as_ref().storage, Uint128::new(1100)).unwrap();
-        assert_eq!(scaled, Uint128::new(1000));
     }
 }

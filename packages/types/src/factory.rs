@@ -61,8 +61,8 @@ pub enum FactoryExecuteMsg {
         debt_denom: String,
         /// Oracle contract address
         oracle: String,
-        /// Market parameters
-        params: CreateMarketParams,
+        /// Market parameters (boxed to reduce enum size)
+        params: Box<CreateMarketParams>,
         /// Optional salt for creating multiple markets with same pair
         salt: Option<u64>,
     },
@@ -216,10 +216,10 @@ pub fn compute_market_id(
         hash[i % 32] ^= (h >> ((i % 8) * 8)) as u8;
     }
     // Mix further
-    for i in 0..32 {
-        h ^= hash[i] as u64;
+    for byte in &mut hash {
+        h ^= *byte as u64;
         h = h.wrapping_mul(0x100000001b3);
-        hash[i] = (h >> 24) as u8;
+        *byte = (h >> 24) as u8;
     }
 
     HexBinary::from(&hash[..]).to_hex()

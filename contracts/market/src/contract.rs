@@ -1,8 +1,9 @@
-use cosmwasm_std::{entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{
+    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response,
+};
 
 use stone_types::{
-    CreateMarketParams, MarketConfig, MarketExecuteMsg, MarketInstantiateMsg, MarketParams,
-    MarketQueryMsg, MarketState,
+    MarketConfig, MarketExecuteMsg, MarketInstantiateMsg, MarketParams, MarketQueryMsg, MarketState,
 };
 
 use crate::error::ContractError;
@@ -66,7 +67,9 @@ pub fn execute(
     msg: MarketExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        MarketExecuteMsg::Supply { recipient } => execute::execute_supply(deps, env, info, recipient),
+        MarketExecuteMsg::Supply { recipient } => {
+            execute::execute_supply(deps, env, info, recipient)
+        }
         MarketExecuteMsg::Withdraw { amount, recipient } => {
             execute::execute_withdraw(deps, env, info, amount, recipient)
         }
@@ -79,7 +82,9 @@ pub fn execute(
         MarketExecuteMsg::Borrow { amount, recipient } => {
             execute::execute_borrow(deps, env, info, amount, recipient)
         }
-        MarketExecuteMsg::Repay { on_behalf_of } => execute::execute_repay(deps, env, info, on_behalf_of),
+        MarketExecuteMsg::Repay { on_behalf_of } => {
+            execute::execute_repay(deps, env, info, on_behalf_of)
+        }
         MarketExecuteMsg::Liquidate { borrower } => {
             execute::execute_liquidate(deps, env, info, borrower)
         }
@@ -96,7 +101,9 @@ pub fn query(deps: Deps, _env: Env, msg: MarketQueryMsg) -> Result<Binary, Contr
         MarketQueryMsg::Config {} => to_json_binary(&query::config(deps)?)?,
         MarketQueryMsg::Params {} => to_json_binary(&query::params(deps)?)?,
         MarketQueryMsg::State {} => to_json_binary(&query::state(deps)?)?,
-        MarketQueryMsg::UserPosition { user } => to_json_binary(&query::user_position(deps, user)?)?,
+        MarketQueryMsg::UserPosition { user } => {
+            to_json_binary(&query::user_position(deps, user)?)?
+        }
         MarketQueryMsg::UserSupply { user } => to_json_binary(&query::user_supply(deps, user)?)?,
         MarketQueryMsg::UserCollateral { user } => {
             to_json_binary(&query::user_collateral(deps, user)?)?
@@ -115,9 +122,14 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::{from_json, Decimal};
-    use stone_types::{InterestRateModel, MarketConfigResponse};
+    use stone_types::{CreateMarketParams, InterestRateModel, MarketConfigResponse};
 
-    fn test_addrs() -> (cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr) {
+    fn test_addrs() -> (
+        cosmwasm_std::Addr,
+        cosmwasm_std::Addr,
+        cosmwasm_std::Addr,
+        cosmwasm_std::Addr,
+    ) {
         let api = MockApi::default();
         (
             api.addr_make("factory"),
