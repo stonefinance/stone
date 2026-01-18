@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "contracts/*",
+    "packages/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Stone Finance"]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/stone-finance/stone-finance"
+
+[workspace.dependencies]
+# CosmWasm - pinned to avoid edition2024 issues
+cosmwasm-std = "=2.1.4"
+cosmwasm-schema = "=2.1.4"
+cw-storage-plus = "=2.0.0"
+cw2 = "=2.0.0"
+cw-utils = "=2.0.0"
+
+# Utilities
+thiserror = "1.0"
+schemars = "0.8"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+
+# Testing - pin to avoid rmp-serde 1.3.1 which requires edition2024
+cw-multi-test = "=2.1.1"
+
+# Pin transitive dependency
+rmp-serde = "=1.3.0"
+
+# Workspace packages
+stone-types = { path = "packages/types" }
+stone-testing = { path = "packages/testing" }
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'abort'
+incremental = false
+overflow-checks = true

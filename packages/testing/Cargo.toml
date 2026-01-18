@@ -1,0 +1,22 @@
+[package]
+name = "stone-testing"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Testing utilities for Stone Finance contracts"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+cosmwasm-std.workspace = true
+cosmwasm-schema.workspace = true
+cw-storage-plus.workspace = true
+cw-multi-test.workspace = true
+schemars.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+stone-types = { path = "../types" }

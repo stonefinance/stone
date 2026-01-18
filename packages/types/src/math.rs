@@ -1,0 +1,92 @@
+use cosmwasm_std::{Decimal, Fraction, Uint128};
+
+/// Multiply Uint128 by Decimal, rounding down.
+/// scaled = amount / index => amount = scaled * index
+pub fn mul_decimal(amount: Uint128, decimal: Decimal) -> Uint128 {
+    amount.mul_floor(decimal)
+}
+
+/// Divide Uint128 by Decimal, rounding down.
+/// scaled = amount / index
+pub fn div_decimal(amount: Uint128, decimal: Decimal) -> Uint128 {
+    // amount / decimal = amount * (1 / decimal)
+    // For division: scaled = amount * (denominator / numerator)
+    let numerator = decimal.numerator();
+    let denominator = decimal.denominator();
+    amount.multiply_ratio(denominator, numerator)
+}
+
+/// Convert an amount to scaled amount using an index.
+/// scaled = amount / index
+pub fn amount_to_scaled(amount: Uint128, index: Decimal) -> Uint128 {
+    div_decimal(amount, index)
+}
+
+/// Convert a scaled amount back to actual amount using an index.
+/// amount = scaled * index
+pub fn scaled_to_amount(scaled: Uint128, index: Decimal) -> Uint128 {
+    mul_decimal(scaled, index)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mul_decimal() {
+        let amount = Uint128::new(1000);
+        let decimal = Decimal::percent(50);
+        assert_eq!(mul_decimal(amount, decimal), Uint128::new(500));
+    }
+
+    #[test]
+    fn test_mul_decimal_index() {
+        let amount = Uint128::new(1000);
+        let index = Decimal::from_ratio(11u128, 10u128); // 1.1
+        assert_eq!(mul_decimal(amount, index), Uint128::new(1100));
+    }
+
+    #[test]
+    fn test_div_decimal() {
+        let amount = Uint128::new(1100);
+        let index = Decimal::from_ratio(11u128, 10u128); // 1.1
+        assert_eq!(div_decimal(amount, index), Uint128::new(1000));
+    }
+
+    #[test]
+    fn test_amount_to_scaled() {
+        // Supply 1000 with index 1.0 => scaled = 1000
+        let amount = Uint128::new(1000);
+        let index = Decimal::one();
+        assert_eq!(amount_to_scaled(amount, index), Uint128::new(1000));
+
+        // Supply 1100 with index 1.1 => scaled = 1000
+        let amount = Uint128::new(1100);
+        let index = Decimal::from_ratio(11u128, 10u128);
+        assert_eq!(amount_to_scaled(amount, index), Uint128::new(1000));
+    }
+
+    #[test]
+    fn test_scaled_to_amount() {
+        // Scaled 1000 with index 1.0 => amount = 1000
+        let scaled = Uint128::new(1000);
+        let index = Decimal::one();
+        assert_eq!(scaled_to_amount(scaled, index), Uint128::new(1000));
+
+        // Scaled 1000 with index 1.1 => amount = 1100
+        let scaled = Uint128::new(1000);
+        let index = Decimal::from_ratio(11u128, 10u128);
+        assert_eq!(scaled_to_amount(scaled, index), Uint128::new(1100));
+    }
+
+    #[test]
+    fn test_round_trip() {
+        let original = Uint128::new(12345);
+        let index = Decimal::from_ratio(123u128, 100u128); // 1.23
+        let scaled = amount_to_scaled(original, index);
+        let recovered = scaled_to_amount(scaled, index);
+        // Should be close (may lose precision due to rounding)
+        assert!(recovered <= original);
+        assert!(original - recovered < Uint128::new(2));
+    }
+}

@@ -1,0 +1,29 @@
+[package]
+name = "stone-market"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Isolated market contract for Stone Finance lending protocol"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+cosmwasm-std.workspace = true
+cosmwasm-schema.workspace = true
+cw-storage-plus.workspace = true
+cw2.workspace = true
+schemars.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+stone-types = { path = "../../packages/types" }
+
+[dev-dependencies]
+cw-multi-test.workspace = true
+stone-testing = { path = "../../packages/testing" }

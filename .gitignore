@@ -1,0 +1,32 @@
+# Build artifacts
+/target/
+/artifacts/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE/Editor
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Generated files
+/coverage/
+
+# Cargo cache (keep config.toml if needed)
+/.cargo/
+
+# Environment and secrets (prevent accidental commits)
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# Logs
+*.log

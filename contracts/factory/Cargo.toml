@@ -1,0 +1,31 @@
+[package]
+name = "stone-factory"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Factory contract for deploying Stone Finance isolated markets"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Use library feature to allow other contracts to import this as a dependency
+library = []
+
+[dependencies]
+cosmwasm-std.workspace = true
+cosmwasm-schema.workspace = true
+cw-storage-plus.workspace = true
+cw2.workspace = true
+cw-utils.workspace = true
+schemars.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+stone-types = { path = "../../packages/types" }
+
+[dev-dependencies]
+cw-multi-test.workspace = true
+stone-testing = { path = "../../packages/testing" }
