@@ -1,6 +1,9 @@
 use cosmwasm_std::{Decimal, Deps, StdResult};
 
-use crate::health::{calculate_health_factor, calculate_liquidation_price, calculate_max_borrow, is_liquidatable, query_price};
+use crate::health::{
+    calculate_health_factor, calculate_liquidation_price, calculate_max_borrow, is_liquidatable,
+    query_price,
+};
 use crate::interest::{get_user_collateral, get_user_debt, get_user_supply};
 use crate::state::{CONFIG, PARAMS, STATE};
 use stone_types::{
@@ -75,8 +78,8 @@ pub fn user_position(deps: Deps, user: String) -> StdResult<UserPositionResponse
     // Get prices (handle errors gracefully)
     let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)
         .unwrap_or(Decimal::zero());
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)
-        .unwrap_or(Decimal::zero());
+    let debt_price =
+        query_price(deps, config.oracle.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
 
     // Calculate values
     let collateral_value = Decimal::from_ratio(collateral_amount, 1u128) * collateral_price;
@@ -120,8 +123,8 @@ pub fn user_supply(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
         .unwrap_or_default();
     let amount = stone_types::scaled_to_amount(scaled, state.liquidity_index);
 
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)
-        .unwrap_or(Decimal::zero());
+    let debt_price =
+        query_price(deps, config.oracle.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * debt_price;
 
     Ok(UserBalanceResponse {
@@ -162,8 +165,8 @@ pub fn user_debt(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
         .unwrap_or_default();
     let amount = stone_types::scaled_to_amount(scaled, state.borrow_index);
 
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)
-        .unwrap_or(Decimal::zero());
+    let debt_price =
+        query_price(deps, config.oracle.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * debt_price;
 
     Ok(UserBalanceResponse {
@@ -201,7 +204,13 @@ mod tests {
     use cosmwasm_std::Uint128;
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) -> cosmwasm_std::Addr {
+    fn setup_market(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) -> cosmwasm_std::Addr {
         let api = MockApi::default();
         let curator = api.addr_make("curator");
         let config = MarketConfig {

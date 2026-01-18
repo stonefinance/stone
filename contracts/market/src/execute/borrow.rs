@@ -108,7 +108,9 @@ mod tests {
     use cosmwasm_std::{
         from_json, to_json_binary, ContractResult, Decimal, QuerierResult, WasmQuery,
     };
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse};
+    use stone_types::{
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse,
+    };
 
     fn setup_market_with_oracle(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -316,7 +318,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "recipient" && a.value == user2.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "recipient" && a.value == user2.as_str()));
     }
 
     #[test]

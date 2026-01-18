@@ -4,8 +4,8 @@ use cosmwasm_std::{
 };
 
 use stone_types::{
-    compute_market_id, CreateMarketParams, MarketInstantiateMsg, MarketRecord,
-    OracleQueryMsg, PriceResponse,
+    compute_market_id, CreateMarketParams, MarketInstantiateMsg, MarketRecord, OracleQueryMsg,
+    PriceResponse,
 };
 
 use crate::error::ContractError;
@@ -188,7 +188,10 @@ pub fn create_market(
 
     Ok(Response::new()
         .add_messages(messages)
-        .add_submessage(SubMsg::reply_on_success(instantiate_msg, INSTANTIATE_REPLY_ID))
+        .add_submessage(SubMsg::reply_on_success(
+            instantiate_msg,
+            INSTANTIATE_REPLY_ID,
+        ))
         .add_attribute("action", "create_market")
         .add_attribute("market_id", &market_id)
         .add_attribute("curator", info.sender)
@@ -300,10 +303,9 @@ pub fn handle_instantiate_reply(
     let market_address = deps.api.addr_validate(&res.contract_address)?;
 
     // Query the market contract to get its configuration
-    let market_config: stone_types::MarketConfigResponse = deps.querier.query_wasm_smart(
-        &market_address,
-        &stone_types::MarketQueryMsg::Config {},
-    )?;
+    let market_config: stone_types::MarketConfigResponse = deps
+        .querier
+        .query_wasm_smart(&market_address, &stone_types::MarketQueryMsg::Config {})?;
 
     // Compute the market ID
     let market_id = compute_market_id(
@@ -459,12 +461,7 @@ mod tests {
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
         let info = message_info(&owner, &[]);
-        let result = update_config(
-            deps.as_mut(),
-            info,
-            Some(new_collector.to_string()),
-            None,
-        );
+        let result = update_config(deps.as_mut(), info, Some(new_collector.to_string()), None);
         assert!(result.is_ok());
 
         let updated = CONFIG.load(deps.as_ref().storage).unwrap();
@@ -499,7 +496,10 @@ mod tests {
         // Wrong person tries to accept
         let info = message_info(&random, &[]);
         let result = accept_ownership(deps.as_mut(), info);
-        assert!(matches!(result.unwrap_err(), ContractError::NotPendingOwner));
+        assert!(matches!(
+            result.unwrap_err(),
+            ContractError::NotPendingOwner
+        ));
 
         // Correct person accepts
         let info = message_info(&new_owner, &[]);

@@ -99,8 +99,10 @@ pub fn calculate_expected_indices(
     let new_liquidity_index = if total_supply_scaled.is_zero() {
         liquidity_index
     } else {
-        let liquidity_index_delta =
-            Decimal::from_ratio(supplier_interest, total_supply_scaled.mul_floor(liquidity_index));
+        let liquidity_index_delta = Decimal::from_ratio(
+            supplier_interest,
+            total_supply_scaled.mul_floor(liquidity_index),
+        );
         liquidity_index + liquidity_index_delta
     };
 

@@ -40,7 +40,8 @@ pub fn calculate_health_factor(deps: Deps, user: &str) -> Result<Option<Decimal>
     let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
     let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
 
-    let collateral_value = Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
+    let collateral_value =
+        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
     let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
 
     let health_factor = collateral_value
@@ -70,7 +71,8 @@ pub fn calculate_max_borrow(deps: Deps, user: &str) -> Result<Uint128, ContractE
     let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
     let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
 
-    let collateral_value = Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
+    let collateral_value =
+        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
     let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
 
     let max_borrow_value = collateral_value.checked_mul(params.loan_to_value)?;
@@ -104,7 +106,8 @@ pub fn check_borrow_allowed(
     let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
     let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
 
-    let collateral_value = Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
+    let collateral_value =
+        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
     let new_debt_total = current_debt.checked_add(borrow_amount)?;
     let new_debt_value = Decimal::from_ratio(new_debt_total, 1u128).checked_mul(debt_price)?;
 
@@ -147,7 +150,8 @@ pub fn check_withdrawal_allowed(
     let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
     let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
 
-    let new_collateral_value = Decimal::from_ratio(new_collateral, 1u128).checked_mul(collateral_price)?;
+    let new_collateral_value =
+        Decimal::from_ratio(new_collateral, 1u128).checked_mul(collateral_price)?;
     let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
 
     // Use LTV for withdrawal check (more conservative than liquidation threshold)
@@ -168,7 +172,10 @@ pub fn check_withdrawal_allowed(
 /// Calculate liquidation price for collateral.
 /// This is the price at which the position becomes liquidatable.
 /// liquidation_price = (debt_value / (collateral_amount * liquidation_threshold))
-pub fn calculate_liquidation_price(deps: Deps, user: &str) -> Result<Option<Decimal>, ContractError> {
+pub fn calculate_liquidation_price(
+    deps: Deps,
+    user: &str,
+) -> Result<Option<Decimal>, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let params = PARAMS.load(deps.storage)?;
 
@@ -183,7 +190,8 @@ pub fn calculate_liquidation_price(deps: Deps, user: &str) -> Result<Option<Deci
     let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
 
     // liquidation_price = debt_value / (collateral_amount * liquidation_threshold)
-    let denominator = Decimal::from_ratio(collateral_amount, 1u128).checked_mul(params.liquidation_threshold)?;
+    let denominator =
+        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(params.liquidation_threshold)?;
     let liquidation_price = debt_value.checked_div(denominator)?;
 
     Ok(Some(liquidation_price))
@@ -193,9 +201,7 @@ pub fn calculate_liquidation_price(deps: Deps, user: &str) -> Result<Option<Deci
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, MockQuerier};
-    use cosmwasm_std::{
-        from_json, to_json_binary, Addr, ContractResult, QuerierResult, WasmQuery,
-    };
+    use cosmwasm_std::{from_json, to_json_binary, Addr, ContractResult, QuerierResult, WasmQuery};
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
     fn setup_with_oracle(
@@ -238,38 +244,36 @@ mod tests {
 
         // Setup state
         let state = MarketState::new(1000);
-        crate::state::STATE.save(deps.as_mut().storage, &state).unwrap();
+        crate::state::STATE
+            .save(deps.as_mut().storage, &state)
+            .unwrap();
 
         // Setup oracle mock
         let collateral_price_copy = collateral_price;
         let debt_price_copy = debt_price;
 
-        deps.querier.update_wasm(move |query| {
-            match query {
-                WasmQuery::Smart { contract_addr, msg } if contract_addr == "oracle" => {
-                    let query_msg: OracleQueryMsg = from_json(msg).unwrap();
-                    match query_msg {
-                        OracleQueryMsg::Price { denom } => {
-                            let price = if denom == "uatom" {
-                                collateral_price_copy
-                            } else {
-                                debt_price_copy
-                            };
-                            let response = PriceResponse {
-                                denom,
-                                price,
-                                updated_at: 1000,
-                            };
-                            QuerierResult::Ok(ContractResult::Ok(
-                                to_json_binary(&response).unwrap(),
-                            ))
-                        }
+        deps.querier.update_wasm(move |query| match query {
+            WasmQuery::Smart { contract_addr, msg } if contract_addr == "oracle" => {
+                let query_msg: OracleQueryMsg = from_json(msg).unwrap();
+                match query_msg {
+                    OracleQueryMsg::Price { denom } => {
+                        let price = if denom == "uatom" {
+                            collateral_price_copy
+                        } else {
+                            debt_price_copy
+                        };
+                        let response = PriceResponse {
+                            denom,
+                            price,
+                            updated_at: 1000,
+                        };
+                        QuerierResult::Ok(ContractResult::Ok(to_json_binary(&response).unwrap()))
                     }
                 }
-                _ => QuerierResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
-                    kind: "unknown".to_string(),
-                }),
             }
+            _ => QuerierResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
+                kind: "unknown".to_string(),
+            }),
         });
     }
 
@@ -297,7 +301,7 @@ mod tests {
         setup_with_oracle(
             &mut deps,
             Decimal::from_ratio(10u128, 1u128), // $10 per collateral
-            Decimal::one(),                      // $1 per debt
+            Decimal::one(),                     // $1 per debt
         );
 
         // User has 1000 collateral ($10,000) and 5000 debt ($5,000)
@@ -308,7 +312,9 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let hf = calculate_health_factor(deps.as_ref(), "user1").unwrap().unwrap();
+        let hf = calculate_health_factor(deps.as_ref(), "user1")
+            .unwrap()
+            .unwrap();
         // HF = (10000 * 0.85) / 5000 = 1.7
         assert!(hf > Decimal::one());
         assert!(!is_liquidatable(deps.as_ref(), "user1").unwrap());
@@ -320,7 +326,7 @@ mod tests {
         setup_with_oracle(
             &mut deps,
             Decimal::from_ratio(5u128, 1u128), // $5 per collateral
-            Decimal::one(),                     // $1 per debt
+            Decimal::one(),                    // $1 per debt
         );
 
         // User has 1000 collateral ($5,000) and 5000 debt ($5,000)
@@ -331,7 +337,9 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let hf = calculate_health_factor(deps.as_ref(), "user1").unwrap().unwrap();
+        let hf = calculate_health_factor(deps.as_ref(), "user1")
+            .unwrap()
+            .unwrap();
         // HF = (5000 * 0.85) / 5000 = 0.85
         assert!(hf < Decimal::one());
         assert!(is_liquidatable(deps.as_ref(), "user1").unwrap());
@@ -343,7 +351,7 @@ mod tests {
         setup_with_oracle(
             &mut deps,
             Decimal::from_ratio(10u128, 1u128), // $10 per collateral
-            Decimal::one(),                      // $1 per debt
+            Decimal::one(),                     // $1 per debt
         );
 
         // User has 1000 collateral ($10,000)

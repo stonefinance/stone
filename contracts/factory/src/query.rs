@@ -127,10 +127,7 @@ pub fn markets_by_collateral(
         .range(
             deps.storage,
             start,
-            Some(Bound::inclusive((
-                collateral_denom.as_str(),
-                "\u{ffff}",
-            ))),
+            Some(Bound::inclusive((collateral_denom.as_str(), "\u{ffff}"))),
             Order::Ascending,
         )
         .take(limit)
@@ -220,7 +217,13 @@ mod tests {
         )
     }
 
-    fn setup_test_data(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_test_data(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let (owner, collector, addr1, addr2, addr3, curator1, curator2) = test_addrs();
 
         // Setup config
@@ -361,8 +364,7 @@ mod tests {
         let mut deps = mock_dependencies();
         setup_test_data(&mut deps);
 
-        let result =
-            markets_by_collateral(deps.as_ref(), "uatom".to_string(), None, None).unwrap();
+        let result = markets_by_collateral(deps.as_ref(), "uatom".to_string(), None, None).unwrap();
         assert_eq!(result.markets.len(), 2);
     }
 

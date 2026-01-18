@@ -1,4 +1,7 @@
-use cosmwasm_std::{CheckedFromRatioError, CheckedMultiplyFractionError, CheckedMultiplyRatioError, DivideByZeroError, OverflowError, StdError};
+use cosmwasm_std::{
+    CheckedFromRatioError, CheckedMultiplyFractionError, CheckedMultiplyRatioError,
+    DivideByZeroError, OverflowError, StdError,
+};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -40,13 +43,19 @@ pub enum ContractError {
     NoFundsSent,
 
     #[error("Borrow would exceed LTV limit: max {max_borrow}, requested {requested}")]
-    ExceedsLtv { max_borrow: String, requested: String },
+    ExceedsLtv {
+        max_borrow: String,
+        requested: String,
+    },
 
     #[error("Insufficient collateral for withdrawal: health factor would be {health_factor}")]
     InsufficientCollateral { health_factor: String },
 
     #[error("Insufficient liquidity: available {available}, requested {requested}")]
-    InsufficientLiquidity { available: String, requested: String },
+    InsufficientLiquidity {
+        available: String,
+        requested: String,
+    },
 
     #[error("Supply cap exceeded: cap {cap}, would be {would_be}")]
     SupplyCapExceeded { cap: String, would_be: String },

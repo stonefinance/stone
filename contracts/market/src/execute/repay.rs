@@ -20,7 +20,11 @@ pub fn execute_repay(
 
     // Check for wrong denom first
     if info.funds.len() > 1 || (info.funds.len() == 1 && info.funds[0].denom != config.debt_denom) {
-        let sent_denom = info.funds.first().map(|c| c.denom.as_str()).unwrap_or("none");
+        let sent_denom = info
+            .funds
+            .first()
+            .map(|c| c.denom.as_str())
+            .unwrap_or("none");
         return Err(ContractError::WrongDenom {
             expected: config.debt_denom.clone(),
             got: sent_denom.to_string(),
@@ -120,7 +124,13 @@ mod tests {
     use cosmwasm_std::{coins, Decimal, Uint128};
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market_with_debt(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) -> cosmwasm_std::Addr {
+    fn setup_market_with_debt(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) -> cosmwasm_std::Addr {
         let api = MockApi::default();
         let user1 = api.addr_make("user1");
         let config = MarketConfig {
@@ -172,7 +182,10 @@ mod tests {
 
         let res = execute_repay(deps.as_mut(), env, info, None).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "amount" && a.value == "2000"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "amount" && a.value == "2000"));
 
         // Check remaining debt
         let debt = DEBTS.load(deps.as_ref().storage, user1.as_str()).unwrap();
@@ -189,7 +202,10 @@ mod tests {
 
         let res = execute_repay(deps.as_mut(), env, info, None).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "amount" && a.value == "5000"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "amount" && a.value == "5000"));
 
         // Debt should be removed
         assert!(!DEBTS.has(deps.as_ref().storage, user1.as_str()));
@@ -214,7 +230,10 @@ mod tests {
             }
         }));
 
-        assert!(res.attributes.iter().any(|a| a.key == "refund" && a.value == "2000"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "refund" && a.value == "2000"));
     }
 
     #[test]
@@ -229,8 +248,14 @@ mod tests {
 
         let res = execute_repay(deps.as_mut(), env, info, Some(user1.to_string())).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "payer" && a.value == user2.as_str()));
-        assert!(res.attributes.iter().any(|a| a.key == "borrower" && a.value == user1.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "payer" && a.value == user2.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "borrower" && a.value == user1.as_str()));
 
         // Check user1's debt was reduced
         let debt = DEBTS.load(deps.as_ref().storage, user1.as_str()).unwrap();

@@ -8,7 +8,7 @@ use stone_types::MarketParamsUpdate;
 pub const LTV_COOLDOWN_SECONDS: u64 = 604_800; // TODO don't hardcode - should be parameterisable and set on init
 
 /// Maximum LTV change per update (5%)
-pub const MAX_LTV_CHANGE: Decimal = Decimal::raw(50_000_000_000_000_000); // 0.05 // todo don;t hardcode, should be parameterisbable and set on init 
+pub const MAX_LTV_CHANGE: Decimal = Decimal::raw(50_000_000_000_000_000); // 0.05 // todo don;t hardcode, should be parameterisbable and set on init
 
 /// Update market parameters (curator only).
 pub fn execute_update_params(
@@ -34,7 +34,11 @@ pub fn execute_update_params(
         }
 
         // Check cooldown
-        let time_since_last = env.block.time.seconds().saturating_sub(params.ltv_last_update);
+        let time_since_last = env
+            .block
+            .time
+            .seconds()
+            .saturating_sub(params.ltv_last_update);
         if time_since_last < LTV_COOLDOWN_SECONDS {
             return Err(ContractError::LtvCooldownNotElapsed {
                 remaining_seconds: LTV_COOLDOWN_SECONDS - time_since_last,
@@ -119,14 +123,35 @@ pub fn execute_update_params(
     // Add full parameter snapshot for indexer
     response = response
         .add_attribute("final_ltv", params.loan_to_value.to_string())
-        .add_attribute("final_liquidation_threshold", params.liquidation_threshold.to_string())
-        .add_attribute("final_liquidation_bonus", params.liquidation_bonus.to_string())
-        .add_attribute("final_liquidation_protocol_fee", params.liquidation_protocol_fee.to_string())
+        .add_attribute(
+            "final_liquidation_threshold",
+            params.liquidation_threshold.to_string(),
+        )
+        .add_attribute(
+            "final_liquidation_bonus",
+            params.liquidation_bonus.to_string(),
+        )
+        .add_attribute(
+            "final_liquidation_protocol_fee",
+            params.liquidation_protocol_fee.to_string(),
+        )
         .add_attribute("final_close_factor", params.close_factor.to_string())
         .add_attribute("final_protocol_fee", params.protocol_fee.to_string())
         .add_attribute("final_curator_fee", params.curator_fee.to_string())
-        .add_attribute("final_supply_cap", params.supply_cap.map(|c| c.to_string()).unwrap_or("none".to_string()))
-        .add_attribute("final_borrow_cap", params.borrow_cap.map(|c| c.to_string()).unwrap_or("none".to_string()))
+        .add_attribute(
+            "final_supply_cap",
+            params
+                .supply_cap
+                .map(|c| c.to_string())
+                .unwrap_or("none".to_string()),
+        )
+        .add_attribute(
+            "final_borrow_cap",
+            params
+                .borrow_cap
+                .map(|c| c.to_string())
+                .unwrap_or("none".to_string()),
+        )
         .add_attribute("final_enabled", params.enabled.to_string())
         .add_attribute("final_is_mutable", params.is_mutable.to_string());
 
@@ -134,14 +159,9 @@ pub fn execute_update_params(
 }
 
 /// Accrue interest without performing any other action.
-pub fn execute_accrue_interest(
-    deps: DepsMut,
-    env: Env,
-) -> Result<Response, ContractError> {
-    let fee_messages = crate::interest::apply_accumulated_interest(
-        deps.storage,
-        env.block.time.seconds(),
-    )?;
+pub fn execute_accrue_interest(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
+    let fee_messages =
+        crate::interest::apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Load updated state to emit in events
     let state = crate::state::STATE.load(deps.storage)?;
@@ -159,12 +179,18 @@ pub fn execute_accrue_interest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::STATE;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::Uint128;
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
-    use crate::state::STATE;
 
-    fn setup_mutable_market(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_mutable_market(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let api = MockApi::default();
         let config = MarketConfig {
             factory: api.addr_make("factory"),

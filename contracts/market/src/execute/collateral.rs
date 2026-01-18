@@ -23,7 +23,11 @@ pub fn execute_supply_collateral(
     if info.funds.len() > 1
         || (info.funds.len() == 1 && info.funds[0].denom != config.collateral_denom)
     {
-        let sent_denom = info.funds.first().map(|c| c.denom.as_str()).unwrap_or("none");
+        let sent_denom = info
+            .funds
+            .first()
+            .map(|c| c.denom.as_str())
+            .unwrap_or("none");
         return Err(ContractError::WrongDenom {
             expected: config.collateral_denom.clone(),
             got: sent_denom.to_string(),
@@ -152,7 +156,13 @@ mod tests {
     use cosmwasm_std::{coins, Decimal};
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_market(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let api = MockApi::default();
         let config = MarketConfig {
             factory: api.addr_make("factory"),
@@ -200,7 +210,9 @@ mod tests {
         assert_eq!(res.attributes.len(), 4);
 
         // Check user's collateral was recorded
-        let collateral = COLLATERAL.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        let collateral = COLLATERAL
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
         assert_eq!(collateral, Uint128::new(1000));
 
         // Check market totals
@@ -222,9 +234,14 @@ mod tests {
         let res =
             execute_supply_collateral(deps.as_mut(), env, info, Some(user2.to_string())).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "recipient" && a.value == user2.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "recipient" && a.value == user2.as_str()));
 
-        let collateral = COLLATERAL.load(deps.as_ref().storage, user2.as_str()).unwrap();
+        let collateral = COLLATERAL
+            .load(deps.as_ref().storage, user2.as_str())
+            .unwrap();
         assert_eq!(collateral, Uint128::new(1000));
     }
 
@@ -286,18 +303,15 @@ mod tests {
         let env = mock_env();
         let info = message_info(&user1, &[]);
 
-        let res = execute_withdraw_collateral(
-            deps.as_mut(),
-            env,
-            info,
-            Some(Uint128::new(500)),
-            None,
-        )
-        .unwrap();
+        let res =
+            execute_withdraw_collateral(deps.as_mut(), env, info, Some(Uint128::new(500)), None)
+                .unwrap();
 
         assert!(!res.messages.is_empty());
 
-        let remaining = COLLATERAL.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        let remaining = COLLATERAL
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
         assert_eq!(remaining, Uint128::new(500));
     }
 
@@ -332,7 +346,9 @@ mod tests {
         let info = message_info(&user1, &coins(500, "uatom"));
         execute_supply_collateral(deps.as_mut(), env, info, None).unwrap();
 
-        let collateral = COLLATERAL.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        let collateral = COLLATERAL
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
         assert_eq!(collateral, Uint128::new(1500));
     }
 }

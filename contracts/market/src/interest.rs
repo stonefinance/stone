@@ -37,16 +37,23 @@ pub fn apply_accumulated_interest(
     let utilization = state.utilization();
 
     // Get borrow rate from interest rate model
-    let borrow_rate = params.interest_rate_model.calculate_borrow_rate(utilization);
+    let borrow_rate = params
+        .interest_rate_model
+        .calculate_borrow_rate(utilization);
 
     // Calculate borrow index increase
     // Linear interest: index_new = index_old * (1 + rate * time / year)
     let time_fraction = Decimal::from_ratio(time_elapsed, SECONDS_PER_YEAR);
-    let borrow_index_delta = state.borrow_index.checked_mul(borrow_rate)?.checked_mul(time_fraction)?;
+    let borrow_index_delta = state
+        .borrow_index
+        .checked_mul(borrow_rate)?
+        .checked_mul(time_fraction)?;
     let new_borrow_index = state.borrow_index.checked_add(borrow_index_delta)?;
 
     // Calculate interest earned (in debt token units)
-    let interest_earned = state.total_debt_scaled.checked_mul_floor(borrow_index_delta)?;
+    let interest_earned = state
+        .total_debt_scaled
+        .checked_mul_floor(borrow_index_delta)?;
 
     // Calculate fee amounts
     let protocol_fee_amount = interest_earned.checked_mul_floor(params.protocol_fee)?;
@@ -59,7 +66,9 @@ pub fn apply_accumulated_interest(
         state.liquidity_index
     } else {
         // Suppliers receive their share of interest
-        let current_supply = state.total_supply_scaled.checked_mul_floor(state.liquidity_index)?;
+        let current_supply = state
+            .total_supply_scaled
+            .checked_mul_floor(state.liquidity_index)?;
         if current_supply.is_zero() {
             state.liquidity_index
         } else {
@@ -75,7 +84,9 @@ pub fn apply_accumulated_interest(
         let fee_share = Decimal::one()
             .checked_sub(params.protocol_fee)?
             .checked_sub(params.curator_fee)?;
-        borrow_rate.checked_mul(utilization)?.checked_mul(fee_share)?
+        borrow_rate
+            .checked_mul(utilization)?
+            .checked_mul(fee_share)?
     };
 
     // Update state
@@ -147,7 +158,13 @@ mod tests {
     use cosmwasm_std::Addr;
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_market(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let config = MarketConfig {
             factory: Addr::unchecked("factory"),
             curator: Addr::unchecked("curator"),
@@ -226,11 +243,8 @@ mod tests {
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Advance one year
-        let _messages = apply_accumulated_interest(
-            deps.as_mut().storage,
-            1000 + SECONDS_PER_YEAR,
-        )
-        .unwrap();
+        let _messages =
+            apply_accumulated_interest(deps.as_mut().storage, 1000 + SECONDS_PER_YEAR).unwrap();
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
 
@@ -292,5 +306,4 @@ mod tests {
         let collateral = get_user_collateral(deps.as_ref().storage, "user1").unwrap();
         assert_eq!(collateral, Uint128::new(1000));
     }
-
 }

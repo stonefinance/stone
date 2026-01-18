@@ -21,7 +21,11 @@ pub fn execute_supply(
 
     // Check for wrong denom first
     if info.funds.len() > 1 || (info.funds.len() == 1 && info.funds[0].denom != config.debt_denom) {
-        let sent_denom = info.funds.first().map(|c| c.denom.as_str()).unwrap_or("none");
+        let sent_denom = info
+            .funds
+            .first()
+            .map(|c| c.denom.as_str())
+            .unwrap_or("none");
         return Err(ContractError::WrongDenom {
             expected: config.debt_denom.clone(),
             got: sent_denom.to_string(),
@@ -101,7 +105,13 @@ mod tests {
     use cosmwasm_std::{coins, Decimal, Uint128};
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 
-    fn setup_market(deps: &mut cosmwasm_std::OwnedDeps<cosmwasm_std::MemoryStorage, cosmwasm_std::testing::MockApi, cosmwasm_std::testing::MockQuerier>) {
+    fn setup_market(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+    ) {
         let api = MockApi::default();
         let config = MarketConfig {
             factory: api.addr_make("factory"),
@@ -149,7 +159,9 @@ mod tests {
         assert_eq!(res.attributes.len(), 8);
 
         // Check user's supply was recorded
-        let supply = SUPPLIES.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        let supply = SUPPLIES
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
         assert_eq!(supply, Uint128::new(1000)); // scaled = 1000 / 1.0 = 1000
 
         // Check market totals
@@ -170,10 +182,15 @@ mod tests {
 
         let res = execute_supply(deps.as_mut(), env, info, Some(user2.to_string())).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "recipient" && a.value == user2.as_str()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "recipient" && a.value == user2.as_str()));
 
         // Check user2's supply was recorded
-        let supply = SUPPLIES.load(deps.as_ref().storage, user2.as_str()).unwrap();
+        let supply = SUPPLIES
+            .load(deps.as_ref().storage, user2.as_str())
+            .unwrap();
         assert_eq!(supply, Uint128::new(1000));
     }
 
@@ -261,7 +278,9 @@ mod tests {
         execute_supply(deps.as_mut(), env, info, None).unwrap();
 
         // Check accumulated supply
-        let supply = SUPPLIES.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        let supply = SUPPLIES
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
         assert_eq!(supply, Uint128::new(1500));
     }
 }

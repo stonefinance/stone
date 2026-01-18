@@ -1,7 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
-    StdResult,
+    to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
 };
 use cw_storage_plus::Map;
 use stone_types::{OracleQueryMsg, PriceResponse};
@@ -84,7 +83,11 @@ pub fn mock_oracle_contract() -> cw_multi_test::ContractWrapper<
 > {
     use cw_multi_test::ContractWrapper;
 
-    ContractWrapper::new(mock_oracle_execute, mock_oracle_instantiate, mock_oracle_query)
+    ContractWrapper::new(
+        mock_oracle_execute,
+        mock_oracle_instantiate,
+        mock_oracle_query,
+    )
 }
 
 #[cfg(test)]
