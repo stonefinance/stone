@@ -82,6 +82,11 @@ pub fn execute_borrow(
         }],
     };
 
+    // Calculate unscaled totals for event
+    let total_supply = state.total_supply();
+    let total_debt = state.total_debt();
+    let utilization = state.utilization();
+
     Ok(Response::new()
         .add_messages(fee_messages)
         .add_message(transfer_msg)
@@ -89,7 +94,10 @@ pub fn execute_borrow(
         .add_attribute("borrower", info.sender)
         .add_attribute("recipient", recipient_addr)
         .add_attribute("amount", amount)
-        .add_attribute("scaled_amount", scaled_amount))
+        .add_attribute("scaled_amount", scaled_amount)
+        .add_attribute("total_supply", total_supply)
+        .add_attribute("total_debt", total_debt)
+        .add_attribute("utilization", utilization.to_string()))
 }
 
 #[cfg(test)]

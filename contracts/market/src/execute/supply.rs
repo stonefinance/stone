@@ -77,13 +77,21 @@ pub fn execute_supply(
     state.total_supply_scaled = state.total_supply_scaled.checked_add(scaled_amount)?;
     STATE.save(deps.storage, &state)?;
 
+    // Calculate unscaled totals for event
+    let total_supply = state.total_supply();
+    let total_debt = state.total_debt();
+    let utilization = state.utilization();
+
     Ok(Response::new()
         .add_messages(fee_messages)
         .add_attribute("action", "supply")
         .add_attribute("supplier", info.sender)
         .add_attribute("recipient", recipient_addr)
         .add_attribute("amount", amount)
-        .add_attribute("scaled_amount", scaled_amount))
+        .add_attribute("scaled_amount", scaled_amount)
+        .add_attribute("total_supply", total_supply)
+        .add_attribute("total_debt", total_debt)
+        .add_attribute("utilization", utilization.to_string()))
 }
 
 #[cfg(test)]
@@ -138,7 +146,7 @@ mod tests {
 
         let res = execute_supply(deps.as_mut(), env, info, None).unwrap();
 
-        assert_eq!(res.attributes.len(), 5);
+        assert_eq!(res.attributes.len(), 8);
 
         // Check user's supply was recorded
         let supply = SUPPLIES.load(deps.as_ref().storage, user1.as_str()).unwrap();
