@@ -264,7 +264,7 @@ mod tests {
         // Should be able to withdraw all with no debt
         let res = execute_withdraw_collateral(deps.as_mut(), env, info, None, None).unwrap();
 
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
         assert!(!COLLATERAL.has(deps.as_ref().storage, user1.as_str()));
     }
 
@@ -295,7 +295,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         let remaining = COLLATERAL.load(deps.as_ref().storage, user1.as_str()).unwrap();
         assert_eq!(remaining, Uint128::new(500));

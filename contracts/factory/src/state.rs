@@ -1,4 +1,4 @@
-use cosmwasm_std::{Addr, Coin};
+use cosmwasm_std::Addr;
 use cw_storage_plus::{Item, Map};
 use stone_types::{FactoryConfig, MarketRecord};
 
@@ -35,7 +35,7 @@ pub const MARKET_COUNT: Item<u64> = Item::new("market_count");
 mod tests {
     use super::*;
     use cosmwasm_std::testing::mock_dependencies;
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::{Coin, Uint128};
 
     #[test]
     fn test_config_storage() {

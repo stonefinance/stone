@@ -1,6 +1,6 @@
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    to_json_binary, Addr, Binary, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Response,
+    to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
     StdResult,
 };
 use cw_storage_plus::Map;
@@ -73,7 +73,7 @@ pub fn mock_oracle_query(deps: Deps, env: Env, msg: OracleQueryMsg) -> StdResult
 }
 
 /// Helper to create a mock oracle contract for cw-multi-test.
-#[cfg(feature = "multi-test")]
+#[allow(dead_code)]
 pub fn mock_oracle_contract() -> cw_multi_test::ContractWrapper<
     MockOracleExecuteMsg,
     MockOracleInstantiateMsg,
@@ -90,13 +90,15 @@ pub fn mock_oracle_contract() -> cw_multi_test::ContractWrapper<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
 
     #[test]
     fn test_mock_oracle_instantiate() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("creator", &[]);
+        let api = MockApi::default();
+        let creator = api.addr_make("creator");
+        let info = message_info(&creator, &[]);
 
         let msg = MockOracleInstantiateMsg {
             prices: vec![
@@ -120,7 +122,9 @@ mod tests {
     fn test_mock_oracle_set_price() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("anyone", &[]);
+        let api = MockApi::default();
+        let anyone = api.addr_make("anyone");
+        let info = message_info(&anyone, &[]);
 
         // First instantiate with empty prices
         let init_msg = MockOracleInstantiateMsg { prices: vec![] };
@@ -143,7 +147,9 @@ mod tests {
     fn test_mock_oracle_query_price() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("creator", &[]);
+        let api = MockApi::default();
+        let creator = api.addr_make("creator");
+        let info = message_info(&creator, &[]);
 
         let msg = MockOracleInstantiateMsg {
             prices: vec![("uatom".to_string(), Decimal::from_ratio(10u128, 1u128))],
@@ -166,7 +172,9 @@ mod tests {
     fn test_mock_oracle_query_missing_price() {
         let mut deps = mock_dependencies();
         let env = mock_env();
-        let info = mock_info("creator", &[]);
+        let api = MockApi::default();
+        let creator = api.addr_make("creator");
+        let info = message_info(&creator, &[]);
 
         let msg = MockOracleInstantiateMsg { prices: vec![] };
         mock_oracle_instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();

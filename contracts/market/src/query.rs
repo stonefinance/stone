@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal, Deps, StdResult, Uint128};
+use cosmwasm_std::{Decimal, Deps, StdResult};
 
 use crate::health::{calculate_health_factor, calculate_liquidation_price, calculate_max_borrow, is_liquidatable, query_price};
 use crate::interest::{get_user_collateral, get_user_debt, get_user_supply};

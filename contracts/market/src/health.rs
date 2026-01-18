@@ -194,7 +194,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, MockQuerier};
     use cosmwasm_std::{
-        from_json, to_json_binary, Addr, ContractResult, QuerierResult, SystemResult, WasmQuery,
+        from_json, to_json_binary, Addr, ContractResult, QuerierResult, WasmQuery,
     };
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
 

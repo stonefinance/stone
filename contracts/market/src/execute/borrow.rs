@@ -106,7 +106,7 @@ mod tests {
     use crate::state::COLLATERAL;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi, MockQuerier};
     use cosmwasm_std::{
-        from_json, to_json_binary, Addr, ContractResult, Decimal, QuerierResult, WasmQuery,
+        from_json, to_json_binary, ContractResult, Decimal, QuerierResult, WasmQuery,
     };
     use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse};
 
@@ -194,7 +194,7 @@ mod tests {
         // Borrow 5000 USDC (within 80% LTV = $8000 max)
         let res = execute_borrow(deps.as_mut(), env, info, Uint128::new(5000), None).unwrap();
 
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // Check user's debt
         let debt = DEBTS.load(deps.as_ref().storage, user1.as_str()).unwrap();

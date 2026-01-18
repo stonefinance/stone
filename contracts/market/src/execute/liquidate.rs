@@ -281,7 +281,7 @@ mod tests {
         let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
 
         // Should have transfer messages
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // Check attributes
         assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "liquidate"));

@@ -1,4 +1,4 @@
-use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{BankMsg, Coin, DepsMut, Env, MessageInfo, Response};
 
 use crate::error::ContractError;
 use crate::interest::{apply_accumulated_interest, get_user_debt};

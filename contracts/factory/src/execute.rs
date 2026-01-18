@@ -4,7 +4,7 @@ use cosmwasm_std::{
 };
 
 use stone_types::{
-    compute_market_id, CreateMarketParams, FactoryConfig, MarketInstantiateMsg, MarketRecord,
+    compute_market_id, CreateMarketParams, MarketInstantiateMsg, MarketRecord,
     OracleQueryMsg, PriceResponse,
 };
 
@@ -288,7 +288,7 @@ pub fn handle_instantiate_reply(
     let res = cw_utils::parse_instantiate_response_data(
         msg.result
             .into_result()
-            .map_err(|e| cosmwasm_std::StdError::generic_err(e))?
+            .map_err(cosmwasm_std::StdError::generic_err)?
             .data
             .ok_or_else(|| cosmwasm_std::StdError::generic_err("no data in reply"))?
             .as_slice(),
@@ -343,9 +343,9 @@ pub fn handle_instantiate_reply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
-    use cosmwasm_std::{Decimal, Uint128};
-    use stone_types::InterestRateModel;
+    use cosmwasm_std::testing::{message_info, mock_dependencies, MockApi};
+    use cosmwasm_std::{Coin, Decimal, Uint128};
+    use stone_types::{FactoryConfig, InterestRateModel};
 
     fn valid_params() -> CreateMarketParams {
         CreateMarketParams {

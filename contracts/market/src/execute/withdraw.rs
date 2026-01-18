@@ -161,7 +161,7 @@ mod tests {
         .unwrap();
 
         // Should have transfer message
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // Check user's remaining supply
         let supply = SUPPLIES.load(deps.as_ref().storage, user1.as_str()).unwrap();
@@ -179,7 +179,7 @@ mod tests {
 
         let res = execute_withdraw(deps.as_mut(), env, info, None, None).unwrap();
 
-        assert!(res.messages.len() >= 1);
+        assert!(!res.messages.is_empty());
 
         // User's supply should be removed
         assert!(!SUPPLIES.has(deps.as_ref().storage, user1.as_str()));
