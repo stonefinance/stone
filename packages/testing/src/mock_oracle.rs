@@ -22,7 +22,6 @@ pub enum MockOracleExecuteMsg {
 }
 
 /// Mock oracle contract entry points for use in tests.
-
 pub fn mock_oracle_instantiate(
     deps: DepsMut,
     _env: Env,
