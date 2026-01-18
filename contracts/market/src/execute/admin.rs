@@ -116,6 +116,20 @@ pub fn execute_update_params(
 
     PARAMS.save(deps.storage, &params)?;
 
+    // Add full parameter snapshot for indexer
+    response = response
+        .add_attribute("final_ltv", params.loan_to_value.to_string())
+        .add_attribute("final_liquidation_threshold", params.liquidation_threshold.to_string())
+        .add_attribute("final_liquidation_bonus", params.liquidation_bonus.to_string())
+        .add_attribute("final_liquidation_protocol_fee", params.liquidation_protocol_fee.to_string())
+        .add_attribute("final_close_factor", params.close_factor.to_string())
+        .add_attribute("final_protocol_fee", params.protocol_fee.to_string())
+        .add_attribute("final_curator_fee", params.curator_fee.to_string())
+        .add_attribute("final_supply_cap", params.supply_cap.map(|c| c.to_string()).unwrap_or("none".to_string()))
+        .add_attribute("final_borrow_cap", params.borrow_cap.map(|c| c.to_string()).unwrap_or("none".to_string()))
+        .add_attribute("final_enabled", params.enabled.to_string())
+        .add_attribute("final_is_mutable", params.is_mutable.to_string());
+
     Ok(response)
 }
 
@@ -129,9 +143,17 @@ pub fn execute_accrue_interest(
         env.block.time.seconds(),
     )?;
 
+    // Load updated state to emit in events
+    let state = crate::state::STATE.load(deps.storage)?;
+
     Ok(Response::new()
         .add_messages(fee_messages)
-        .add_attribute("action", "accrue_interest"))
+        .add_attribute("action", "accrue_interest")
+        .add_attribute("borrow_index", state.borrow_index.to_string())
+        .add_attribute("liquidity_index", state.liquidity_index.to_string())
+        .add_attribute("borrow_rate", state.borrow_rate.to_string())
+        .add_attribute("liquidity_rate", state.liquidity_rate.to_string())
+        .add_attribute("last_update", state.last_update.to_string()))
 }
 
 #[cfg(test)]

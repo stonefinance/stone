@@ -124,6 +124,11 @@ pub fn execute_liquidate(
     state.total_collateral = state.total_collateral.saturating_sub(final_collateral_seized);
     STATE.save(deps.storage, &state)?;
 
+    // Calculate unscaled totals for event
+    let total_supply = state.total_supply();
+    let total_debt = state.total_debt();
+    let utilization = state.utilization();
+
     // Build messages
     let mut messages = fee_messages;
 
@@ -169,7 +174,11 @@ pub fn execute_liquidate(
         .add_attribute("debt_repaid", final_debt_repaid)
         .add_attribute("collateral_seized", final_collateral_seized)
         .add_attribute("liquidator_collateral", liquidator_collateral)
-        .add_attribute("protocol_fee", final_protocol_fee))
+        .add_attribute("protocol_fee", final_protocol_fee)
+        .add_attribute("total_supply", total_supply)
+        .add_attribute("total_debt", total_debt)
+        .add_attribute("total_collateral", state.total_collateral)
+        .add_attribute("utilization", utilization.to_string()))
 }
 
 #[cfg(test)]

@@ -79,6 +79,11 @@ pub fn execute_repay(
     state.total_debt_scaled = state.total_debt_scaled.saturating_sub(scaled_decrease);
     STATE.save(deps.storage, &state)?;
 
+    // Calculate unscaled totals for event
+    let total_supply = state.total_supply();
+    let total_debt = state.total_debt();
+    let utilization = state.utilization();
+
     // Build response
     let mut response = Response::new()
         .add_messages(fee_messages)
@@ -86,7 +91,10 @@ pub fn execute_repay(
         .add_attribute("payer", &info.sender)
         .add_attribute("borrower", &borrower)
         .add_attribute("amount", repay_amount)
-        .add_attribute("scaled_decrease", scaled_decrease);
+        .add_attribute("scaled_decrease", scaled_decrease)
+        .add_attribute("total_supply", total_supply)
+        .add_attribute("total_debt", total_debt)
+        .add_attribute("utilization", utilization.to_string());
 
     // Refund excess if any
     if !refund_amount.is_zero() {
