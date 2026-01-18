@@ -71,6 +71,7 @@ pub fn coin(amount: u128, denom: &str) -> Coin {
 
 /// Calculate expected interest accrual.
 /// Returns (new_borrow_index, new_liquidity_index).
+#[allow(clippy::too_many_arguments)]
 pub fn calculate_expected_indices(
     borrow_index: Decimal,
     liquidity_index: Decimal,

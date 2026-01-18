@@ -8,7 +8,7 @@ use crate::state::{COLLATERAL, CONFIG, PARAMS, STATE};
 /// Supply collateral asset to enable borrowing.
 pub fn execute_supply_collateral(
     deps: DepsMut,
-    env: Env,
+    _env: Env,
     info: MessageInfo,
     recipient: Option<String>,
 ) -> Result<Response, ContractError> {

@@ -96,6 +96,7 @@ fn validate_oracle(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_market(
     deps: DepsMut,
     env: Env,
@@ -279,6 +280,7 @@ pub fn accept_ownership(deps: DepsMut, info: MessageInfo) -> Result<Response, Co
 }
 
 /// Handle reply from market instantiation to capture contract address.
+#[allow(deprecated)] // data field still needed for older CosmWasm versions
 pub fn handle_instantiate_reply(
     deps: DepsMut,
     env: Env,

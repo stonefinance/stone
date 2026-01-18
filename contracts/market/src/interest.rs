@@ -140,18 +140,6 @@ pub fn get_user_collateral(storage: &dyn Storage, user: &str) -> Result<Uint128,
         .unwrap_or_default())
 }
 
-/// Convert amount to scaled amount using current liquidity index.
-pub fn amount_to_scaled_supply(storage: &dyn Storage, amount: Uint128) -> Result<Uint128, ContractError> {
-    let state = STATE.load(storage)?;
-    Ok(stone_types::amount_to_scaled(amount, state.liquidity_index))
-}
-
-/// Convert amount to scaled amount using current borrow index.
-pub fn amount_to_scaled_debt(storage: &dyn Storage, amount: Uint128) -> Result<Uint128, ContractError> {
-    let state = STATE.load(storage)?;
-    Ok(stone_types::amount_to_scaled(amount, state.borrow_index))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,18 +293,4 @@ mod tests {
         assert_eq!(collateral, Uint128::new(1000));
     }
 
-    #[test]
-    fn test_amount_to_scaled_supply() {
-        let mut deps = mock_dependencies();
-        setup_market(&mut deps);
-
-        // Set liquidity index to 1.1
-        let mut state = STATE.load(deps.as_ref().storage).unwrap();
-        state.liquidity_index = Decimal::from_ratio(11u128, 10u128);
-        STATE.save(deps.as_mut().storage, &state).unwrap();
-
-        // 1100 actual should become ~1000 scaled
-        let scaled = amount_to_scaled_supply(deps.as_ref().storage, Uint128::new(1100)).unwrap();
-        assert_eq!(scaled, Uint128::new(1000));
-    }
 }

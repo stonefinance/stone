@@ -50,7 +50,7 @@ pub fn execute(
             oracle,
             params,
             salt,
-        } => create_market(deps, env, info, collateral_denom, debt_denom, oracle, params, salt),
+        } => create_market(deps, env, info, collateral_denom, debt_denom, oracle, *params, salt),
         FactoryExecuteMsg::UpdateConfig {
             protocol_fee_collector,
             market_creation_fee,

@@ -60,7 +60,6 @@ pub fn state(deps: Deps) -> StdResult<MarketStateResponse> {
 
 pub fn user_position(deps: Deps, user: String) -> StdResult<UserPositionResponse> {
     let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
 
     let user_addr = deps.api.addr_validate(&user)?;
     let user_str = user_addr.as_str();

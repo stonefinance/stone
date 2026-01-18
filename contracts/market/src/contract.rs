@@ -1,8 +1,8 @@
 use cosmwasm_std::{entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
 
 use stone_types::{
-    CreateMarketParams, MarketConfig, MarketExecuteMsg, MarketInstantiateMsg, MarketParams,
-    MarketQueryMsg, MarketState,
+    MarketConfig, MarketExecuteMsg, MarketInstantiateMsg, MarketParams, MarketQueryMsg,
+    MarketState,
 };
 
 use crate::error::ContractError;
@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::{from_json, Decimal};
-    use stone_types::{InterestRateModel, MarketConfigResponse};
+    use stone_types::{CreateMarketParams, InterestRateModel, MarketConfigResponse};
 
     fn test_addrs() -> (cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr) {
         let api = MockApi::default();
