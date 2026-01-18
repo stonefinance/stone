@@ -93,3 +93,5 @@ pub enum ContractError {
     #[error("Oracle query failed for {denom}: {reason}")]
     OracleError { denom: String, reason: String },
 }
+
+pub type ContractResult<T> = Result<T, ContractError>;

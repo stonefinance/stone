@@ -1,4 +1,4 @@
-use cosmwasm_std::{Deps, Order, StdResult};
+use cosmwasm_std::{Deps, Order};
 use cw_storage_plus::Bound;
 
 use stone_types::{
@@ -6,6 +6,7 @@ use stone_types::{
     MarketResponse, MarketsResponse,
 };
 
+use crate::error::ContractResult;
 use crate::state::{
     CONFIG, MARKETS, MARKETS_BY_ADDRESS, MARKETS_BY_COLLATERAL, MARKETS_BY_CURATOR,
     MARKETS_BY_DEBT, MARKET_COUNT,
@@ -14,7 +15,7 @@ use crate::state::{
 const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 30;
 
-pub fn config(deps: Deps) -> StdResult<FactoryConfigResponse> {
+pub fn config(deps: Deps) -> ContractResult<FactoryConfigResponse> {
     let config = CONFIG.load(deps.storage)?;
     Ok(FactoryConfigResponse {
         owner: config.owner.to_string(),
@@ -24,7 +25,7 @@ pub fn config(deps: Deps) -> StdResult<FactoryConfigResponse> {
     })
 }
 
-pub fn market(deps: Deps, market_id: String) -> StdResult<MarketResponse> {
+pub fn market(deps: Deps, market_id: String) -> ContractResult<MarketResponse> {
     let record = MARKETS.load(deps.storage, &market_id)?;
     Ok(MarketResponse {
         market_id: record.market_id,
@@ -36,7 +37,7 @@ pub fn market(deps: Deps, market_id: String) -> StdResult<MarketResponse> {
     })
 }
 
-pub fn market_by_address(deps: Deps, address: String) -> StdResult<MarketResponse> {
+pub fn market_by_address(deps: Deps, address: String) -> ContractResult<MarketResponse> {
     let addr = deps.api.addr_validate(&address)?;
     let market_id = MARKETS_BY_ADDRESS.load(deps.storage, &addr)?;
     market(deps, market_id)
@@ -46,7 +47,7 @@ pub fn markets(
     deps: Deps,
     start_after: Option<String>,
     limit: Option<u32>,
-) -> StdResult<MarketsResponse> {
+) -> ContractResult<MarketsResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
     let start = start_after.as_deref().map(Bound::exclusive);
 
@@ -64,7 +65,7 @@ pub fn markets(
                 created_at: record.created_at,
             })
         })
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     Ok(MarketsResponse { markets })
 }
@@ -74,7 +75,7 @@ pub fn markets_by_curator(
     curator: String,
     start_after: Option<String>,
     limit: Option<u32>,
-) -> StdResult<MarketsResponse> {
+) -> ContractResult<MarketsResponse> {
     let curator_addr = deps.api.addr_validate(&curator)?;
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
@@ -99,12 +100,12 @@ pub fn markets_by_curator(
             let ((_, market_id), _) = item?;
             Ok(market_id.to_string())
         })
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     let markets: Vec<MarketResponse> = market_ids
         .into_iter()
         .map(|id| market(deps, id))
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     Ok(MarketsResponse { markets })
 }
@@ -114,7 +115,7 @@ pub fn markets_by_collateral(
     collateral_denom: String,
     start_after: Option<String>,
     limit: Option<u32>,
-) -> StdResult<MarketsResponse> {
+) -> ContractResult<MarketsResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
     // When no start_after, we need to start from the beginning of this denom's entries
@@ -135,12 +136,12 @@ pub fn markets_by_collateral(
             let ((_, market_id), _) = item?;
             Ok(market_id.to_string())
         })
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     let markets: Vec<MarketResponse> = market_ids
         .into_iter()
         .map(|id| market(deps, id))
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     Ok(MarketsResponse { markets })
 }
@@ -150,7 +151,7 @@ pub fn markets_by_debt(
     debt_denom: String,
     start_after: Option<String>,
     limit: Option<u32>,
-) -> StdResult<MarketsResponse> {
+) -> ContractResult<MarketsResponse> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
 
     // When no start_after, we need to start from the beginning of this denom's entries
@@ -171,17 +172,17 @@ pub fn markets_by_debt(
             let ((_, market_id), _) = item?;
             Ok(market_id.to_string())
         })
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     let markets: Vec<MarketResponse> = market_ids
         .into_iter()
         .map(|id| market(deps, id))
-        .collect::<StdResult<Vec<_>>>()?;
+        .collect::<ContractResult<Vec<_>>>()?;
 
     Ok(MarketsResponse { markets })
 }
 
-pub fn market_count(deps: Deps) -> StdResult<MarketCountResponse> {
+pub fn market_count(deps: Deps) -> ContractResult<MarketCountResponse> {
     let count = MARKET_COUNT.may_load(deps.storage)?.unwrap_or(0);
     Ok(MarketCountResponse { count })
 }

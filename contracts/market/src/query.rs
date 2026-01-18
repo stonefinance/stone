@@ -1,5 +1,6 @@
-use cosmwasm_std::{Decimal, Deps, StdResult};
+use cosmwasm_std::{Decimal, Deps};
 
+use crate::error::ContractResult;
 use crate::health::{
     calculate_health_factor, calculate_liquidation_price, calculate_max_borrow, is_liquidatable,
     query_price,
@@ -11,7 +12,7 @@ use stone_types::{
     UserBalanceResponse, UserPositionResponse,
 };
 
-pub fn config(deps: Deps) -> StdResult<MarketConfigResponse> {
+pub fn config(deps: Deps) -> ContractResult<MarketConfigResponse> {
     let config = CONFIG.load(deps.storage)?;
     Ok(MarketConfigResponse {
         factory: config.factory.to_string(),
@@ -23,7 +24,7 @@ pub fn config(deps: Deps) -> StdResult<MarketConfigResponse> {
     })
 }
 
-pub fn params(deps: Deps) -> StdResult<MarketParamsResponse> {
+pub fn params(deps: Deps) -> ContractResult<MarketParamsResponse> {
     let params = PARAMS.load(deps.storage)?;
     Ok(MarketParamsResponse {
         loan_to_value: params.loan_to_value,
@@ -42,7 +43,7 @@ pub fn params(deps: Deps) -> StdResult<MarketParamsResponse> {
     })
 }
 
-pub fn state(deps: Deps) -> StdResult<MarketStateResponse> {
+pub fn state(deps: Deps) -> ContractResult<MarketStateResponse> {
     let state = STATE.load(deps.storage)?;
     Ok(MarketStateResponse {
         borrow_index: state.borrow_index,
@@ -61,7 +62,7 @@ pub fn state(deps: Deps) -> StdResult<MarketStateResponse> {
     })
 }
 
-pub fn user_position(deps: Deps, user: String) -> StdResult<UserPositionResponse> {
+pub fn user_position(deps: Deps, user: String) -> ContractResult<UserPositionResponse> {
     let config = CONFIG.load(deps.storage)?;
 
     let user_addr = deps.api.addr_validate(&user)?;
@@ -112,7 +113,7 @@ pub fn user_position(deps: Deps, user: String) -> StdResult<UserPositionResponse
     })
 }
 
-pub fn user_supply(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
+pub fn user_supply(deps: Deps, user: String) -> ContractResult<UserBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
 
@@ -134,7 +135,7 @@ pub fn user_supply(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
     })
 }
 
-pub fn user_collateral(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
+pub fn user_collateral(deps: Deps, user: String) -> ContractResult<UserBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
 
     let user_addr = deps.api.addr_validate(&user)?;
@@ -154,7 +155,7 @@ pub fn user_collateral(deps: Deps, user: String) -> StdResult<UserBalanceRespons
     })
 }
 
-pub fn user_debt(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
+pub fn user_debt(deps: Deps, user: String) -> ContractResult<UserBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
 
@@ -176,7 +177,7 @@ pub fn user_debt(deps: Deps, user: String) -> StdResult<UserBalanceResponse> {
     })
 }
 
-pub fn query_is_liquidatable(deps: Deps, user: String) -> StdResult<IsLiquidatableResponse> {
+pub fn query_is_liquidatable(deps: Deps, user: String) -> ContractResult<IsLiquidatableResponse> {
     let user_addr = deps.api.addr_validate(&user)?;
 
     let liquidatable = is_liquidatable(deps, user_addr.as_str())

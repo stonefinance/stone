@@ -33,3 +33,5 @@ pub enum ContractError {
     #[error("Not the pending owner")]
     NotPendingOwner,
 }
+
+pub type ContractResult<T> = Result<T, ContractError>;
