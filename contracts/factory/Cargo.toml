@@ -29,3 +29,4 @@ stone-types = { path = "../../packages/types" }
 [dev-dependencies]
 cw-multi-test.workspace = true
 stone-testing = { path = "../../packages/testing" }
+stone-market = { path = "../market" }

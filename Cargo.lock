@@ -1019,6 +1019,7 @@ dependencies = [
  "cw2",
  "schemars",
  "serde",
+ "stone-market",
  "stone-testing",
  "stone-types",
  "thiserror",
