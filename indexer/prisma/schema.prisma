@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Market {
+  id              String   @id @db.VarChar(64)
+  marketAddress   String   @map("market_address") @db.VarChar(64)
+  curator         String   @db.VarChar(64)
+  collateralDenom String   @map("collateral_denom") @db.VarChar(64)
+  debtDenom       String   @map("debt_denom") @db.VarChar(64)
+  oracle          String   @db.VarChar(64)
+  createdAt       DateTime @map("created_at")
+  createdAtBlock  BigInt   @map("created_at_block")
+
+  // Parameters (updated via UpdateParams)
+  loanToValue              Decimal @map("loan_to_value") @db.Decimal(20, 18)
+  liquidationThreshold     Decimal @map("liquidation_threshold") @db.Decimal(20, 18)
+  liquidationBonus         Decimal @map("liquidation_bonus") @db.Decimal(20, 18)
+  liquidationProtocolFee   Decimal @map("liquidation_protocol_fee") @db.Decimal(20, 18)
+  closeFactor              Decimal @map("close_factor") @db.Decimal(20, 18)
+  interestRateModel        Json    @map("interest_rate_model")
+  protocolFee              Decimal @map("protocol_fee") @db.Decimal(20, 18)
+  curatorFee               Decimal @map("curator_fee") @db.Decimal(20, 18)
+  supplyCap                Decimal? @map("supply_cap") @db.Decimal(78, 0)
+  borrowCap                Decimal? @map("borrow_cap") @db.Decimal(78, 0)
+  enabled                  Boolean
+  isMutable                Boolean @map("is_mutable")
+
+  // Current State (updated on every txn)
+  borrowIndex         Decimal @map("borrow_index") @db.Decimal(20, 18)
+  liquidityIndex      Decimal @map("liquidity_index") @db.Decimal(20, 18)
+  borrowRate          Decimal @map("borrow_rate") @db.Decimal(20, 18)
+  liquidityRate       Decimal @map("liquidity_rate") @db.Decimal(20, 18)
+  totalSupplyScaled   Decimal @map("total_supply_scaled") @db.Decimal(78, 0)
+  totalDebtScaled     Decimal @map("total_debt_scaled") @db.Decimal(78, 0)
+  totalCollateral     Decimal @map("total_collateral") @db.Decimal(78, 0)
+  lastUpdate          BigInt  @map("last_update")
+
+  // Computed fields (calculated in application)
+  utilization         Decimal? @db.Decimal(20, 18)
+  availableLiquidity  Decimal? @map("available_liquidity") @db.Decimal(78, 0)
+
+  // Relations
+  positions              UserPosition[]
+  transactions           Transaction[]
+  snapshots              MarketSnapshot[]
+  interestAccrualEvents  InterestAccrualEvent[]
+
+  @@index([curator], map: "idx_markets_curator")
+  @@index([collateralDenom], map: "idx_markets_collateral")
+  @@index([debtDenom], map: "idx_markets_debt")
+  @@index([enabled], map: "idx_markets_enabled")
+  @@map("markets")
+}
+
+model UserPosition {
+  id              String   @id @db.VarChar(128)
+  marketId        String   @map("market_id") @db.VarChar(64)
+  userAddress     String   @map("user_address") @db.VarChar(64)
+
+  // Current balances (scaled)
+  supplyScaled    Decimal  @default("0") @map("supply_scaled") @db.Decimal(78, 0)
+  debtScaled      Decimal  @default("0") @map("debt_scaled") @db.Decimal(78, 0)
+  collateral      Decimal  @default("0") @db.Decimal(78, 0)
+
+  // Metadata
+  firstInteraction DateTime @map("first_interaction")
+  lastInteraction  DateTime @map("last_interaction")
+
+  // Relations
+  market       Market        @relation(fields: [marketId], references: [id])
+  transactions Transaction[]
+
+  @@unique([marketId, userAddress], map: "idx_positions_market_user")
+  @@index([marketId], map: "idx_positions_market")
+  @@index([userAddress], map: "idx_positions_user")
+  @@index([debtScaled], map: "idx_positions_debt")
+  @@map("user_positions")
+}
+
+enum TransactionAction {
+  SUPPLY
+  WITHDRAW
+  SUPPLY_COLLATERAL
+  WITHDRAW_COLLATERAL
+  BORROW
+  REPAY
+  LIQUIDATE
+
+  @@map("transaction_action")
+}
+
+model Transaction {
+  id          String            @id @db.VarChar(128)
+  txHash      String            @map("tx_hash") @db.VarChar(64)
+  blockHeight BigInt            @map("block_height")
+  timestamp   DateTime
+  marketId    String            @map("market_id") @db.VarChar(64)
+  userAddress String            @map("user_address") @db.VarChar(64)
+  action      TransactionAction
+
+  // Common fields (nullable)
+  amount        Decimal? @db.Decimal(78, 0)
+  scaledAmount  Decimal? @map("scaled_amount") @db.Decimal(78, 0)
+  recipient     String?  @db.VarChar(64)
+
+  // Liquidation-specific
+  liquidator        String?  @db.VarChar(64)
+  borrower          String?  @db.VarChar(64)
+  debtRepaid        Decimal? @map("debt_repaid") @db.Decimal(78, 0)
+  collateralSeized  Decimal? @map("collateral_seized") @db.Decimal(78, 0)
+  protocolFee       Decimal? @map("protocol_fee") @db.Decimal(78, 0)
+
+  // Market state snapshot at time of transaction
+  totalSupply     Decimal? @map("total_supply") @db.Decimal(78, 0)
+  totalDebt       Decimal? @map("total_debt") @db.Decimal(78, 0)
+  totalCollateral Decimal? @map("total_collateral") @db.Decimal(78, 0)
+  utilization     Decimal? @db.Decimal(20, 18)
+
+  // Relations
+  market   Market        @relation(fields: [marketId], references: [id])
+  position UserPosition? @relation(fields: [userPositionId], references: [id])
+  userPositionId String? @map("user_position_id") @db.VarChar(128)
+
+  @@index([blockHeight(sort: Desc)], map: "idx_txns_block")
+  @@index([timestamp(sort: Desc)], map: "idx_txns_timestamp")
+  @@index([marketId, timestamp(sort: Desc)], map: "idx_txns_market")
+  @@index([userAddress, timestamp(sort: Desc)], map: "idx_txns_user")
+  @@index([action, timestamp(sort: Desc)], map: "idx_txns_action")
+  @@index([txHash], map: "idx_txns_hash")
+  @@map("transactions")
+}
+
+model MarketSnapshot {
+  id          String   @id @db.VarChar(128)
+  marketId    String   @map("market_id") @db.VarChar(64)
+  timestamp   DateTime
+  blockHeight BigInt   @map("block_height")
+
+  // Snapshot all market state
+  borrowIndex      Decimal @map("borrow_index") @db.Decimal(20, 18)
+  liquidityIndex   Decimal @map("liquidity_index") @db.Decimal(20, 18)
+  borrowRate       Decimal @map("borrow_rate") @db.Decimal(20, 18)
+  liquidityRate    Decimal @map("liquidity_rate") @db.Decimal(20, 18)
+  totalSupply      Decimal @map("total_supply") @db.Decimal(78, 0)
+  totalDebt        Decimal @map("total_debt") @db.Decimal(78, 0)
+  totalCollateral  Decimal @map("total_collateral") @db.Decimal(78, 0)
+  utilization      Decimal @db.Decimal(20, 18)
+
+  // Snapshot all params (for historical tracking)
+  loanToValue          Decimal @map("loan_to_value") @db.Decimal(20, 18)
+  liquidationThreshold Decimal @map("liquidation_threshold") @db.Decimal(20, 18)
+  enabled              Boolean
+
+  // Relations
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@unique([marketId, timestamp], map: "idx_snapshots_market_timestamp")
+  @@index([marketId, timestamp(sort: Desc)], map: "idx_snapshots_market_time")
+  @@map("market_snapshots")
+}
+
+model InterestAccrualEvent {
+  id          String   @id @db.VarChar(128)
+  marketId    String   @map("market_id") @db.VarChar(64)
+  txHash      String   @map("tx_hash") @db.VarChar(64)
+  timestamp   DateTime
+  blockHeight BigInt   @map("block_height")
+
+  borrowIndex    Decimal @map("borrow_index") @db.Decimal(20, 18)
+  liquidityIndex Decimal @map("liquidity_index") @db.Decimal(20, 18)
+  borrowRate     Decimal @map("borrow_rate") @db.Decimal(20, 18)
+  liquidityRate  Decimal @map("liquidity_rate") @db.Decimal(20, 18)
+
+  // Relations
+  market Market @relation(fields: [marketId], references: [id])
+
+  @@index([marketId, timestamp(sort: Desc)], map: "idx_accrual_market_time")
+  @@map("interest_accrual_events")
+}
+
+model IndexerState {
+  id                String   @id @default("singleton") @db.VarChar(32)
+  lastProcessedBlock BigInt  @map("last_processed_block")
+  lastProcessedHash String?  @map("last_processed_hash") @db.VarChar(64)
+  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("indexer_state")
+}
