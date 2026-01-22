@@ -2,7 +2,7 @@
 
 # Contract build targets (only contracts, not testing package which has non-wasm deps)
 build:
-	cargo build --release --target wasm32-unknown-unknown -p stone-factory -p stone-market
+	cargo build --release --target wasm32-unknown-unknown -p stone-factory -p stone-market -p mock-oracle
 
 test:
 	cargo test --workspace
@@ -12,6 +12,7 @@ e2e-build: build
 	mkdir -p artifacts
 	cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/factory.wasm
 	cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/market.wasm
+	cp target/wasm32-unknown-unknown/release/mock_oracle.wasm artifacts/mock_oracle.wasm
 
 e2e-up: e2e-build
 	cd e2e && docker compose -f docker-compose.e2e.yml up -d
@@ -61,15 +62,21 @@ clean:
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  build           - Build WASM contracts"
-	@echo "  test            - Run Rust unit tests"
-	@echo "  e2e-build       - Build contracts and prepare artifacts"
-	@echo "  e2e-up          - Start E2E test stack"
-	@echo "  e2e-test        - Run E2E tests"
-	@echo "  e2e-test-smoke  - Run smoke tests only"
-	@echo "  e2e-down        - Stop E2E test stack"
-	@echo "  e2e-logs        - Follow E2E stack logs"
-	@echo "  e2e-clean       - Clean E2E artifacts"
-	@echo "  e2e             - Full E2E run (build, up, test)"
-	@echo "  e2e-install     - Install E2E dependencies"
-	@echo "  clean           - Clean all build artifacts"
+	@echo "  build              - Build WASM contracts (factory, market, mock-oracle)"
+	@echo "  test               - Run Rust unit tests"
+	@echo "  e2e-build          - Build contracts and prepare artifacts"
+	@echo "  e2e-up             - Start E2E test stack (wasmd, postgres, deployer, indexer)"
+	@echo "  e2e-test           - Run E2E tests"
+	@echo "  e2e-test-smoke     - Run smoke tests only"
+	@echo "  e2e-down           - Stop E2E test stack"
+	@echo "  e2e-logs           - Follow E2E stack logs"
+	@echo "  e2e-clean          - Clean E2E artifacts"
+	@echo "  e2e                - Full E2E run (build, up, test)"
+	@echo "  e2e-install        - Install E2E dependencies"
+	@echo "  clean              - Clean all build artifacts"
+	@echo ""
+	@echo "E2E Stack Services:"
+	@echo "  - wasmd:    Local blockchain at http://localhost:26657"
+	@echo "  - postgres: Database at localhost:5432"
+	@echo "  - indexer:  GraphQL API at http://localhost:4000/graphql"
+	@echo "  - frontend: Web app at http://localhost:3000 (optional)"

@@ -40,7 +40,49 @@ indexer/
 └── tsconfig.json
 ```
 
-## Setup
+## Quick Start with E2E Stack
+
+The easiest way to run the indexer is with the full E2E stack using Docker Compose.
+
+### Start the Stack
+
+From the repository root:
+
+```bash
+# Build contracts and start all services
+make e2e-up
+```
+
+This starts:
+- **wasmd**: Local CosmWasm blockchain at `http://localhost:26657`
+- **postgres**: PostgreSQL database at `localhost:5432`
+- **deployer**: Deploys contracts and creates test markets
+- **indexer**: GraphQL API at `http://localhost:4000/graphql`
+
+### Access the Indexer
+
+- **GraphQL Playground**: Open `http://localhost:4000/graphql` in your browser
+- **Health Check**: `curl http://localhost:4000/health`
+
+### View Logs
+
+```bash
+# All services
+make e2e-logs
+
+# Indexer only
+docker logs -f stone-indexer
+```
+
+### Stop the Stack
+
+```bash
+make e2e-down
+```
+
+---
+
+## Manual Setup
 
 ### Prerequisites
 
