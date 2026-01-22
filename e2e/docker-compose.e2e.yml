@@ -13,7 +13,7 @@ services:
       - ./scripts/init-chain.sh:/init-chain.sh:ro
     entrypoint: ["/bin/sh", "/init-chain.sh"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:26657/status"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:26657/status"]
       interval: 5s
       timeout: 10s
       retries: 30
@@ -49,7 +49,6 @@ services:
     volumes:
       - ../artifacts:/artifacts:ro
       - deployment_state:/deployment
-      - .:/app/e2e
     depends_on:
       wasmd:
         condition: service_healthy
