@@ -1,13 +1,13 @@
 import { Decimal } from 'decimal.js';
 import { prisma } from '../db/client';
 import { logger } from '../utils/logger';
+import { queryMarketInfo } from '../utils/blockchain';
 import {
   publishMarketUpdate,
   publishTransaction,
   publishPositionUpdate,
 } from '../api/resolvers/subscriptions';
 import {
-  MarketCreatedEvent,
   SupplyEvent,
   WithdrawEvent,
   SupplyCollateralEvent,
@@ -18,42 +18,47 @@ import {
   AccrueInterestEvent,
   UpdateParamsEvent,
 } from './types';
+import { PartialMarketCreatedEvent } from './parser';
 
 // ============================================================================
 // Factory Event Handlers
 // ============================================================================
 
-export async function handleMarketCreated(event: MarketCreatedEvent): Promise<void> {
+export async function handleMarketCreated(event: PartialMarketCreatedEvent): Promise<void> {
   logger.info('Processing MarketCreated event', {
     marketId: event.marketId,
     marketAddress: event.marketAddress,
   });
 
   try {
+    // Query market contract for config and params
+    const { config, params } = await queryMarketInfo(event.marketAddress);
+    logger.info('Market info fetched', { marketAddress: event.marketAddress });
+
     await prisma.market.create({
       data: {
         id: event.marketId,
         marketAddress: event.marketAddress,
-        curator: event.curator,
-        collateralDenom: event.collateralDenom,
-        debtDenom: event.debtDenom,
-        oracle: event.oracle,
+        curator: config.curator,
+        collateralDenom: config.collateral_denom,
+        debtDenom: config.debt_denom,
+        oracle: config.oracle,
         createdAt: new Date(event.timestamp * 1000),
         createdAtBlock: BigInt(event.blockHeight),
 
-        // Initialize with default params
-        loanToValue: new Decimal(0),
-        liquidationThreshold: new Decimal(0),
-        liquidationBonus: new Decimal(0),
-        liquidationProtocolFee: new Decimal(0),
-        closeFactor: new Decimal(0),
-        interestRateModel: {},
-        protocolFee: new Decimal(0),
-        curatorFee: new Decimal(0),
-        supplyCap: null,
-        borrowCap: null,
-        enabled: true,
-        isMutable: false,
+        // Use params from contract params query
+        loanToValue: new Decimal(params.loan_to_value),
+        liquidationThreshold: new Decimal(params.liquidation_threshold),
+        liquidationBonus: new Decimal(params.liquidation_bonus),
+        liquidationProtocolFee: new Decimal(params.liquidation_protocol_fee),
+        closeFactor: new Decimal(params.close_factor),
+        interestRateModel: params.interest_rate_model as object,
+        protocolFee: new Decimal(params.protocol_fee),
+        curatorFee: new Decimal(params.curator_fee),
+        supplyCap: params.supply_cap ? new Decimal(params.supply_cap) : null,
+        borrowCap: params.borrow_cap ? new Decimal(params.borrow_cap) : null,
+        enabled: params.enabled,
+        isMutable: params.is_mutable,
 
         // Initialize state
         borrowIndex: new Decimal(1),
@@ -69,9 +74,16 @@ export async function handleMarketCreated(event: MarketCreatedEvent): Promise<vo
       },
     });
 
-    logger.info('Market created in database', { marketId: event.marketId });
+    logger.info('Market created in database', {
+      marketId: event.marketId,
+      collateralDenom: config.collateral_denom,
+      debtDenom: config.debt_denom,
+    });
   } catch (error) {
-    logger.error('Failed to handle MarketCreated event', { error, event });
+    logger.error('Failed to handle MarketCreated event', {
+      error: error instanceof Error ? error.message : String(error),
+      event,
+    });
     throw error;
   }
 }

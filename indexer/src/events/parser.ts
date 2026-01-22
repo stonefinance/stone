@@ -27,25 +27,34 @@ export function parseEventAttributesFromStargate(event: StargateEvent): Record<s
   return attributes;
 }
 
+/**
+ * Partial market created event with only the info from the factory reply.
+ * The handler will need to query the market contract for additional details.
+ */
+export interface PartialMarketCreatedEvent {
+  action: 'market_instantiated';
+  marketId: string;
+  marketAddress: string;
+  txHash: string;
+  blockHeight: number;
+  timestamp: number;
+  logIndex: number;
+}
+
 export function parseMarketCreatedEvent(
   attributes: Record<string, string>,
   txHash: string,
   blockHeight: number,
   timestamp: number,
   logIndex: number
-): MarketCreatedEvent | null {
+): PartialMarketCreatedEvent | null {
   if (attributes.action !== 'market_instantiated') {
     return null;
   }
 
-  if (
-    !attributes.market_id ||
-    !attributes.market_address ||
-    !attributes.curator ||
-    !attributes.collateral_denom ||
-    !attributes.debt_denom ||
-    !attributes.oracle
-  ) {
+  // Only require market_id and market_address (emitted by factory reply)
+  // Other fields will be fetched from the market contract
+  if (!attributes.market_id || !attributes.market_address) {
     logger.warn('Incomplete market_instantiated event', { attributes });
     return null;
   }
@@ -54,10 +63,6 @@ export function parseMarketCreatedEvent(
     action: 'market_instantiated',
     marketId: attributes.market_id,
     marketAddress: attributes.market_address,
-    curator: attributes.curator,
-    collateralDenom: attributes.collateral_denom,
-    debtDenom: attributes.debt_denom,
-    oracle: attributes.oracle,
     txHash,
     blockHeight,
     timestamp,

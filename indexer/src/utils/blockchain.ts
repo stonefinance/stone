@@ -60,3 +60,52 @@ export async function disconnectClients(): Promise<void> {
     logger.info('Tendermint client disconnected');
   }
 }
+
+/**
+ * Market config response (from { config: {} } query)
+ */
+export interface MarketConfigResponse {
+  factory: string;
+  curator: string;
+  oracle: string;
+  collateral_denom: string;
+  debt_denom: string;
+  protocol_fee_collector: string;
+}
+
+/**
+ * Market params response (from { params: {} } query)
+ */
+export interface MarketParamsResponse {
+  loan_to_value: string;
+  liquidation_threshold: string;
+  liquidation_bonus: string;
+  liquidation_protocol_fee: string;
+  close_factor: string;
+  interest_rate_model: unknown;
+  protocol_fee: string;
+  curator_fee: string;
+  supply_cap: string | null;
+  borrow_cap: string | null;
+  enabled: boolean;
+  is_mutable: boolean;
+}
+
+/**
+ * Combined market info for indexer
+ */
+export interface MarketInfo {
+  config: MarketConfigResponse;
+  params: MarketParamsResponse;
+}
+
+export async function queryMarketInfo(marketAddress: string): Promise<MarketInfo> {
+  const client = await getCosmWasmClient();
+
+  const [config, params] = await Promise.all([
+    client.queryContractSmart(marketAddress, { config: {} }) as Promise<MarketConfigResponse>,
+    client.queryContractSmart(marketAddress, { params: {} }) as Promise<MarketParamsResponse>,
+  ]);
+
+  return { config, params };
+}

@@ -99,7 +99,11 @@ async function runIndexer(): Promise<void> {
         // Small delay between batches to avoid overwhelming the RPC
         await sleep(100);
       } catch (error) {
-        logger.error('Error in indexer loop', { error, lastProcessed });
+        logger.error('Error in indexer loop', {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          lastProcessed
+        });
 
         // Wait before retrying
         await sleep(5000);

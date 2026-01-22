@@ -109,9 +109,9 @@ async function main() {
       oracleCodeId,
       {
         prices: [
-          { denom: 'uatom', price: '10000000' },  // $10
-          { denom: 'uosmo', price: '1000000' },   // $1
-          { denom: 'ustone', price: '1000000' },  // $1
+          { denom: 'uatom', price: '10' },    // $10
+          { denom: 'uosmo', price: '1' },     // $1
+          { denom: 'ustone', price: '1' },    // $1
         ],
       },
       'Mock Oracle',
@@ -159,10 +159,12 @@ async function main() {
           protocol_fee: '0.1',            // 10%
           curator_fee: '0.05',            // 5%
           interest_rate_model: {
-            base_rate: '0.02',            // 2%
-            slope1: '0.04',               // 4%
-            slope2: '0.75',               // 75%
-            optimal_utilization: '0.80',  // 80%
+            linear: {
+              base_rate: '0.02',            // 2%
+              slope_1: '0.04',              // 4%
+              slope_2: '0.75',              // 75%
+              optimal_utilization: '0.80',  // 80%
+            },
           },
           supply_cap: null,
           borrow_cap: null,
@@ -207,10 +209,12 @@ async function main() {
           protocol_fee: '0.1',            // 10%
           curator_fee: '0.05',            // 5%
           interest_rate_model: {
-            base_rate: '0.03',            // 3%
-            slope1: '0.05',               // 5%
-            slope2: '1.00',               // 100%
-            optimal_utilization: '0.75',  // 75%
+            linear: {
+              base_rate: '0.03',            // 3%
+              slope_1: '0.05',              // 5%
+              slope_2: '1.00',              // 100%
+              optimal_utilization: '0.75',  // 75%
+            },
           },
           supply_cap: null,
           borrow_cap: null,
