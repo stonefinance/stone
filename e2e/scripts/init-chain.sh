@@ -1,51 +1,78 @@
 #!/bin/sh
-set -e
+set -ex
 
 CHAIN_ID="stone-local-1"
 MONIKER="stone-validator"
 KEYRING_BACKEND="test"
+HOME_DIR="/root/.wasmd"
 
-# Genesis accounts (mnemonics stored in test fixtures)
-VALIDATOR_MNEMONIC="satisfy adjust timber high purchase tuition stool faith fine install that you unaware feed domain license impose boss human eager hat rent enjoy dawn"
-TEST_USER_1_MNEMONIC="notice oak worry limit wrap speak medal online prefer cluster roof addict wrist behave treat actual wasp year salad speed social layer crew genius"
-TEST_USER_2_MNEMONIC="quality vacuum hard canal turtle phrase inflict attract muscle sketch jelly eager over ten income page nation favorite captain economy dignity spend nephew exhale"
+# Check if we need to initialize (look for completed marker)
+if [ ! -f "$HOME_DIR/.initialized" ]; then
+    echo "=== Initializing chain ==="
 
-# Initialize chain if not already done
-if [ ! -f /root/.wasmd/config/genesis.json ]; then
-    echo "Initializing chain..."
-    wasmd init $MONIKER --chain-id $CHAIN_ID
+    # Clean any partial state
+    rm -rf "$HOME_DIR/config" "$HOME_DIR/data" "$HOME_DIR/keyring-test"
+
+    # Initialize the chain
+    wasmd init "$MONIKER" --chain-id "$CHAIN_ID" --home "$HOME_DIR"
 
     # Configure for fast blocks
-    sed -i 's/timeout_commit = "5s"/timeout_commit = "1s"/g' /root/.wasmd/config/config.toml
-    sed -i 's/timeout_propose = "3s"/timeout_propose = "1s"/g' /root/.wasmd/config/config.toml
+    sed -i 's/timeout_commit = "5s"/timeout_commit = "1s"/g' "$HOME_DIR/config/config.toml"
+    sed -i 's/timeout_propose = "3s"/timeout_propose = "1s"/g' "$HOME_DIR/config/config.toml"
 
-    # Enable API
-    sed -i 's/enable = false/enable = true/g' /root/.wasmd/config/app.toml
-    sed -i 's/swagger = false/swagger = true/g' /root/.wasmd/config/app.toml
-    sed -i 's/enabled-unsafe-cors = false/enabled-unsafe-cors = true/g' /root/.wasmd/config/app.toml
-    sed -i 's/cors_allowed_origins = \[\]/cors_allowed_origins = ["*"]/g' /root/.wasmd/config/config.toml
+    # Enable API and CORS
+    sed -i 's/enable = false/enable = true/g' "$HOME_DIR/config/app.toml"
+    sed -i 's/swagger = false/swagger = true/g' "$HOME_DIR/config/app.toml"
+    sed -i 's/enabled-unsafe-cors = false/enabled-unsafe-cors = true/g' "$HOME_DIR/config/app.toml"
+    sed -i 's/cors_allowed_origins = \[\]/cors_allowed_origins = ["*"]/g' "$HOME_DIR/config/config.toml"
 
-    # Add validator account
-    echo "$VALIDATOR_MNEMONIC" | wasmd keys add validator --recover --keyring-backend $KEYRING_BACKEND
+    # Bind API to all interfaces
+    sed -i 's/address = "tcp:\/\/localhost:1317"/address = "tcp:\/\/0.0.0.0:1317"/g' "$HOME_DIR/config/app.toml"
 
-    # Add test user accounts
-    echo "$TEST_USER_1_MNEMONIC" | wasmd keys add test_user_1 --recover --keyring-backend $KEYRING_BACKEND
-    echo "$TEST_USER_2_MNEMONIC" | wasmd keys add test_user_2 --recover --keyring-backend $KEYRING_BACKEND
+    # Create mnemonic files (standard BIP39 test mnemonics)
+    printf '%s' "satisfy adjust timber high purchase tuition stool faith fine install that you unaware feed domain license impose boss human eager hat rent enjoy dawn" > /tmp/validator.mnemonic
+    printf '%s' "notice oak worry limit wrap speak medal online prefer cluster roof addict wrist behave treat actual wasp year salad speed social layer crew genius" > /tmp/user1.mnemonic
 
-    # Add genesis accounts with tokens
-    wasmd genesis add-genesis-account validator 1000000000000ustake,1000000000000ustone --keyring-backend $KEYRING_BACKEND
-    wasmd genesis add-genesis-account test_user_1 1000000000000ustake,1000000000000ustone,1000000000000uatom,1000000000000uosmo --keyring-backend $KEYRING_BACKEND
-    wasmd genesis add-genesis-account test_user_2 1000000000000ustake,1000000000000ustone,1000000000000uatom,1000000000000uosmo --keyring-backend $KEYRING_BACKEND
+    echo "=== Adding validator account ==="
+    wasmd keys add validator --recover --keyring-backend "$KEYRING_BACKEND" --home "$HOME_DIR" --source /tmp/validator.mnemonic
 
-    # Create genesis transaction
-    wasmd genesis gentx validator 100000000ustake --chain-id $CHAIN_ID --keyring-backend $KEYRING_BACKEND
+    echo "=== Adding test user 1 ==="
+    wasmd keys add test_user_1 --recover --keyring-backend "$KEYRING_BACKEND" --home "$HOME_DIR" --source /tmp/user1.mnemonic
 
-    # Collect genesis transactions
-    wasmd genesis collect-gentxs
+    # Get addresses
+    VALIDATOR_ADDR=$(wasmd keys show validator -a --keyring-backend "$KEYRING_BACKEND" --home "$HOME_DIR")
+    USER1_ADDR=$(wasmd keys show test_user_1 -a --keyring-backend "$KEYRING_BACKEND" --home "$HOME_DIR")
 
-    echo "Chain initialized successfully!"
+    echo "Validator: $VALIDATOR_ADDR"
+    echo "User 1: $USER1_ADDR"
+
+    # Clean up mnemonic files
+    rm -f /tmp/*.mnemonic
+
+    echo "=== Adding genesis accounts ==="
+    # Note: Default staking denom is 'stake' not 'ustake'
+    wasmd genesis add-genesis-account "$VALIDATOR_ADDR" 1000000000000stake,1000000000000ustone --home "$HOME_DIR"
+    wasmd genesis add-genesis-account "$USER1_ADDR" 1000000000000stake,1000000000000ustone,1000000000000uatom,1000000000000uosmo --home "$HOME_DIR"
+
+    echo "=== Creating genesis transaction ==="
+    wasmd genesis gentx validator 100000000stake --chain-id "$CHAIN_ID" --keyring-backend "$KEYRING_BACKEND" --home "$HOME_DIR"
+
+    echo "=== Collecting genesis transactions ==="
+    wasmd genesis collect-gentxs --home "$HOME_DIR"
+
+    echo "=== Validating genesis ==="
+    wasmd genesis validate-genesis --home "$HOME_DIR"
+
+    # Mark as initialized
+    touch "$HOME_DIR/.initialized"
+
+    echo "=== Chain initialized successfully! ==="
 fi
 
 # Start the chain
-echo "Starting chain..."
-exec wasmd start --rpc.laddr tcp://0.0.0.0:26657 --api.address tcp://0.0.0.0:1317
+echo "=== Starting chain ==="
+exec wasmd start \
+    --home "$HOME_DIR" \
+    --rpc.laddr tcp://0.0.0.0:26657 \
+    --api.address tcp://0.0.0.0:1317 \
+    --grpc.address 0.0.0.0:9090

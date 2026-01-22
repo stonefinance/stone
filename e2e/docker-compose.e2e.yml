@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   # Local CosmWasm blockchain
   wasmd:
-    image: cosmwasm/wasmd:v0.53.0
+    image: cosmwasm/wasmd:v0.54.4
     container_name: stone-wasmd
     ports:
       - "26657:26657"
@@ -51,6 +49,7 @@ services:
     volumes:
       - ../artifacts:/artifacts:ro
       - deployment_state:/deployment
+      - .:/app/e2e
     depends_on:
       wasmd:
         condition: service_healthy
@@ -72,8 +71,6 @@ services:
       API_PORT: 4000
       ENABLE_SUBSCRIPTIONS: "true"
       LOG_LEVEL: info
-    env_file:
-      - .env.deployment
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,8 +96,6 @@ services:
       NEXT_PUBLIC_REST_ENDPOINT: http://localhost:1317
       NEXT_PUBLIC_GRAPHQL_ENDPOINT: http://localhost:4000/graphql
       NEXT_PUBLIC_WS_ENDPOINT: ws://localhost:4000/graphql
-    env_file:
-      - .env.deployment
     depends_on:
       indexer:
         condition: service_healthy

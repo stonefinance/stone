@@ -1,8 +1,8 @@
 .PHONY: build test e2e-build e2e-up e2e-test e2e-down e2e-logs e2e clean
 
-# Contract build targets
+# Contract build targets (only contracts, not testing package which has non-wasm deps)
 build:
-	cargo build --release --target wasm32-unknown-unknown --workspace
+	cargo build --release --target wasm32-unknown-unknown -p stone-factory -p stone-market
 
 test:
 	cargo test --workspace
@@ -10,8 +10,8 @@ test:
 # E2E testing targets
 e2e-build: build
 	mkdir -p artifacts
-	cp target/wasm32-unknown-unknown/release/factory.wasm artifacts/
-	cp target/wasm32-unknown-unknown/release/market.wasm artifacts/
+	cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/factory.wasm
+	cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/market.wasm
 
 e2e-up: e2e-build
 	cd e2e && docker compose -f docker-compose.e2e.yml up -d

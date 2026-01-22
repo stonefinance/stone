@@ -3,13 +3,14 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies for Prisma and native modules
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl curl
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies including ts-node for runtime compilation
+RUN npm install
+RUN npm install -g ts-node typescript
 
 # Copy Prisma schema
 COPY prisma ./prisma/
@@ -20,11 +21,8 @@ RUN npx prisma generate
 # Copy source code
 COPY . .
 
-# Build TypeScript
-RUN npm run build
-
 # Expose port
 EXPOSE 4000
 
-# Run database migrations and start the application
-CMD ["sh", "-c", "npx prisma db push --skip-generate && npm start"]
+# Run database migrations and start the application with ts-node
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npx ts-node --transpile-only src/index.ts"]
