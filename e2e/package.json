@@ -1,0 +1,31 @@
+{
+  "name": "@stone-finance/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:integration": "playwright test --grep @integration",
+    "report": "playwright show-report",
+    "stack:up": "docker compose -f docker-compose.e2e.yml up -d",
+    "stack:down": "docker compose -f docker-compose.e2e.yml down -v",
+    "stack:logs": "docker compose -f docker-compose.e2e.yml logs -f",
+    "deploy": "tsx scripts/deploy-contracts.ts",
+    "setup": "tsx scripts/setup-test-data.ts"
+  },
+  "devDependencies": {
+    "@cosmjs/cosmwasm-stargate": "^0.32.4",
+    "@cosmjs/proto-signing": "^0.32.4",
+    "@cosmjs/stargate": "^0.32.4",
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.10.0",
+    "dotenv": "^16.3.1",
+    "graphql": "^16.8.1",
+    "graphql-request": "^6.1.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
