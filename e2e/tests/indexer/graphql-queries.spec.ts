@@ -15,10 +15,10 @@ test.describe('GraphQL API @integration', () => {
       query {
         markets {
           id
-          address
+          marketAddress
           collateralDenom
           debtDenom
-          ltv
+          loanToValue
           liquidationThreshold
           totalSupply
           totalDebt
@@ -36,10 +36,10 @@ test.describe('GraphQL API @integration', () => {
       query GetMarket($id: ID!) {
         market(id: $id) {
           id
-          address
+          marketAddress
           collateralDenom
           debtDenom
-          ltv
+          loanToValue
           liquidationThreshold
           liquidationBonus
         }
@@ -87,10 +87,12 @@ test.describe('GraphQL API @integration', () => {
       query GetUserPositions($userAddress: String!) {
         userPositions(userAddress: $userAddress) {
           id
-          marketId
-          supplyBalance
-          debtBalance
-          collateralBalance
+          market {
+            id
+          }
+          supplyAmount
+          debtAmount
+          collateral
         }
       }
     `;
@@ -103,7 +105,7 @@ test.describe('GraphQL API @integration', () => {
 
   test('fetches transactions with filters', async () => {
     const query = gql`
-      query GetTransactions($action: String, $limit: Int) {
+      query GetTransactions($action: TransactionAction, $limit: Int) {
         transactions(action: $action, limit: $limit) {
           id
           txHash
@@ -112,7 +114,6 @@ test.describe('GraphQL API @integration', () => {
           action
           userAddress
           amount
-          denom
         }
       }
     `;
@@ -129,7 +130,7 @@ test.describe('GraphQL API @integration', () => {
       query GetMarket($id: ID!) {
         market(id: $id) {
           id
-          address
+          marketAddress
         }
       }
     `;
@@ -143,14 +144,14 @@ test.describe('GraphQL API @integration', () => {
       query {
         markets {
           id
-          address
-          ltv
+          marketAddress
+          loanToValue
           liquidationThreshold
           liquidationBonus
           totalSupply
           totalDebt
-          utilizationRate
-          supplyRate
+          utilization
+          liquidityRate
           borrowRate
         }
       }
@@ -159,14 +160,14 @@ test.describe('GraphQL API @integration', () => {
     const data = await client.request<{
       markets: Array<{
         id: string;
-        address: string;
-        ltv: string;
+        marketAddress: string;
+        loanToValue: string;
         liquidationThreshold: string;
         liquidationBonus: string;
         totalSupply: string;
         totalDebt: string;
-        utilizationRate: string;
-        supplyRate: string;
+        utilization: string;
+        liquidityRate: string;
         borrowRate: string;
       }>;
     }>(query);
@@ -174,7 +175,7 @@ test.describe('GraphQL API @integration', () => {
     const market = data.markets[0];
 
     // Validate address format
-    expect(market.address).toMatch(/^wasm1[a-z0-9]+$/);
+    expect(market.marketAddress).toMatch(/^wasm1[a-z0-9]+$/);
 
     // Validate numeric strings
     expect(() => BigInt(market.totalSupply)).not.toThrow();

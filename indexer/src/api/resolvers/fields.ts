@@ -96,7 +96,7 @@ export const UserPositionResolvers = {
       .toFixed(0);
   },
 
-  async healthFactor(parent: UserPosition, _: unknown, context: GraphQLContext) {
+  async healthFactor(_parent: UserPosition, _args: unknown, _context: GraphQLContext) {
     // Health factor requires oracle prices (Phase 4)
     // For now, return null
     // Formula: (collateralValue * liquidationThreshold) / debtValue

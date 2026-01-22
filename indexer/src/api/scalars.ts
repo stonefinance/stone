@@ -69,6 +69,10 @@ export const DecimalScalar = new GraphQLScalarType({
     if (value instanceof Decimal) {
       return value.toString();
     }
+    // Handle Prisma Decimal (different class than decimal.js Decimal)
+    if (value !== null && typeof value === 'object' && 'toFixed' in value && typeof (value as { toFixed: unknown }).toFixed === 'function') {
+      return String(value);
+    }
     if (typeof value === 'string' || typeof value === 'number') {
       return new Decimal(value).toString();
     }

@@ -1,6 +1,6 @@
-import { IndexedTx } from '@cosmjs/stargate';
-import { Event } from '@cosmjs/tendermint-rpc';
-import { getCosmWasmClient, getTendermintClient, getBlockTimestamp } from '../utils/blockchain';
+import { createHash } from 'crypto';
+import { Event as TendermintEvent } from '@cosmjs/tendermint-rpc';
+import { getTendermintClient } from '../utils/blockchain';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 import { prisma } from '../db/client';
@@ -17,7 +17,6 @@ import {
   handleAccrueInterest,
   handleUpdateParams,
 } from '../events/handlers';
-import { MarketEvent } from '../events/types';
 
 // Track market addresses to filter events
 const marketAddresses = new Set<string>();
@@ -72,72 +71,79 @@ export async function processBlock(blockHeight: number): Promise<void> {
   logger.debug('Processing block', { blockHeight });
 
   try {
-    const client = await getCosmWasmClient();
     const tmClient = await getTendermintClient();
 
     // Get block and block results
     const block = await tmClient.block(blockHeight);
     const blockResults = await tmClient.blockResults(blockHeight);
     const blockHash = Buffer.from(block.blockId.hash).toString('hex');
-    const timestamp = Math.floor(new Date(block.block.header.time).getTime() / 1000);
+    // Convert ReadonlyDateWithNanoseconds to timestamp
+    const blockTime = block.block.header.time;
+    const timestamp = Math.floor(blockTime.getTime() / 1000);
 
-    // Process each transaction in the block
-    const txs = block.block.txs;
+    // Process each transaction result
+    const txResults = blockResults.results;
 
-    if (txs.length === 0) {
+    if (txResults.length === 0) {
       // No transactions in block, just update checkpoint
       await updateLastProcessedBlock(blockHeight, blockHash);
       return;
     }
 
-    for (let txIndex = 0; txIndex < txs.length; txIndex++) {
-      const txHash = Buffer.from(block.block.txs[txIndex]).toString('hex');
+    for (let txIndex = 0; txIndex < txResults.length; txIndex++) {
+      const txResult = txResults[txIndex];
 
-      // Get transaction details
-      const tx = await client.getTx(txHash);
-      if (!tx) {
-        logger.warn('Transaction not found', { txHash, blockHeight });
+      // Compute tx hash (SHA256 of raw tx bytes, uppercase hex)
+      const txBytes = block.block.txs[txIndex];
+      const txHash = createHash('sha256').update(txBytes).digest('hex').toUpperCase();
+
+      // Skip failed transactions
+      if (txResult.code !== 0) {
+        logger.debug('Skipping failed transaction', { txHash, code: txResult.code });
         continue;
       }
 
-      await processTx(tx, timestamp);
+      // Process events from the transaction result
+      await processTxEvents(txResult.events, txHash, blockHeight, timestamp);
     }
 
     // Update checkpoint after processing all transactions
     await updateLastProcessedBlock(blockHeight, blockHash);
 
-    logger.debug('Block processed successfully', { blockHeight, txCount: txs.length });
+    logger.debug('Block processed successfully', { blockHeight, txCount: txResults.length });
   } catch (error) {
-    logger.error('Error processing block', { blockHeight, error });
+    logger.error('Error processing block', {
+      blockHeight,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
     throw error;
   }
 }
 
 /**
- * Process a single transaction and extract events
+ * Process events from a transaction result (from blockResults)
  */
-async function processTx(tx: IndexedTx, blockTimestamp: number): Promise<void> {
-  if (tx.code !== 0) {
-    // Transaction failed, skip
-    logger.debug('Skipping failed transaction', { txHash: tx.hash, code: tx.code });
-    return;
-  }
+async function processTxEvents(
+  events: readonly TendermintEvent[],
+  txHash: string,
+  blockHeight: number,
+  blockTimestamp: number
+): Promise<void> {
+  // Events are in the events array from blockResults
+  // Each event has a 'type' and 'attributes' array (Uint8Array)
+  for (let logIndex = 0; logIndex < events.length; logIndex++) {
+    const event = events[logIndex];
 
-  // Events are in tx.events array
-  // Each event has a 'type' and 'attributes' array
-  for (let logIndex = 0; logIndex < tx.events.length; logIndex++) {
-    const event = tx.events[logIndex];
-
-    // Parse event attributes
+    // Parse event attributes (tendermint events have Uint8Array attributes)
     const attributes = parseEventAttributes(event);
 
     // Check if this is a wasm event (CosmWasm contract events)
     if (event.type === 'wasm') {
       await processWasmEvent(
-        event,
         attributes,
-        tx.hash,
-        tx.height,
+        txHash,
+        blockHeight,
         blockTimestamp,
         logIndex
       );
@@ -149,7 +155,6 @@ async function processTx(tx: IndexedTx, blockTimestamp: number): Promise<void> {
  * Process a wasm event (contract event)
  */
 async function processWasmEvent(
-  event: Event,
   attributes: Record<string, string>,
   txHash: string,
   blockHeight: number,

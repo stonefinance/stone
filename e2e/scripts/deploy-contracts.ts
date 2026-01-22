@@ -64,11 +64,11 @@ async function main() {
   const client = await SigningCosmWasmClient.connectWithSigner(
     RPC_ENDPOINT,
     wallet,
-    { gasPrice: GasPrice.fromString('0.025ustake') }
+    { gasPrice: GasPrice.fromString('0.025stake') }
   );
 
   // Check balance
-  const balance = await client.getBalance(account.address, 'ustake');
+  const balance = await client.getBalance(account.address, 'stake');
   console.log(`Deployer balance: ${balance.amount} ${balance.denom}`);
 
   // Read WASM files
@@ -109,9 +109,9 @@ async function main() {
       oracleCodeId,
       {
         prices: [
-          { denom: 'uatom', price: '10000000' },  // $10
-          { denom: 'uosmo', price: '1000000' },   // $1
-          { denom: 'ustone', price: '1000000' },  // $1
+          { denom: 'uatom', price: '10' },    // $10
+          { denom: 'uosmo', price: '1' },     // $1
+          { denom: 'ustone', price: '1' },    // $1
         ],
       },
       'Mock Oracle',
@@ -127,9 +127,10 @@ async function main() {
     account.address,
     factoryUpload.codeId,
     {
+      owner: account.address,
+      protocol_fee_collector: account.address,
       market_code_id: marketUpload.codeId,
-      market_creation_fee: { denom: 'ustake', amount: '1000000' },
-      fee_collector: account.address,
+      market_creation_fee: { denom: 'stake', amount: '1000000' },
     },
     'Stone Factory',
     'auto'
@@ -149,20 +150,31 @@ async function main() {
         collateral_denom: 'uatom',
         debt_denom: 'ustone',
         oracle: oracleAddress || account.address, // Use deployer address as fallback
-        ltv: '750000',           // 75%
-        liquidation_threshold: '800000',  // 80%
-        liquidation_bonus: '50000',       // 5%
-        interest_rate_model: {
-          base_rate: '20000',    // 2%
-          slope1: '40000',       // 4%
-          slope2: '750000',      // 75%
-          optimal_utilization: '800000',  // 80%
+        params: {
+          loan_to_value: '0.75',          // 75%
+          liquidation_threshold: '0.80',  // 80%
+          liquidation_bonus: '0.05',      // 5%
+          liquidation_protocol_fee: '0.1', // 10%
+          close_factor: '0.5',            // 50%
+          protocol_fee: '0.1',            // 10%
+          curator_fee: '0.05',            // 5%
+          interest_rate_model: {
+            linear: {
+              base_rate: '0.02',            // 2%
+              slope_1: '0.04',              // 4%
+              slope_2: '0.75',              // 75%
+              optimal_utilization: '0.80',  // 80%
+            },
+          },
+          supply_cap: null,
+          borrow_cap: null,
+          is_mutable: true,
         },
       },
     },
     'auto',
     '',
-    [{ denom: 'ustake', amount: '1000000' }]
+    [{ denom: 'stake', amount: '1000000' }]
   );
 
   // Parse market address from events
@@ -188,20 +200,31 @@ async function main() {
         collateral_denom: 'uosmo',
         debt_denom: 'ustone',
         oracle: oracleAddress || account.address,
-        ltv: '650000',           // 65%
-        liquidation_threshold: '750000',  // 75%
-        liquidation_bonus: '80000',       // 8%
-        interest_rate_model: {
-          base_rate: '30000',    // 3%
-          slope1: '50000',       // 5%
-          slope2: '1000000',     // 100%
-          optimal_utilization: '750000',  // 75%
+        params: {
+          loan_to_value: '0.65',          // 65%
+          liquidation_threshold: '0.75',  // 75%
+          liquidation_bonus: '0.08',      // 8%
+          liquidation_protocol_fee: '0.1', // 10%
+          close_factor: '0.5',            // 50%
+          protocol_fee: '0.1',            // 10%
+          curator_fee: '0.05',            // 5%
+          interest_rate_model: {
+            linear: {
+              base_rate: '0.03',            // 3%
+              slope_1: '0.05',              // 5%
+              slope_2: '1.00',              // 100%
+              optimal_utilization: '0.75',  // 75%
+            },
+          },
+          supply_cap: null,
+          borrow_cap: null,
+          is_mutable: true,
         },
       },
     },
     'auto',
     '',
-    [{ denom: 'ustake', amount: '1000000' }]
+    [{ denom: 'stake', amount: '1000000' }]
   );
 
   const market2Address = market2Result.logs[0]?.events
