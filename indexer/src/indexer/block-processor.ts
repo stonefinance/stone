@@ -1,10 +1,9 @@
-import { IndexedTx } from '@cosmjs/stargate';
-import { Event } from '@cosmjs/tendermint-rpc';
-import { getCosmWasmClient, getTendermintClient, getBlockTimestamp } from '../utils/blockchain';
+import { IndexedTx, Event } from '@cosmjs/stargate';
+import { getCosmWasmClient, getTendermintClient } from '../utils/blockchain';
 import { logger } from '../utils/logger';
 import { config } from '../config';
 import { prisma } from '../db/client';
-import { parseEventAttributes, parseMarketCreatedEvent, parseMarketEvent } from '../events/parser';
+import { parseEventAttributesFromStargate, parseMarketCreatedEvent, parseMarketEvent } from '../events/parser';
 import {
   handleMarketCreated,
   handleSupply,
@@ -17,7 +16,6 @@ import {
   handleAccrueInterest,
   handleUpdateParams,
 } from '../events/handlers';
-import { MarketEvent } from '../events/types';
 
 // Track market addresses to filter events
 const marketAddresses = new Set<string>();
@@ -77,9 +75,10 @@ export async function processBlock(blockHeight: number): Promise<void> {
 
     // Get block and block results
     const block = await tmClient.block(blockHeight);
-    const blockResults = await tmClient.blockResults(blockHeight);
     const blockHash = Buffer.from(block.blockId.hash).toString('hex');
-    const timestamp = Math.floor(new Date(block.block.header.time).getTime() / 1000);
+    // Convert ReadonlyDateWithNanoseconds to timestamp
+    const blockTime = block.block.header.time;
+    const timestamp = Math.floor(blockTime.getTime() / 1000);
 
     // Process each transaction in the block
     const txs = block.block.txs;
@@ -128,8 +127,8 @@ async function processTx(tx: IndexedTx, blockTimestamp: number): Promise<void> {
   for (let logIndex = 0; logIndex < tx.events.length; logIndex++) {
     const event = tx.events[logIndex];
 
-    // Parse event attributes
-    const attributes = parseEventAttributes(event);
+    // Parse event attributes (stargate events have string attributes)
+    const attributes = parseEventAttributesFromStargate(event);
 
     // Check if this is a wasm event (CosmWasm contract events)
     if (event.type === 'wasm') {
@@ -149,7 +148,7 @@ async function processTx(tx: IndexedTx, blockTimestamp: number): Promise<void> {
  * Process a wasm event (contract event)
  */
 async function processWasmEvent(
-  event: Event,
+  _event: Event,
   attributes: Record<string, string>,
   txHash: string,
   blockHeight: number,

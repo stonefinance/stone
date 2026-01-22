@@ -44,7 +44,8 @@ export async function getCurrentBlockHeight(): Promise<number> {
 export async function getBlockTimestamp(height: number): Promise<number> {
   const tmClient = await getTendermintClient();
   const block = await tmClient.block(height);
-  return Math.floor(new Date(block.block.header.time).getTime() / 1000);
+  // ReadonlyDateWithNanoseconds has getTime() method
+  return Math.floor(block.block.header.time.getTime() / 1000);
 }
 
 export async function disconnectClients(): Promise<void> {

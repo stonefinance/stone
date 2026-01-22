@@ -11,7 +11,6 @@ import {
 } from './indexer/block-processor';
 import { startGraphQLServer } from './api/server';
 
-let isRunning = false;
 let shouldStop = false;
 let graphQLShutdown: (() => Promise<void>) | null = null;
 
@@ -39,8 +38,6 @@ async function runIndexer(): Promise<void> {
     // Get starting point
     let lastProcessed = await getLastProcessedBlock();
     logger.info('Indexer checkpoint', { lastProcessedBlock: lastProcessed });
-
-    isRunning = true;
 
     // Main processing loop
     while (!shouldStop) {
@@ -112,7 +109,6 @@ async function runIndexer(): Promise<void> {
     logger.error('Fatal error in indexer', { error });
     throw error;
   } finally {
-    isRunning = false;
     await shutdown();
   }
 }

@@ -1,5 +1,4 @@
 import { PubSub } from 'graphql-subscriptions';
-import { GraphQLContext } from '../context';
 
 export const pubsub = new PubSub();
 

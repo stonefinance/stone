@@ -466,9 +466,9 @@ export async function handleRepay(event: RepayEvent, marketId: string): Promise<
       });
 
       if (existingPosition) {
-        const newDebtScaled = new Decimal(existingPosition.debtScaled.toString())
-          .sub(event.scaledDecrease)
-          .max(0);
+        const calculated = new Decimal(existingPosition.debtScaled.toString())
+          .sub(event.scaledDecrease);
+        const newDebtScaled = Decimal.max(calculated, 0);
 
         await tx.userPosition.update({
           where: { id: positionId },
