@@ -71,6 +71,8 @@ services:
       API_PORT: 4000
       ENABLE_SUBSCRIPTIONS: "true"
       LOG_LEVEL: info
+    volumes:
+      - deployment_state:/deployment:ro
     depends_on:
       postgres:
         condition: service_healthy
