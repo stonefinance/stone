@@ -1,0 +1,23 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install dependencies for CosmJS
+RUN apk add --no-cache python3 make g++
+
+# Copy package files
+COPY e2e/package*.json ./e2e/
+COPY e2e/tsconfig.json ./e2e/
+
+# Install dependencies
+WORKDIR /app/e2e
+RUN npm ci
+
+# Copy deployment script
+COPY e2e/scripts/deploy-contracts.ts ./scripts/
+
+# Create deployment output directory
+RUN mkdir -p /deployment
+
+# Run deployment
+CMD ["npx", "tsx", "scripts/deploy-contracts.ts"]

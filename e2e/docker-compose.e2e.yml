@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Local CosmWasm blockchain
+  wasmd:
+    image: cosmwasm/wasmd:v0.53.0
+    container_name: stone-wasmd
+    ports:
+      - "26657:26657"
+      - "26656:26656"
+      - "1317:1317"
+      - "9090:9090"
+    volumes:
+      - ./chain:/root/.wasmd
+      - ./scripts/init-chain.sh:/init-chain.sh:ro
+    entrypoint: ["/bin/sh", "/init-chain.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:26657/status"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: stone-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: stone
+      POSTGRES_PASSWORD: stone_test
+      POSTGRES_DB: stone_e2e
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stone -d stone_e2e"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Contract deployer (one-shot)
+  deployer:
+    build:
+      context: ..
+      dockerfile: e2e/Dockerfile.deployer
+    container_name: stone-deployer
+    environment:
+      RPC_ENDPOINT: http://wasmd:26657
+      CHAIN_ID: stone-local-1
+    volumes:
+      - ../artifacts:/artifacts:ro
+      - deployment_state:/deployment
+    depends_on:
+      wasmd:
+        condition: service_healthy
+
+  # Blockchain indexer
+  indexer:
+    build:
+      context: ../indexer
+      dockerfile: Dockerfile
+    container_name: stone-indexer
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://stone:stone_test@postgres:5432/stone_e2e
+      RPC_ENDPOINT: http://wasmd:26657
+      CHAIN_ID: stone-local-1
+      START_BLOCK_HEIGHT: 1
+      POLL_INTERVAL_MS: 500
+      API_PORT: 4000
+      ENABLE_SUBSCRIPTIONS: "true"
+      LOG_LEVEL: info
+    env_file:
+      - .env.deployment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      deployer:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Frontend application
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.e2e
+    container_name: stone-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_CHAIN_ID: stone-local-1
+      NEXT_PUBLIC_RPC_ENDPOINT: http://localhost:26657
+      NEXT_PUBLIC_REST_ENDPOINT: http://localhost:1317
+      NEXT_PUBLIC_GRAPHQL_ENDPOINT: http://localhost:4000/graphql
+      NEXT_PUBLIC_WS_ENDPOINT: ws://localhost:4000/graphql
+    env_file:
+      - .env.deployment
+    depends_on:
+      indexer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+volumes:
+  postgres_data:
+  deployment_state:
