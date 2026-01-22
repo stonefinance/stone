@@ -47,8 +47,8 @@ export function useUserPositions(marketAddresses: string[]) {
     queryFn: async (): Promise<UserPosition[]> => {
       if (!address || marketAddresses.length === 0) return [];
 
-      const positions = await Promise.all(
-        marketAddresses.map(async (marketAddress) => {
+      const positions: (UserPosition | null)[] = await Promise.all(
+        marketAddresses.map(async (marketAddress): Promise<UserPosition | null> => {
           try {
             const position = await queryClient.getUserPosition(marketAddress, address);
 
