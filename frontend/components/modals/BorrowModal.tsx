@@ -18,7 +18,8 @@ interface BorrowModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   marketAddress: string;
-  denom: string;
+  denom: string; // Minimal denom for transactions (e.g., "ustone")
+  displayDenom?: string; // Display denom for UI (e.g., "STONE")
   maxBorrowValue?: number;
 }
 
@@ -27,6 +28,7 @@ export function BorrowModal({
   onOpenChange,
   marketAddress,
   denom,
+  displayDenom,
   maxBorrowValue,
 }: BorrowModalProps) {
   const { signingClient, isConnected } = useWallet();
@@ -80,7 +82,7 @@ export function BorrowModal({
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="borrow-amount">Amount ({denom})</Label>
+            <Label htmlFor="borrow-amount">Amount ({displayDenom || denom})</Label>
             <Input
               id="borrow-amount"
               type="number"

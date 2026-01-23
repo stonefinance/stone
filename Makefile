@@ -1,4 +1,4 @@
-.PHONY: build test e2e-build e2e-up e2e-test e2e-down e2e-logs e2e clean
+.PHONY: build test e2e-build e2e-up e2e-test e2e-down e2e-logs e2e clean e2e-sync-env
 
 # Contract build targets (only contracts, not testing package which has non-wasm deps)
 build:
@@ -43,6 +43,15 @@ e2e-clean: e2e-down
 	rm -rf e2e/test-results
 	rm -rf e2e/playwright-report
 	rm -rf artifacts
+	rm -rf deployment
+
+# Copy deployment results to frontend .env.local
+e2e-sync-env:
+	@if [ -f deployment/result.json ]; then \
+		cd e2e && npx tsx scripts/copy-deployment-env.ts; \
+	else \
+		echo "No deployment found. Run 'make e2e-up' first."; \
+	fi
 
 # Full E2E run
 e2e: e2e-up e2e-test
@@ -71,6 +80,7 @@ help:
 	@echo "  e2e-down           - Stop E2E test stack"
 	@echo "  e2e-logs           - Follow E2E stack logs"
 	@echo "  e2e-clean          - Clean E2E artifacts"
+	@echo "  e2e-sync-env       - Copy deployment addresses to frontend/.env.local"
 	@echo "  e2e                - Full E2E run (build, up, test)"
 	@echo "  e2e-install        - Install E2E dependencies"
 	@echo "  clean              - Clean all build artifacts"

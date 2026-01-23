@@ -16,7 +16,7 @@ import {
   MarketCountResponse,
   Coin,
 } from '@/types';
-import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_LIMITS } from '@/lib/constants';
+import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_LIMITS, GAS_PRICE } from '@/lib/constants';
 
 // Query-only client (no wallet required)
 export class QueryClient {
@@ -121,7 +121,7 @@ export class SigningClient {
         RPC_ENDPOINT,
         this.signer,
         {
-          gasPrice: GasPrice.fromString('0.025uosmo'),
+          gasPrice: GasPrice.fromString(GAS_PRICE),
         }
       );
     }

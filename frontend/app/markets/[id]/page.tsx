@@ -259,7 +259,8 @@ export default function MarketDetailPage() {
         open={depositModalOpen}
         onOpenChange={setDepositModalOpen}
         marketAddress={market.address}
-        denom={depositType === 'supply' ? market.debtDenom : market.collateralDenom}
+        denom={depositType === 'supply' ? market.config.debt_denom : market.config.collateral_denom}
+        displayDenom={depositType === 'supply' ? market.debtDenom : market.collateralDenom}
         type={depositType}
       />
 
@@ -267,7 +268,8 @@ export default function MarketDetailPage() {
         open={borrowModalOpen}
         onOpenChange={setBorrowModalOpen}
         marketAddress={market.address}
-        denom={market.debtDenom}
+        denom={market.config.debt_denom}
+        displayDenom={market.debtDenom}
         maxBorrowValue={position?.maxBorrowValue}
       />
 
@@ -275,7 +277,8 @@ export default function MarketDetailPage() {
         open={repayModalOpen}
         onOpenChange={setRepayModalOpen}
         marketAddress={market.address}
-        denom={market.debtDenom}
+        denom={market.config.debt_denom}
+        displayDenom={market.debtDenom}
         currentDebt={position?.debtAmount}
       />
     </div>

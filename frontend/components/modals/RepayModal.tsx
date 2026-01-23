@@ -18,7 +18,8 @@ interface RepayModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   marketAddress: string;
-  denom: string;
+  denom: string; // Minimal denom for transactions (e.g., "ustone")
+  displayDenom?: string; // Display denom for UI (e.g., "STONE")
   currentDebt?: string;
 }
 
@@ -27,6 +28,7 @@ export function RepayModal({
   onOpenChange,
   marketAddress,
   denom,
+  displayDenom,
   currentDebt,
 }: RepayModalProps) {
   const { signingClient, isConnected } = useWallet();
@@ -50,7 +52,7 @@ export function RepayModal({
 
     try {
       const microAmount = baseToMicro(amount);
-      const coin = { denom: denom.toLowerCase(), amount: microAmount };
+      const coin = { denom, amount: microAmount };
 
       await signingClient.repay(marketAddress, coin);
 
@@ -85,14 +87,14 @@ export function RepayModal({
             <div className="p-3 bg-muted rounded-lg">
               <p className="text-sm text-muted-foreground">Current debt</p>
               <p className="text-lg font-semibold">
-                {formatDisplayAmount(microToBase(currentDebt))} {denom}
+                {formatDisplayAmount(microToBase(currentDebt))} {displayDenom || denom}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="repay-amount">Amount ({denom})</Label>
+              <Label htmlFor="repay-amount">Amount ({displayDenom || denom})</Label>
               {currentDebt && (
                 <Button
                   variant="link"
