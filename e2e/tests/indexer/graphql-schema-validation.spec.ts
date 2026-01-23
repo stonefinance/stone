@@ -148,7 +148,7 @@ test.describe('GraphQL Schema Validation @integration', () => {
         debtDenom: string;
         oracle: string;
         createdAt: string;
-        createdAtBlock: number;
+        createdAtBlock: string;
         loanToValue: string;
         liquidationThreshold: string;
         liquidationBonus: string;
@@ -170,7 +170,7 @@ test.describe('GraphQL Schema Validation @integration', () => {
         totalCollateral: string;
         utilization: string;
         availableLiquidity: string;
-        lastUpdate: number;
+        lastUpdate: string;
       }>;
     }>(query);
 
@@ -188,11 +188,11 @@ test.describe('GraphQL Schema Validation @integration', () => {
     // Validate DateTime scalar (ISO 8601 format)
     expect(new Date(market.createdAt).toISOString()).toBe(market.createdAt);
 
-    // Validate Int fields
-    expect(typeof market.createdAtBlock).toBe('number');
-    expect(Number.isInteger(market.createdAtBlock)).toBe(true);
-    expect(typeof market.lastUpdate).toBe('number');
-    expect(Number.isInteger(market.lastUpdate)).toBe(true);
+    // Validate BigInt fields for block/timestamp data
+    expect(typeof market.createdAtBlock).toBe('string');
+    expect(() => BigInt(market.createdAtBlock)).not.toThrow();
+    expect(typeof market.lastUpdate).toBe('string');
+    expect(() => BigInt(market.lastUpdate)).not.toThrow();
 
     // Validate Decimal fields (returned as strings)
     const decimalFields = [
@@ -360,7 +360,7 @@ test.describe('GraphQL Schema Validation @integration', () => {
       transactions: Array<{
         id: string;
         txHash: string;
-        blockHeight: number;
+        blockHeight: string;
         timestamp: string;
         userAddress: string;
         action: string;
@@ -392,8 +392,8 @@ test.describe('GraphQL Schema Validation @integration', () => {
     expect(typeof txn.id).toBe('string');
     expect(typeof txn.txHash).toBe('string');
     expect(txn.txHash.length).toBeGreaterThan(0);
-    expect(typeof txn.blockHeight).toBe('number');
-    expect(Number.isInteger(txn.blockHeight)).toBe(true);
+    expect(typeof txn.blockHeight).toBe('string');
+    expect(() => BigInt(txn.blockHeight)).not.toThrow();
     expect(new Date(txn.timestamp).toISOString()).toBe(txn.timestamp);
     expect(txn.userAddress).toMatch(/^wasm1[a-z0-9]+$/);
 
@@ -489,7 +489,7 @@ test.describe('GraphQL Schema Validation @integration', () => {
       marketSnapshots: Array<{
         id: string;
         timestamp: string;
-        blockHeight: number;
+        blockHeight: string;
         borrowIndex: string;
         liquidityIndex: string;
         borrowRate: string;
@@ -516,8 +516,8 @@ test.describe('GraphQL Schema Validation @integration', () => {
     // Validate required fields
     expect(typeof snapshot.id).toBe('string');
     expect(new Date(snapshot.timestamp).toISOString()).toBe(snapshot.timestamp);
-    expect(typeof snapshot.blockHeight).toBe('number');
-    expect(Number.isInteger(snapshot.blockHeight)).toBe(true);
+    expect(typeof snapshot.blockHeight).toBe('string');
+    expect(() => BigInt(snapshot.blockHeight)).not.toThrow();
 
     // Validate Decimal fields
     const decimalFields = [
@@ -596,7 +596,7 @@ test.describe('GraphQL Schema Validation @integration', () => {
         id: string;
         txHash: string;
         timestamp: string;
-        blockHeight: number;
+        blockHeight: string;
         borrowIndex: string;
         liquidityIndex: string;
         borrowRate: string;
@@ -618,8 +618,8 @@ test.describe('GraphQL Schema Validation @integration', () => {
     expect(typeof event.txHash).toBe('string');
     expect(event.txHash.length).toBeGreaterThan(0);
     expect(new Date(event.timestamp).toISOString()).toBe(event.timestamp);
-    expect(typeof event.blockHeight).toBe('number');
-    expect(Number.isInteger(event.blockHeight)).toBe(true);
+    expect(typeof event.blockHeight).toBe('string');
+    expect(() => BigInt(event.blockHeight)).not.toThrow();
 
     // Validate Decimal fields
     const decimalFields = ['borrowIndex', 'liquidityIndex', 'borrowRate', 'liquidityRate'];
