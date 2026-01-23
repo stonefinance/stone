@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HETZNER_LOCATION: nbg1
+  HETZNER_LOCATION: fsn1
   HETZNER_SERVER_TYPE: cpx31
   HETZNER_IMAGE: ubuntu-22.04
 
