@@ -16,6 +16,7 @@ export interface Market {
   totalBorrowed: string;
   utilization: number;
   availableLiquidity: string;
+  loanToValue: number;
 }
 
 export interface MarketDetail extends Market {
@@ -65,3 +66,14 @@ export interface UserPosition {
   maxBorrowValue: number;
   liquidationPrice?: number;
 }
+
+// Sorting types for tables
+export type SortDirection = 'asc' | 'desc';
+
+export interface SortConfig {
+  column: string;
+  direction: SortDirection;
+}
+
+// Market filtering
+export type MarketFilter = 'all' | 'supplied' | 'borrowed' | 'collateral';

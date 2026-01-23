@@ -27,6 +27,7 @@ function transformMarketSummary(market: MarketSummaryFieldsFragment): Market {
     totalBorrowed: market.totalDebt,
     utilization: parseFloat(market.utilization) * 100,
     availableLiquidity: market.availableLiquidity,
+    loanToValue: parseFloat(market.loanToValue) * 100,
   };
 }
 
@@ -43,6 +44,7 @@ function transformMarketDetail(market: MarketFieldsFragment): MarketDetail {
     totalBorrowed: market.totalDebt,
     utilization: parseFloat(market.utilization) * 100,
     availableLiquidity: market.availableLiquidity,
+    loanToValue: parseFloat(market.loanToValue) * 100,
     info: {
       market_id: market.id,
       address: market.marketAddress,

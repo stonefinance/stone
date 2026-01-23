@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
 import { useWallet } from '@/lib/cosmjs/wallet';
-import { baseToMicro } from '@/lib/utils/format';
+import { useBalance } from '@/hooks/useBalance';
+import { baseToMicro, microToBase, formatDisplayAmount } from '@/lib/utils/format';
 
 interface DepositModalProps {
   open: boolean;
@@ -32,9 +34,34 @@ export function DepositModal({
   type,
 }: DepositModalProps) {
   const { signingClient, isConnected } = useWallet();
+  const { balance, isLoading: balanceLoading } = useBalance(open ? denom : undefined);
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const balanceBase = useMemo(() => {
+    if (!balance) return '0';
+    return microToBase(balance);
+  }, [balance]);
+
+  const balanceNumber = parseFloat(balanceBase);
+
+  const sliderValue = useMemo(() => {
+    if (!amount || balanceNumber === 0) return 0;
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum)) return 0;
+    return Math.min((amountNum / balanceNumber) * 100, 100);
+  }, [amount, balanceNumber]);
+
+  const handleSliderChange = (percentage: number) => {
+    if (balanceNumber === 0) return;
+    const newAmount = (percentage / 100) * balanceNumber;
+    setAmount(percentage === 100 ? balanceBase : newAmount.toFixed(6));
+  };
+
+  const handleMaxClick = () => {
+    setAmount(balanceBase);
+  };
 
   const handleDeposit = async () => {
     if (!signingClient || !isConnected) {
@@ -85,7 +112,23 @@ export function DepositModal({
 
         <div className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount ({displayDenom || denom})</Label>
+            <div className="flex justify-between items-center">
+              <Label htmlFor="amount">Amount ({displayDenom || denom})</Label>
+              <div className="text-sm text-muted-foreground">
+                Balance:{' '}
+                {balanceLoading ? (
+                  <span className="animate-pulse">...</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleMaxClick}
+                    className="font-medium text-primary hover:underline"
+                  >
+                    {formatDisplayAmount(balanceBase, 6)} {displayDenom || denom}
+                  </button>
+                )}
+              </div>
+            </div>
             <Input
               id="amount"
               type="number"
@@ -95,6 +138,12 @@ export function DepositModal({
               disabled={isLoading}
             />
           </div>
+
+          <Slider
+            value={sliderValue}
+            onChange={handleSliderChange}
+            disabled={isLoading || balanceNumber === 0}
+          />
 
           {error && (
             <p className="text-sm text-destructive">{error}</p>
