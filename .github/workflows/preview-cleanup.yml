@@ -1,0 +1,195 @@
+name: Cleanup PR Preview
+
+on:
+  pull_request:
+    types: [closed]
+  issue_comment:
+    types: [created]
+  schedule:
+    # Run every 6 hours to clean up stale environments
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to cleanup (leave empty for stale cleanup)'
+        required: false
+        type: string
+
+jobs:
+  # Handle /destroy command
+  destroy-on-command:
+    if: |
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/destroy')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy preview environment
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.issue.number }}"
+          echo "Destroying preview for PR $PR_NUM..."
+
+          # Find server by PR label
+          SERVER_ID=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=purpose=pr-preview,pr=$PR_NUM" \
+            | jq -r '.servers[0].id')
+
+          if [[ "$SERVER_ID" != "null" && -n "$SERVER_ID" ]]; then
+            echo "Deleting server $SERVER_ID..."
+            curl -s -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              "https://api.hetzner.cloud/v1/servers/$SERVER_ID"
+            echo "Server deleted successfully"
+          else
+            echo "No server found for PR $PR_NUM"
+          fi
+
+      - name: Update PR comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- preview-environment -->'
+
+      - name: Update comment
+        if: steps.find-comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body: |
+            <!-- preview-environment -->
+            ## 🗑️ Preview Environment Destroyed
+
+            The preview environment for this PR has been destroyed.
+
+            Comment `/deploy` to create a new one.
+
+  # Cleanup on PR close
+  cleanup-on-close:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy preview environment
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.pull_request.number }}"
+          echo "PR $PR_NUM closed, cleaning up preview environment..."
+
+          # Find server by PR label
+          SERVER_ID=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=purpose=pr-preview,pr=$PR_NUM" \
+            | jq -r '.servers[0].id')
+
+          if [[ "$SERVER_ID" != "null" && -n "$SERVER_ID" ]]; then
+            echo "Deleting server $SERVER_ID..."
+            curl -s -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              "https://api.hetzner.cloud/v1/servers/$SERVER_ID"
+            echo "Server deleted successfully"
+          else
+            echo "No server found for PR $PR_NUM (may have already been cleaned up)"
+          fi
+
+      - name: Update PR comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- preview-environment -->'
+
+      - name: Update comment
+        if: steps.find-comment.outputs.comment-id != ''
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          edit-mode: replace
+          body: |
+            <!-- preview-environment -->
+            ## 🗑️ Preview Environment Cleaned Up
+
+            This PR has been closed and the preview environment has been destroyed.
+
+  # Scheduled cleanup of stale environments
+  cleanup-stale:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup stale preview environments
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAX_AGE_HOURS: 48
+        run: |
+          echo "Checking for stale preview environments..."
+
+          # Get all preview servers
+          SERVERS=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=purpose=pr-preview")
+
+          echo "$SERVERS" | jq -r '.servers[] | "\(.id) \(.name) \(.labels.pr) \(.created)"' | while read -r ID NAME PR CREATED; do
+            echo "Checking server: $NAME (ID: $ID, PR: $PR, Created: $CREATED)"
+
+            # Check if PR is still open
+            PR_STATE=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls/$PR" \
+              | jq -r '.state')
+
+            if [[ "$PR_STATE" != "open" ]]; then
+              echo "PR $PR is $PR_STATE, deleting server..."
+              curl -s -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+                "https://api.hetzner.cloud/v1/servers/$ID"
+              echo "Deleted server $ID"
+              continue
+            fi
+
+            # Check age
+            CREATED_TS=$(date -d "$CREATED" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CREATED%+*}" +%s 2>/dev/null)
+            NOW_TS=$(date +%s)
+            AGE_HOURS=$(( (NOW_TS - CREATED_TS) / 3600 ))
+
+            if [[ $AGE_HOURS -gt $MAX_AGE_HOURS ]]; then
+              echo "Server is $AGE_HOURS hours old (max: $MAX_AGE_HOURS), deleting..."
+              curl -s -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+                "https://api.hetzner.cloud/v1/servers/$ID"
+              echo "Deleted server $ID"
+
+              # Comment on PR
+              curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "{\"body\": \"<!-- preview-environment -->\\n## ⏰ Preview Environment Expired\\n\\nThe preview environment was automatically destroyed after ${MAX_AGE_HOURS} hours.\\n\\nComment \\\`/deploy\\\` to create a new one.\"}" \
+                "https://api.github.com/repos/${{ github.repository }}/issues/$PR/comments"
+            else
+              echo "Server is $AGE_HOURS hours old, keeping..."
+            fi
+          done
+
+          echo "Stale cleanup complete"
+
+  # Manual cleanup of specific PR
+  cleanup-manual:
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.pr_number != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Destroy specific preview environment
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          PR_NUM="${{ github.event.inputs.pr_number }}"
+          echo "Manually destroying preview for PR $PR_NUM..."
+
+          SERVER_ID=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=purpose=pr-preview,pr=$PR_NUM" \
+            | jq -r '.servers[0].id')
+
+          if [[ "$SERVER_ID" != "null" && -n "$SERVER_ID" ]]; then
+            echo "Deleting server $SERVER_ID..."
+            curl -s -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              "https://api.hetzner.cloud/v1/servers/$SERVER_ID"
+            echo "Server deleted successfully"
+          else
+            echo "No server found for PR $PR_NUM"
+          fi

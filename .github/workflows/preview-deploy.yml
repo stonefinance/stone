@@ -1,0 +1,434 @@
+name: Deploy PR Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [master, main]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
+env:
+  HETZNER_LOCATION: nbg1
+  HETZNER_SERVER_TYPE: cpx31
+  HETZNER_IMAGE: ubuntu-22.04
+
+jobs:
+  # Check if this is a /deploy command (for issue_comment trigger)
+  check-command:
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/deploy'))
+    runs-on: ubuntu-latest
+    outputs:
+      should_deploy: ${{ steps.check.outputs.should_deploy }}
+      pr_number: ${{ steps.check.outputs.pr_number }}
+    steps:
+      - name: Check deployment conditions
+        id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "pr_number=${{ github.event.issue.number }}" >> $GITHUB_OUTPUT
+          fi
+
+  # Check concurrent preview limit
+  check-limits:
+    needs: check-command
+    if: needs.check-command.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      can_deploy: ${{ steps.check.outputs.can_deploy }}
+      existing_server: ${{ steps.check.outputs.existing_server }}
+    steps:
+      - name: Check active preview count
+        id: check
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          # Get all servers with our preview label
+          SERVERS=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?label_selector=purpose=pr-preview")
+
+          COUNT=$(echo "$SERVERS" | jq '.servers | length')
+          echo "Current preview count: $COUNT"
+
+          # Check if server for this PR already exists
+          PR_NUM="${{ needs.check-command.outputs.pr_number }}"
+          EXISTING=$(echo "$SERVERS" | jq -r ".servers[] | select(.labels.pr == \"$PR_NUM\") | .id")
+
+          if [[ -n "$EXISTING" ]]; then
+            echo "Server already exists for PR $PR_NUM (ID: $EXISTING)"
+            echo "existing_server=$EXISTING" >> $GITHUB_OUTPUT
+            echo "can_deploy=true" >> $GITHUB_OUTPUT
+          elif [[ $COUNT -ge 3 ]]; then
+            echo "::error::Maximum 3 concurrent previews reached. Close another PR or wait."
+            echo "can_deploy=false" >> $GITHUB_OUTPUT
+          else
+            echo "can_deploy=true" >> $GITHUB_OUTPUT
+          fi
+
+  # Build WASM contracts (reusing existing job logic)
+  build-contracts:
+    needs: [check-command, check-limits]
+    if: needs.check-limits.outputs.can_deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build WASM contracts
+        run: |
+          cargo build --release --target wasm32-unknown-unknown -p factory
+          cargo build --release --target wasm32-unknown-unknown -p market
+          mkdir -p artifacts
+          cp target/wasm32-unknown-unknown/release/factory.wasm artifacts/
+          cp target/wasm32-unknown-unknown/release/market.wasm artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-contracts-${{ needs.check-command.outputs.pr_number }}
+          path: artifacts/
+          retention-days: 7
+
+  # Provision Hetzner VM and deploy
+  deploy:
+    needs: [check-command, check-limits, build-contracts]
+    if: needs.check-limits.outputs.can_deploy == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pr-preview-${{ needs.check-command.outputs.pr_number }}
+      url: http://${{ steps.get-ip.outputs.ip }}:3000
+    outputs:
+      server_ip: ${{ steps.get-ip.outputs.ip }}
+      server_id: ${{ steps.provision.outputs.server_id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download WASM contracts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-contracts-${{ needs.check-command.outputs.pr_number }}
+          path: artifacts/
+
+      - name: Provision or reuse Hetzner VM
+        id: provision
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          PR_NUM="${{ needs.check-command.outputs.pr_number }}"
+          EXISTING="${{ needs.check-limits.outputs.existing_server }}"
+
+          if [[ -n "$EXISTING" ]]; then
+            echo "Reusing existing server: $EXISTING"
+            echo "server_id=$EXISTING" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create SSH key if it doesn't exist in Hetzner
+          SSH_KEY_NAME="github-actions-preview"
+          EXISTING_KEY=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/ssh_keys?name=$SSH_KEY_NAME" | jq -r '.ssh_keys[0].id')
+
+          if [[ "$EXISTING_KEY" == "null" ]]; then
+            echo "Creating SSH key in Hetzner..."
+            SSH_KEY_ID=$(curl -s -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\": \"$SSH_KEY_NAME\", \"public_key\": \"$SSH_PUBLIC_KEY\"}" \
+              "https://api.hetzner.cloud/v1/ssh_keys" | jq -r '.ssh_key.id')
+          else
+            SSH_KEY_ID="$EXISTING_KEY"
+          fi
+
+          echo "Using SSH key ID: $SSH_KEY_ID"
+
+          # Create server
+          echo "Creating Hetzner server for PR $PR_NUM..."
+          RESPONSE=$(curl -s -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"stone-preview-pr-$PR_NUM\",
+              \"server_type\": \"${{ env.HETZNER_SERVER_TYPE }}\",
+              \"location\": \"${{ env.HETZNER_LOCATION }}\",
+              \"image\": \"${{ env.HETZNER_IMAGE }}\",
+              \"ssh_keys\": [$SSH_KEY_ID],
+              \"labels\": {
+                \"purpose\": \"pr-preview\",
+                \"pr\": \"$PR_NUM\",
+                \"repo\": \"${{ github.repository }}\"
+              }
+            }" \
+            "https://api.hetzner.cloud/v1/servers")
+
+          SERVER_ID=$(echo "$RESPONSE" | jq -r '.server.id')
+          if [[ "$SERVER_ID" == "null" ]]; then
+            echo "::error::Failed to create server: $(echo "$RESPONSE" | jq -r '.error.message')"
+            exit 1
+          fi
+
+          echo "Server created with ID: $SERVER_ID"
+          echo "server_id=$SERVER_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for server and get IP
+        id: get-ip
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          SERVER_ID="${{ steps.provision.outputs.server_id }}"
+
+          echo "Waiting for server $SERVER_ID to be ready..."
+          for i in {1..60}; do
+            STATUS=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              "https://api.hetzner.cloud/v1/servers/$SERVER_ID" | jq -r '.server.status')
+
+            if [[ "$STATUS" == "running" ]]; then
+              IP=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+                "https://api.hetzner.cloud/v1/servers/$SERVER_ID" | jq -r '.server.public_net.ipv4.ip')
+              echo "Server is running at $IP"
+              echo "ip=$IP" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            echo "Status: $STATUS, waiting..."
+            sleep 5
+          done
+
+          echo "::error::Server failed to start within timeout"
+          exit 1
+
+      - name: Wait for SSH
+        run: |
+          IP="${{ steps.get-ip.outputs.ip }}"
+          echo "Waiting for SSH on $IP..."
+          for i in {1..30}; do
+            if nc -z -w5 "$IP" 22 2>/dev/null; then
+              echo "SSH is ready"
+              exit 0
+            fi
+            echo "Attempt $i: SSH not ready, waiting..."
+            sleep 10
+          done
+          echo "::error::SSH failed to become available"
+          exit 1
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ steps.get-ip.outputs.ip }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to VM
+        env:
+          SERVER_IP: ${{ steps.get-ip.outputs.ip }}
+          PR_NUMBER: ${{ needs.check-command.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create setup script
+          cat > /tmp/setup-vm.sh << 'SETUP_SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "=== Stone Finance Preview Environment Setup ==="
+
+          # Install Docker
+          if ! command -v docker &> /dev/null; then
+            echo "Installing Docker..."
+            curl -fsSL https://get.docker.com | sh
+            systemctl enable docker
+            systemctl start docker
+          fi
+
+          # Install Docker Compose plugin
+          if ! docker compose version &> /dev/null; then
+            echo "Installing Docker Compose..."
+            apt-get update
+            apt-get install -y docker-compose-plugin
+          fi
+
+          # Clone or update repo
+          REPO_DIR="/opt/stone-preview"
+          if [[ -d "$REPO_DIR" ]]; then
+            echo "Updating existing repo..."
+            cd "$REPO_DIR"
+            git fetch origin
+            git checkout "$REF"
+          else
+            echo "Cloning repo..."
+            git clone "https://github.com/$REPO.git" "$REPO_DIR"
+            cd "$REPO_DIR"
+            git checkout "$REF"
+          fi
+
+          # Copy artifacts
+          echo "Setting up artifacts..."
+          mkdir -p "$REPO_DIR/artifacts"
+
+          # Update frontend env for external access
+          cat > "$REPO_DIR/e2e/docker-compose.override.yml" << 'COMPOSE_OVERRIDE'
+          services:
+            frontend:
+              environment:
+                NEXT_PUBLIC_RPC_ENDPOINT: http://HOST_IP:26657
+                NEXT_PUBLIC_REST_ENDPOINT: http://HOST_IP:1317
+                NEXT_PUBLIC_GRAPHQL_ENDPOINT: http://HOST_IP:4000/graphql
+                NEXT_PUBLIC_WS_ENDPOINT: ws://HOST_IP:4000/graphql
+          COMPOSE_OVERRIDE
+
+          # Replace HOST_IP with actual IP
+          HOST_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
+          sed -i "s/HOST_IP/$HOST_IP/g" "$REPO_DIR/e2e/docker-compose.override.yml"
+
+          # Start services
+          echo "Starting services..."
+          cd "$REPO_DIR/e2e"
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml down -v --remove-orphans 2>/dev/null || true
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml up -d --build
+
+          # Wait for services
+          echo "Waiting for services to be healthy..."
+          for i in {1..60}; do
+            if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+              echo "Frontend is ready!"
+              break
+            fi
+            echo "Waiting for frontend... ($i/60)"
+            sleep 10
+          done
+
+          # Final health check
+          echo ""
+          echo "=== Service Status ==="
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml ps
+          echo ""
+          echo "=== Deployment Complete ==="
+          echo "Frontend: http://$HOST_IP:3000"
+          echo "GraphQL:  http://$HOST_IP:4000/graphql"
+          echo "Chain:    http://$HOST_IP:26657"
+          SETUP_SCRIPT
+
+          # Copy script and artifacts to server
+          scp -o StrictHostKeyChecking=no /tmp/setup-vm.sh root@$SERVER_IP:/tmp/setup-vm.sh
+          scp -o StrictHostKeyChecking=no -r artifacts/* root@$SERVER_IP:/tmp/artifacts/ 2>/dev/null || true
+
+          # Run setup
+          ssh -o StrictHostKeyChecking=no root@$SERVER_IP "
+            export REPO='$REPO'
+            export REF='$REF'
+            chmod +x /tmp/setup-vm.sh
+            /tmp/setup-vm.sh
+
+            # Copy artifacts if they exist
+            if [[ -d /tmp/artifacts ]]; then
+              cp -r /tmp/artifacts/* /opt/stone-preview/artifacts/ 2>/dev/null || true
+            fi
+          "
+
+      - name: Verify deployment
+        run: |
+          IP="${{ steps.get-ip.outputs.ip }}"
+          echo "Verifying deployment at $IP..."
+
+          # Check frontend
+          if curl -sf "http://$IP:3000" > /dev/null; then
+            echo "✓ Frontend is accessible"
+          else
+            echo "✗ Frontend check failed"
+            exit 1
+          fi
+
+          # Check GraphQL
+          if curl -sf "http://$IP:4000/health" > /dev/null; then
+            echo "✓ GraphQL is accessible"
+          else
+            echo "✗ GraphQL check failed"
+            exit 1
+          fi
+
+          echo ""
+          echo "Deployment verified successfully!"
+
+  # Post comment with preview URL
+  comment:
+    needs: [check-command, deploy]
+    if: always() && needs.check-command.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Find existing comment
+        uses: peter-evans/find-comment@v3
+        id: find-comment
+        with:
+          issue-number: ${{ needs.check-command.outputs.pr_number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- preview-environment -->'
+
+      - name: Create or update comment (success)
+        if: needs.deploy.result == 'success'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ needs.check-command.outputs.pr_number }}
+          edit-mode: replace
+          body: |
+            <!-- preview-environment -->
+            ## 🚀 Preview Environment Ready
+
+            | Service | URL |
+            |---------|-----|
+            | **Frontend** | http://${{ needs.deploy.outputs.server_ip }}:3000 |
+            | **GraphQL Playground** | http://${{ needs.deploy.outputs.server_ip }}:4000/graphql |
+            | **Chain RPC** | http://${{ needs.deploy.outputs.server_ip }}:26657 |
+            | **Chain REST** | http://${{ needs.deploy.outputs.server_ip }}:1317 |
+
+            **Commit:** ${{ github.event.pull_request.head.sha || github.sha }}
+
+            ---
+            <details>
+            <summary>Commands</summary>
+
+            - `/deploy` - Redeploy this preview
+            - `/destroy` - Destroy this preview environment
+
+            </details>
+
+            <sub>Preview environments are automatically destroyed when the PR is closed or after 48 hours of inactivity.</sub>
+
+      - name: Create or update comment (failure)
+        if: needs.deploy.result == 'failure'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ needs.check-command.outputs.pr_number }}
+          edit-mode: replace
+          body: |
+            <!-- preview-environment -->
+            ## ❌ Preview Deployment Failed
+
+            The preview environment failed to deploy. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+
+            You can retry by commenting `/deploy` on this PR.
