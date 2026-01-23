@@ -45,6 +45,7 @@ function transformMarketDetail(market: MarketFieldsFragment): MarketDetail {
     utilization: parseFloat(market.utilization) * 100,
     availableLiquidity: market.availableLiquidity,
     loanToValue: parseFloat(market.loanToValue) * 100,
+    createdAt: market.createdAt,
     info: {
       market_id: market.id,
       address: market.marketAddress,

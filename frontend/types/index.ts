@@ -20,6 +20,7 @@ export interface Market {
 }
 
 export interface MarketDetail extends Market {
+  createdAt: string;
   info: {
     market_id: string;
     address: string;
