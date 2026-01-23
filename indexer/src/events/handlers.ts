@@ -253,11 +253,17 @@ export async function handleSupplyCollateral(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Get current market state to calculate new total
+      const market = await tx.market.findUniqueOrThrow({
+        where: { id: marketId },
+      });
+      const newTotalCollateral = new Decimal(market.totalCollateral.toString()).add(event.amount);
+
       // Update market state
       await tx.market.update({
         where: { id: marketId },
         data: {
-          totalCollateral: new Decimal(event.totalCollateral),
+          totalCollateral: newTotalCollateral,
         },
       });
 
@@ -302,7 +308,7 @@ export async function handleSupplyCollateral(
           action: 'SUPPLY_COLLATERAL',
           amount: new Decimal(event.amount),
           recipient: event.recipient,
-          totalCollateral: new Decimal(event.totalCollateral),
+          totalCollateral: newTotalCollateral,
         },
       });
     });
@@ -325,11 +331,17 @@ export async function handleWithdrawCollateral(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Get current market state to calculate new total
+      const market = await tx.market.findUniqueOrThrow({
+        where: { id: marketId },
+      });
+      const newTotalCollateral = new Decimal(market.totalCollateral.toString()).sub(event.amount);
+
       // Update market state
       await tx.market.update({
         where: { id: marketId },
         data: {
-          totalCollateral: new Decimal(event.totalCollateral),
+          totalCollateral: newTotalCollateral,
         },
       });
 
@@ -361,7 +373,7 @@ export async function handleWithdrawCollateral(
           action: 'WITHDRAW_COLLATERAL',
           amount: new Decimal(event.amount),
           recipient: event.recipient,
-          totalCollateral: new Decimal(event.totalCollateral),
+          totalCollateral: newTotalCollateral,
         },
       });
     });
