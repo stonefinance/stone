@@ -94,7 +94,10 @@ fn setup_env_with_oracle(prices: Vec<(String, Decimal)>) -> TestEnv {
 
 fn setup_env() -> TestEnv {
     setup_env_with_oracle(vec![
-        (COLLATERAL_DENOM.to_string(), Decimal::from_ratio(10u128, 1u128)),
+        (
+            COLLATERAL_DENOM.to_string(),
+            Decimal::from_ratio(10u128, 1u128),
+        ),
         (DEBT_DENOM.to_string(), Decimal::one()),
     ])
 }
@@ -189,7 +192,12 @@ fn create_market_requires_fee() {
 
     let err = env
         .app
-        .execute_contract(env.curator.clone(), env.factory_addr.clone(), &create_msg, &[])
+        .execute_contract(
+            env.curator.clone(),
+            env.factory_addr.clone(),
+            &create_msg,
+            &[],
+        )
         .unwrap_err();
 
     let err_chain: Vec<String> = err.chain().map(|err| err.to_string()).collect();
@@ -203,9 +211,10 @@ fn create_market_requires_fee() {
 
 #[test]
 fn create_market_rejects_invalid_oracle() {
-    let mut env = setup_env_with_oracle(vec![
-        (COLLATERAL_DENOM.to_string(), Decimal::from_ratio(10u128, 1u128)),
-    ]);
+    let mut env = setup_env_with_oracle(vec![(
+        COLLATERAL_DENOM.to_string(),
+        Decimal::from_ratio(10u128, 1u128),
+    )]);
 
     let create_msg = FactoryExecuteMsg::CreateMarket {
         collateral_denom: COLLATERAL_DENOM.to_string(),
@@ -265,7 +274,9 @@ fn create_market_rejects_duplicates() {
 
     let err_chain: Vec<String> = err.chain().map(|err| err.to_string()).collect();
     assert!(
-        err_chain.iter().any(|msg| msg.contains("Market already exists")),
+        err_chain
+            .iter()
+            .any(|msg| msg.contains("Market already exists")),
         "{err_chain:?}"
     );
 }
