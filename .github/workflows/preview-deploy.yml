@@ -312,14 +312,33 @@ jobs:
           echo "Starting services..."
           cd "$REPO_DIR/e2e"
           docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml down -v --remove-orphans 2>/dev/null || true
-          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml up -d --build
 
-          # Wait for deployer to complete and show its logs
-          echo "Waiting for deployer..."
-          sleep 10
-          echo "=== Deployer Logs ==="
+          # Start services but don't fail immediately - we want to capture logs
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml up -d --build || true
+
+          # Wait for deployer to complete and show its logs regardless of success/failure
+          echo "Waiting for deployer to finish..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect -f '{{.State.Status}}' stone-deployer 2>/dev/null || echo "unknown")
+            if [[ "$STATUS" == "exited" ]]; then
+              break
+            fi
+            echo "Deployer status: $STATUS ($i/30)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=== Deployer Container Logs ==="
           docker logs stone-deployer 2>&1 || echo "Could not get deployer logs"
           echo "=== End Deployer Logs ==="
+          echo ""
+
+          # Check if deployer succeeded
+          EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' stone-deployer 2>/dev/null || echo "1")
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            echo "ERROR: Deployer failed with exit code $EXIT_CODE"
+            exit 1
+          fi
 
           # Wait for services
           echo "Waiting for services to be healthy..."
