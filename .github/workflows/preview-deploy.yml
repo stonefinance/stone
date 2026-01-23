@@ -13,7 +13,7 @@ concurrency:
 
 env:
   HETZNER_LOCATION: fsn1
-  HETZNER_SERVER_TYPE: cpx31
+  HETZNER_SERVER_TYPE: ccx13
   HETZNER_IMAGE: ubuntu-22.04
 
 jobs:
