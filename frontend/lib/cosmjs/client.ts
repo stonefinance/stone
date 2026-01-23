@@ -102,6 +102,11 @@ export class QueryClient {
     const msg: MarketQueryMsg = { is_liquidatable: { user: userAddress } };
     return client.queryContractSmart(marketAddress, msg);
   }
+
+  async getBalance(address: string, denom: string): Promise<Coin> {
+    const client = await this.connect();
+    return client.getBalance(address, denom);
+  }
 }
 
 // Signing client (requires wallet)
