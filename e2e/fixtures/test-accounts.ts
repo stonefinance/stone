@@ -10,12 +10,13 @@ export const TEST_USER_2_MNEMONIC =
 export const TEST_ACCOUNTS = {
   validator: {
     mnemonic: VALIDATOR_MNEMONIC,
-    // Address derived from mnemonic with 'wasm' prefix
-    address: 'wasm1cyyzpxplxdzkeea7kwsydadg87357qnahakaks',
+    // Address derived from mnemonic with 'wasm' prefix (via CosmJS)
+    address: 'wasm1phaxpevm5wecex2jyaqty2a4v02qj7qmauqnty',
   },
   user1: {
     mnemonic: TEST_USER_1_MNEMONIC,
-    address: 'wasm18vd8fpwxzck93qlwghaj6arh4p7c5n89uzcee5',
+    // This is the funded test account with stake, ustone, uatom, uosmo
+    address: 'wasm1cyyzpxplxdzkeea7kwsydadg87357qna465cff',
   },
   user2: {
     mnemonic: TEST_USER_2_MNEMONIC,
@@ -24,12 +25,13 @@ export const TEST_ACCOUNTS = {
 };
 
 // Chain configuration
+// Note: Local wasmd uses 'stake' (not 'ustake') as the staking/fee denom
 export const CHAIN_CONFIG = {
   chainId: 'stone-local-1',
   rpcEndpoint: 'http://localhost:26657',
   restEndpoint: 'http://localhost:1317',
   prefix: 'wasm',
-  stakeDenom: 'ustake',
-  feeDenom: 'ustone',
-  gasPrice: '0.025ustake',
+  stakeDenom: 'stake',
+  feeDenom: 'stake',
+  gasPrice: '0.025stake',
 };

@@ -11,9 +11,11 @@ export const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_ENDPOINT || (isLocal ? '
 export const REST_ENDPOINT = process.env.NEXT_PUBLIC_REST_ENDPOINT || (isLocal ? 'http://localhost:1317' : 'https://lcd.testnet.osmosis.zone');
 
 // Gas price configuration
-export const GAS_PRICE = isLocal ? '0.025ustake' : '0.025uosmo';
+// Note: Local chain uses 'stake' (not 'ustake') as the fee denom
+export const GAS_PRICE = isLocal ? '0.025stake' : '0.025uosmo';
 
 // Local chain configuration
+// Note: The local wasmd chain uses 'stake' without the 'u' prefix
 const LOCAL_CHAIN_INFO = {
   chainId: CHAIN_ID,
   chainName: 'Stone Local',
@@ -33,7 +35,7 @@ const LOCAL_CHAIN_INFO = {
   currencies: [
     {
       coinDenom: 'STAKE',
-      coinMinimalDenom: 'ustake',
+      coinMinimalDenom: 'stake',
       coinDecimals: 6,
     },
     {
@@ -41,11 +43,21 @@ const LOCAL_CHAIN_INFO = {
       coinMinimalDenom: 'ustone',
       coinDecimals: 6,
     },
+    {
+      coinDenom: 'OSMO',
+      coinMinimalDenom: 'uosmo',
+      coinDecimals: 6,
+    },
+    {
+      coinDenom: 'ATOM',
+      coinMinimalDenom: 'uatom',
+      coinDecimals: 6,
+    },
   ],
   feeCurrencies: [
     {
       coinDenom: 'STAKE',
-      coinMinimalDenom: 'ustake',
+      coinMinimalDenom: 'stake',
       coinDecimals: 6,
       gasPriceStep: {
         low: 0.0025,
@@ -56,7 +68,7 @@ const LOCAL_CHAIN_INFO = {
   ],
   stakeCurrency: {
     coinDenom: 'STAKE',
-    coinMinimalDenom: 'ustake',
+    coinMinimalDenom: 'stake',
     coinDecimals: 6,
   },
 };
