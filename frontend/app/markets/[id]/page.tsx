@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,6 +31,24 @@ export default function MarketDetailPage() {
   const [depositType, setDepositType] = useState<'supply' | 'collateral'>('supply');
   const [borrowModalOpen, setBorrowModalOpen] = useState(false);
   const [repayModalOpen, setRepayModalOpen] = useState(false);
+
+  // Memoize modal props to prevent re-renders when GraphQL polling updates data
+  const modalProps = useMemo(() => {
+    if (!market) return null;
+    return {
+      marketAddress: market.address,
+      collateralDenom: market.config.collateral_denom,
+      debtDenom: market.config.debt_denom,
+      displayCollateralDenom: market.collateralDenom,
+      displayDebtDenom: market.debtDenom,
+    };
+  }, [
+    market?.address,
+    market?.config.collateral_denom,
+    market?.config.debt_denom,
+    market?.collateralDenom,
+    market?.debtDenom,
+  ]);
 
   if (marketLoading) {
     return (
@@ -255,32 +273,36 @@ export default function MarketDetailPage() {
       </main>
 
       {/* Modals */}
-      <DepositModal
-        open={depositModalOpen}
-        onOpenChange={setDepositModalOpen}
-        marketAddress={market.address}
-        denom={depositType === 'supply' ? market.config.debt_denom : market.config.collateral_denom}
-        displayDenom={depositType === 'supply' ? market.debtDenom : market.collateralDenom}
-        type={depositType}
-      />
+      {modalProps && (
+        <>
+          <DepositModal
+            open={depositModalOpen}
+            onOpenChange={setDepositModalOpen}
+            marketAddress={modalProps.marketAddress}
+            denom={depositType === 'supply' ? modalProps.debtDenom : modalProps.collateralDenom}
+            displayDenom={depositType === 'supply' ? modalProps.displayDebtDenom : modalProps.displayCollateralDenom}
+            type={depositType}
+          />
 
-      <BorrowModal
-        open={borrowModalOpen}
-        onOpenChange={setBorrowModalOpen}
-        marketAddress={market.address}
-        denom={market.config.debt_denom}
-        displayDenom={market.debtDenom}
-        maxBorrowValue={position?.maxBorrowValue}
-      />
+          <BorrowModal
+            open={borrowModalOpen}
+            onOpenChange={setBorrowModalOpen}
+            marketAddress={modalProps.marketAddress}
+            denom={modalProps.debtDenom}
+            displayDenom={modalProps.displayDebtDenom}
+            maxBorrowValue={position?.maxBorrowValue}
+          />
 
-      <RepayModal
-        open={repayModalOpen}
-        onOpenChange={setRepayModalOpen}
-        marketAddress={market.address}
-        denom={market.config.debt_denom}
-        displayDenom={market.debtDenom}
-        currentDebt={position?.debtAmount}
-      />
+          <RepayModal
+            open={repayModalOpen}
+            onOpenChange={setRepayModalOpen}
+            marketAddress={modalProps.marketAddress}
+            denom={modalProps.debtDenom}
+            displayDenom={modalProps.displayDebtDenom}
+            currentDebt={position?.debtAmount}
+          />
+        </>
+      )}
     </div>
   );
 }
