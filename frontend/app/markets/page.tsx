@@ -140,8 +140,8 @@ export default function MarketsPage() {
           </div>
         )}
 
-        {/* Loading State */}
-        {isLoading && (
+        {/* Loading State - only show skeleton if we don't have cached data */}
+        {isLoading && markets.length === 0 && (
           <>
             {/* Desktop Table Skeleton */}
             <div className="hidden lg:block">
@@ -169,8 +169,8 @@ export default function MarketsPage() {
           </div>
         )}
 
-        {/* Markets Display */}
-        {!isLoading && !error && sortedMarkets.length > 0 && (
+        {/* Markets Display - show if we have data, even if still loading (background refresh) */}
+        {!error && sortedMarkets.length > 0 && (
           <>
             {/* Desktop Table */}
             <div className="hidden lg:block">
