@@ -205,13 +205,9 @@ export default function MarketDetailPage() {
               Curator
               <Info className="h-3.5 w-3.5" />
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="flex -space-x-1">
-                <div className="h-6 w-6 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs ring-2 ring-background">
-                  S
-                </div>
-              </div>
-            </div>
+            <p className="text-lg font-medium font-mono" title={market.curator}>
+              {market.curator.slice(0, 8)}...{market.curator.slice(-4)}
+            </p>
           </div>
         </div>
 
@@ -339,7 +335,19 @@ export default function MarketDetailPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Created on</span>
-                        <span className="font-medium">2024-09-04</span>
+                        <span className="font-medium">
+                          {new Date(market.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Created by</span>
+                        <span className="font-medium font-mono text-sm" title={market.curator}>
+                          {market.curator.slice(0, 10)}...{market.curator.slice(-6)}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Liquidation LTV</span>
