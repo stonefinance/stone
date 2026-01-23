@@ -332,10 +332,6 @@ jobs:
           echo "Chain:    http://$HOST_IP:26657"
           SETUP_SCRIPT
 
-          # Rename artifacts to match expected names (deployer expects factory.wasm, market.wasm)
-          mv artifacts/stone_factory.wasm artifacts/factory.wasm 2>/dev/null || true
-          mv artifacts/stone_market.wasm artifacts/market.wasm 2>/dev/null || true
-
           # Copy script and artifacts to server
           scp -o StrictHostKeyChecking=no /tmp/setup-vm.sh root@$SERVER_IP:/tmp/setup-vm.sh
           ssh -o StrictHostKeyChecking=no root@$SERVER_IP "mkdir -p /tmp/artifacts"

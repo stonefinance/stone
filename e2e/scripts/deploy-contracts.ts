@@ -73,8 +73,8 @@ async function main() {
 
   // Read WASM files
   console.log('Reading WASM files...');
-  const factoryWasm = fs.readFileSync('/artifacts/factory.wasm');
-  const marketWasm = fs.readFileSync('/artifacts/market.wasm');
+  const factoryWasm = fs.readFileSync('/artifacts/stone_factory.wasm');
+  const marketWasm = fs.readFileSync('/artifacts/stone_market.wasm');
 
   // Check if mock oracle exists, if not we'll skip it
   let oracleWasm: Buffer | null = null;
