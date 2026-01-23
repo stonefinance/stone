@@ -178,7 +178,7 @@ jobs:
               \"labels\": {
                 \"purpose\": \"pr-preview\",
                 \"pr\": \"$PR_NUM\",
-                \"repo\": \"${{ github.repository }}\"
+                \"repo\": \"${GITHUB_REPOSITORY//\//-}\"
               }
             }" \
             "https://api.hetzner.cloud/v1/servers")
