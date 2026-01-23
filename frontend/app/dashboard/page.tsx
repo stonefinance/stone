@@ -12,8 +12,7 @@ import Link from 'next/link';
 export default function DashboardPage() {
   const { isConnected } = useWallet();
   const { data: markets } = useMarkets();
-  const marketAddresses = markets?.map((m) => m.address) || [];
-  const { data: positions } = useUserPositions(marketAddresses);
+  const { data: positions } = useUserPositions();
 
   // Calculate portfolio summary
   const totalSupplied = positions?.reduce((sum, p) => sum + p.supplyValue, 0) || 0;
@@ -164,7 +163,7 @@ export default function DashboardPage() {
           {hasPositions && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {positions.map((position) => {
-                const market = markets?.find((m) => m.address === position.marketId);
+                const market = markets?.find((m) => m.id === position.marketId);
                 if (!market) return null;
 
                 const hasSupply = parseFloat(position.supplyAmount) > 0;
