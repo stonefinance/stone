@@ -68,7 +68,6 @@ export interface SupplyCollateralEvent {
   supplier: string;
   recipient: string;
   amount: string;
-  totalCollateral: string;
   marketAddress: string;
   txHash: string;
   blockHeight: number;
@@ -81,7 +80,6 @@ export interface WithdrawCollateralEvent {
   withdrawer: string;
   recipient: string;
   amount: string;
-  totalCollateral: string;
   marketAddress: string;
   txHash: string;
   blockHeight: number;
