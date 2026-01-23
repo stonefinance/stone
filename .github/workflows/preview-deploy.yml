@@ -304,11 +304,22 @@ jobs:
           HOST_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
           sed -i "s/HOST_IP/$HOST_IP/g" "$REPO_DIR/e2e/docker-compose.override.yml"
 
+          # Debug: show artifacts
+          echo "=== Artifacts in $REPO_DIR/artifacts ==="
+          ls -la "$REPO_DIR/artifacts/" || echo "No artifacts directory"
+
           # Start services
           echo "Starting services..."
           cd "$REPO_DIR/e2e"
           docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml down -v --remove-orphans 2>/dev/null || true
           docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml up -d --build
+
+          # Wait for deployer to complete and show its logs
+          echo "Waiting for deployer..."
+          sleep 10
+          echo "=== Deployer Logs ==="
+          docker logs stone-deployer 2>&1 || echo "Could not get deployer logs"
+          echo "=== End Deployer Logs ==="
 
           # Wait for services
           echo "Waiting for services to be healthy..."
