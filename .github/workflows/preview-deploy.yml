@@ -332,21 +332,28 @@ jobs:
           echo "Chain:    http://$HOST_IP:26657"
           SETUP_SCRIPT
 
+          # Rename artifacts to match expected names (deployer expects factory.wasm, market.wasm)
+          mv artifacts/stone_factory.wasm artifacts/factory.wasm 2>/dev/null || true
+          mv artifacts/stone_market.wasm artifacts/market.wasm 2>/dev/null || true
+
           # Copy script and artifacts to server
           scp -o StrictHostKeyChecking=no /tmp/setup-vm.sh root@$SERVER_IP:/tmp/setup-vm.sh
+          ssh -o StrictHostKeyChecking=no root@$SERVER_IP "mkdir -p /tmp/artifacts"
           scp -o StrictHostKeyChecking=no -r artifacts/* root@$SERVER_IP:/tmp/artifacts/ 2>/dev/null || true
 
-          # Run setup
+          # Run setup (artifacts are copied to repo dir before docker-compose starts)
           ssh -o StrictHostKeyChecking=no root@$SERVER_IP "
             export REPO='$REPO'
             export REF='$REF'
             chmod +x /tmp/setup-vm.sh
-            /tmp/setup-vm.sh
 
-            # Copy artifacts if they exist
+            # Copy artifacts BEFORE running setup (which starts docker-compose)
+            mkdir -p /opt/stone-preview/artifacts
             if [[ -d /tmp/artifacts ]]; then
-              cp -r /tmp/artifacts/* /opt/stone-preview/artifacts/ 2>/dev/null || true
+              cp -r /tmp/artifacts/* /opt/stone-preview/artifacts/
             fi
+
+            /tmp/setup-vm.sh
           "
 
       - name: Verify deployment
