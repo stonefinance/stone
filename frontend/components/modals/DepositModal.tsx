@@ -18,7 +18,8 @@ interface DepositModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   marketAddress: string;
-  denom: string;
+  denom: string; // Minimal denom for transactions (e.g., "uosmo")
+  displayDenom?: string; // Display denom for UI (e.g., "OSMO")
   type: 'supply' | 'collateral';
 }
 
@@ -27,6 +28,7 @@ export function DepositModal({
   onOpenChange,
   marketAddress,
   denom,
+  displayDenom,
   type,
 }: DepositModalProps) {
   const { signingClient, isConnected } = useWallet();
@@ -50,7 +52,7 @@ export function DepositModal({
 
     try {
       const microAmount = baseToMicro(amount);
-      const coin = { denom: denom.toLowerCase(), amount: microAmount };
+      const coin = { denom, amount: microAmount };
 
       if (type === 'supply') {
         await signingClient.supply(marketAddress, coin);
@@ -83,7 +85,7 @@ export function DepositModal({
 
         <div className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount ({denom})</Label>
+            <Label htmlFor="amount">Amount ({displayDenom || denom})</Label>
             <Input
               id="amount"
               type="number"
