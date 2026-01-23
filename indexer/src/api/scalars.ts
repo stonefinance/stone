@@ -39,6 +39,10 @@ export const BigIntScalar = new GraphQLScalarType({
     if (value instanceof Decimal) {
       return value.toFixed(0);
     }
+    // Handle Prisma Decimal (different class than decimal.js Decimal)
+    if (value !== null && typeof value === 'object' && 'toFixed' in value && typeof (value as { toFixed: unknown }).toFixed === 'function') {
+      return (value as { toFixed: (dp: number) => string }).toFixed(0);
+    }
     if (typeof value === 'string' || typeof value === 'number') {
       return value.toString();
     }
