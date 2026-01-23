@@ -5,9 +5,9 @@ import {
   InMemoryCache,
   HttpLink,
   split,
-} from '@apollo/client/index.js';
-import { GraphQLWsLink } from '@apollo/client/link/subscriptions/index.js';
-import { getMainDefinition } from '@apollo/client/utilities/index.js';
+} from '@apollo/client';
+import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
+import { getMainDefinition } from '@apollo/client/utilities';
 import { createClient } from 'graphql-ws';
 
 const httpLink = new HttpLink({

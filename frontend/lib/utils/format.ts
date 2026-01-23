@@ -13,7 +13,7 @@ export function formatDisplayAmount(amount: string | number, maxDecimals: number
   if (isNaN(value)) return '0.00';
 
   return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
+    minimumFractionDigits: Math.min(2, maxDecimals),
     maximumFractionDigits: maxDecimals,
   }).format(value);
 }
