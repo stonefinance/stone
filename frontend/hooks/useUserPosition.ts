@@ -1,83 +1,79 @@
-import { useQuery } from '@tanstack/react-query';
-import { queryClient } from '@/lib/cosmjs/client';
+'use client';
+
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { UserPosition } from '@/types';
-import { parseDecimal } from '@/lib/utils/format';
+import {
+  useGetUserPositionQuery,
+  useGetUserPositionsQuery,
+  PositionFieldsFragment,
+} from '@/lib/graphql/generated/hooks';
 
-export function useUserPosition(marketAddress: string | undefined) {
-  const { address, isConnected } = useWallet();
+function transformPosition(position: PositionFieldsFragment): UserPosition {
+  // Note: GraphQL returns amounts as strings (BigInt)
+  // healthFactor is returned from GraphQL when available
+  // collateralValue, supplyValue, debtValue, maxBorrowValue, liquidationPrice
+  // require oracle price integration (Phase 4)
 
-  return useQuery({
-    queryKey: ['userPosition', marketAddress, address],
-    queryFn: async (): Promise<UserPosition | null> => {
-      if (!address || !marketAddress) return null;
+  const healthFactor = position.healthFactor
+    ? parseFloat(position.healthFactor)
+    : undefined;
 
-      try {
-        const position = await queryClient.getUserPosition(marketAddress, address);
-
-        return {
-          marketId: marketAddress,
-          collateralAmount: position.collateral_amount,
-          collateralValue: parseDecimal(position.collateral_value),
-          supplyAmount: position.supply_amount,
-          supplyValue: parseDecimal(position.supply_value),
-          debtAmount: position.debt_amount,
-          debtValue: parseDecimal(position.debt_value),
-          healthFactor: position.health_factor ? parseDecimal(position.health_factor) : undefined,
-          maxBorrowValue: parseDecimal(position.max_borrow_value),
-          liquidationPrice: position.liquidation_price
-            ? parseDecimal(position.liquidation_price)
-            : undefined,
-        };
-      } catch (error) {
-        console.error('Failed to fetch user position:', error);
-        return null;
-      }
-    },
-    enabled: isConnected && !!address && !!marketAddress,
-    staleTime: 10_000, // 10 seconds
-  });
+  return {
+    marketId: position.market.id,
+    collateralAmount: position.collateral,
+    collateralValue: 0, // Requires oracle price - placeholder
+    supplyAmount: position.supplyAmount,
+    supplyValue: 0, // Requires oracle price - placeholder
+    debtAmount: position.debtAmount,
+    debtValue: 0, // Requires oracle price - placeholder
+    healthFactor,
+    maxBorrowValue: 0, // Requires oracle price - placeholder
+    liquidationPrice: undefined, // Requires oracle price - placeholder
+  };
 }
 
-export function useUserPositions(marketAddresses: string[]) {
+/**
+ * Fetch user position for a specific market
+ * @param marketId - The market ID (not contract address)
+ */
+export function useUserPosition(marketId: string | undefined) {
   const { address, isConnected } = useWallet();
 
-  return useQuery({
-    queryKey: ['userPositions', marketAddresses, address],
-    queryFn: async (): Promise<UserPosition[]> => {
-      if (!address || marketAddresses.length === 0) return [];
-
-      const positions = await Promise.all(
-        marketAddresses.map(async (marketAddress) => {
-          try {
-            const position = await queryClient.getUserPosition(marketAddress, address);
-
-            return {
-              marketId: marketAddress,
-              collateralAmount: position.collateral_amount,
-              collateralValue: parseDecimal(position.collateral_value),
-              supplyAmount: position.supply_amount,
-              supplyValue: parseDecimal(position.supply_value),
-              debtAmount: position.debt_amount,
-              debtValue: parseDecimal(position.debt_value),
-              healthFactor: position.health_factor
-                ? parseDecimal(position.health_factor)
-                : undefined,
-              maxBorrowValue: parseDecimal(position.max_borrow_value),
-              liquidationPrice: position.liquidation_price
-                ? parseDecimal(position.liquidation_price)
-                : undefined,
-            };
-          } catch (error) {
-            console.error(`Failed to fetch position for market ${marketAddress}:`, error);
-            return null;
-          }
-        })
-      );
-
-      return positions.filter((p): p is UserPosition => p !== null);
+  const { data, loading, error, refetch } = useGetUserPositionQuery({
+    variables: {
+      marketId: marketId!,
+      userAddress: address!,
     },
-    enabled: isConnected && !!address && marketAddresses.length > 0,
-    staleTime: 10_000,
+    skip: !isConnected || !address || !marketId,
+    pollInterval: 10000, // Poll every 10 seconds
   });
+
+  return {
+    data: data?.userPosition ? transformPosition(data.userPosition) : null,
+    isLoading: loading,
+    error: error ? new Error(error.message) : undefined,
+    refetch,
+  };
+}
+
+/**
+ * Fetch all positions for the connected user
+ */
+export function useUserPositions() {
+  const { address, isConnected } = useWallet();
+
+  const { data, loading, error, refetch } = useGetUserPositionsQuery({
+    variables: {
+      userAddress: address!,
+    },
+    skip: !isConnected || !address,
+    pollInterval: 10000,
+  });
+
+  return {
+    data: data?.userPositions.map(transformPosition) ?? [],
+    isLoading: loading,
+    error: error ? new Error(error.message) : undefined,
+    refetch,
+  };
 }

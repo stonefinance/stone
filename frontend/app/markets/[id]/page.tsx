@@ -25,7 +25,7 @@ export default function MarketDetailPage() {
   const { isConnected } = useWallet();
 
   const { data: market, isLoading: marketLoading } = useMarket(marketId);
-  const { data: position } = useUserPosition(market?.address);
+  const { data: position } = useUserPosition(marketId);
 
   const [depositModalOpen, setDepositModalOpen] = useState(false);
   const [depositType, setDepositType] = useState<'supply' | 'collateral'>('supply');
