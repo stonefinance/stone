@@ -1,5 +1,5 @@
 import { createHash } from 'crypto';
-import { Event as TendermintEvent } from '@cosmjs/tendermint-rpc';
+import { Event as TendermintEvent } from '@cosmjs/tendermint-rpc/build/tendermint37/responses';
 import { getTendermintClient } from '../utils/blockchain';
 import { logger } from '../utils/logger';
 import { config } from '../config';

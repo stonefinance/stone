@@ -1,17 +1,15 @@
-import { Event as TendermintEvent } from '@cosmjs/tendermint-rpc';
+import { Event as TendermintEvent } from '@cosmjs/tendermint-rpc/build/tendermint37/responses';
 import { Event as StargateEvent } from '@cosmjs/stargate';
-import { MarketCreatedEvent, MarketEvent, BlockchainEvent } from './types';
+import { MarketEvent, BlockchainEvent } from './types';
 import { logger } from '../utils/logger';
 
 /**
- * Parse event attributes from Tendermint RPC events (Uint8Array keys/values)
+ * Parse event attributes from Tendermint RPC events (tendermint37 has string keys/values)
  */
 export function parseEventAttributes(event: TendermintEvent): Record<string, string> {
   const attributes: Record<string, string> = {};
   for (const attr of event.attributes) {
-    const key = Buffer.from(attr.key).toString('utf-8');
-    const value = Buffer.from(attr.value).toString('utf-8');
-    attributes[key] = value;
+    attributes[attr.key] = attr.value;
   }
   return attributes;
 }

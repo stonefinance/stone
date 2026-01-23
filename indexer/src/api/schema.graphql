@@ -16,7 +16,7 @@ type Market {
   debtDenom: String!
   oracle: String!
   createdAt: DateTime!
-  createdAtBlock: Int!
+  createdAtBlock: BigInt!
 
   # Parameters
   loanToValue: Decimal!
@@ -42,7 +42,7 @@ type Market {
   totalCollateral: BigInt!
   utilization: Decimal!
   availableLiquidity: BigInt!
-  lastUpdate: Int!
+  lastUpdate: BigInt!
 
   # Relations
   positions(limit: Int, offset: Int): [UserPosition!]!
@@ -99,7 +99,7 @@ enum TransactionAction {
 type Transaction {
   id: ID!
   txHash: String!
-  blockHeight: Int!
+  blockHeight: BigInt!
   timestamp: DateTime!
   market: Market!
   userAddress: String!
@@ -132,7 +132,7 @@ type MarketSnapshot {
   id: ID!
   market: Market!
   timestamp: DateTime!
-  blockHeight: Int!
+  blockHeight: BigInt!
 
   borrowIndex: Decimal!
   liquidityIndex: Decimal!
@@ -153,7 +153,7 @@ type InterestAccrualEvent {
   market: Market!
   txHash: String!
   timestamp: DateTime!
-  blockHeight: Int!
+  blockHeight: BigInt!
 
   borrowIndex: Decimal!
   liquidityIndex: Decimal!
