@@ -285,10 +285,14 @@ jobs:
             git checkout "$REF"
           fi
 
-          # Copy artifacts - clear old ones first
+          # Copy artifacts - clear old ones first, then copy from /tmp/artifacts
           echo "Setting up artifacts..."
           rm -rf "$REPO_DIR/artifacts"
           mkdir -p "$REPO_DIR/artifacts"
+          if [[ -d /tmp/artifacts ]]; then
+            cp -r /tmp/artifacts/* "$REPO_DIR/artifacts/"
+            echo "Copied artifacts from /tmp/artifacts"
+          fi
 
           # Update frontend env for external access
           cat > "$REPO_DIR/e2e/docker-compose.override.yml" << 'COMPOSE_OVERRIDE'
@@ -368,18 +372,11 @@ jobs:
           ssh -o StrictHostKeyChecking=no root@$SERVER_IP "mkdir -p /tmp/artifacts"
           scp -o StrictHostKeyChecking=no -r artifacts/* root@$SERVER_IP:/tmp/artifacts/ 2>/dev/null || true
 
-          # Run setup (artifacts are copied to repo dir before docker-compose starts)
+          # Run setup (setup script copies artifacts from /tmp/artifacts internally)
           ssh -o StrictHostKeyChecking=no root@$SERVER_IP "
             export REPO='$REPO'
             export REF='$REF'
             chmod +x /tmp/setup-vm.sh
-
-            # Copy artifacts BEFORE running setup (which starts docker-compose)
-            mkdir -p /opt/stone-preview/artifacts
-            if [[ -d /tmp/artifacts ]]; then
-              cp -r /tmp/artifacts/* /opt/stone-preview/artifacts/
-            fi
-
             /tmp/setup-vm.sh
           "
 
