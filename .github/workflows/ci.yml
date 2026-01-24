@@ -87,5 +87,6 @@ jobs:
 
       - name: Build WASM contracts
         run: |
-          cargo build --release --target wasm32-unknown-unknown -p factory
-          cargo build --release --target wasm32-unknown-unknown -p market
+          cargo build --release --target wasm32-unknown-unknown -p stone-factory
+          cargo build --release --target wasm32-unknown-unknown -p stone-market
+          cargo build --release --target wasm32-unknown-unknown -p mock-oracle
