@@ -11,6 +11,7 @@ import { TokenIcon } from '@/components/ui/token-icon';
 import { DepositModal } from '@/components/modals/DepositModal';
 import { BorrowModal } from '@/components/modals/BorrowModal';
 import { RepayModal } from '@/components/modals/RepayModal';
+import { AdvancedTab } from '@/components/markets/advanced';
 import { useMarket } from '@/hooks/useMarkets';
 import { useUserPosition } from '@/hooks/useUserPosition';
 import { useWallet } from '@/lib/cosmjs/wallet';
@@ -458,11 +459,25 @@ export default function MarketDetailPage() {
               </TabsContent>
 
               <TabsContent value="advanced" className="mt-6">
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <p className="text-muted-foreground">Advanced market parameters coming soon</p>
-                  </CardContent>
-                </Card>
+                <AdvancedTab
+                  market={{
+                    oracle: market.config?.oracle,
+                    collateralDenom: market.collateralDenom,
+                    debtDenom: market.debtDenom,
+                    borrowRate: market.borrowApy / 100, // Convert from percentage to decimal
+                    liquidityRate: market.supplyApy / 100,
+                    utilization: market.utilization / 100, // Convert from percentage to decimal
+                    totalSupplied: market.totalSupplied,
+                    totalCollateral: market.totalCollateral,
+                    params: market.params
+                      ? {
+                          liquidation_threshold: market.params.liquidation_threshold,
+                          liquidation_bonus: market.params.liquidation_bonus,
+                          interest_rate_model: market.params.interest_rate_model as Record<string, unknown>,
+                        }
+                      : undefined,
+                  }}
+                />
               </TabsContent>
 
               <TabsContent value="activity" className="mt-6">

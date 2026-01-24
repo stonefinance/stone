@@ -14,6 +14,7 @@ export interface Market {
   borrowApy: number;
   totalSupplied: string;
   totalBorrowed: string;
+  totalCollateral?: string;
   utilization: number;
   availableLiquidity: string;
   loanToValue: number;
