@@ -42,6 +42,7 @@ function transformMarketDetail(market: MarketFieldsFragment): MarketDetail {
     borrowApy: parseRate(market.borrowRate),
     totalSupplied: market.totalSupply,
     totalBorrowed: market.totalDebt,
+    totalCollateral: market.totalCollateral,
     utilization: parseFloat(market.utilization) * 100,
     availableLiquidity: market.availableLiquidity,
     loanToValue: parseFloat(market.loanToValue) * 100,
