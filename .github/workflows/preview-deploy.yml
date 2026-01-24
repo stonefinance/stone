@@ -458,7 +458,7 @@ jobs:
 
             </details>
 
-            <sub>Preview environments are automatically destroyed after 4 hours of inactivity.</sub>
+            <sub>Preview environments are automatically destroyed when the PR is closed or after 48 hours of inactivity.</sub>
 
       - name: Create or update comment (failure)
         if: needs.deploy.result == 'failure'
