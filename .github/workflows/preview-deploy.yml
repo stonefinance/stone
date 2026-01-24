@@ -285,8 +285,9 @@ jobs:
             git checkout "$REF"
           fi
 
-          # Copy artifacts
+          # Copy artifacts - clear old ones first
           echo "Setting up artifacts..."
+          rm -rf "$REPO_DIR/artifacts"
           mkdir -p "$REPO_DIR/artifacts"
 
           # Update frontend env for external access
