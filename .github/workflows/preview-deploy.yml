@@ -96,7 +96,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
+          key: ${{ runner.os }}-cargo-wasm-v2-${{ hashFiles('**/Cargo.lock', '.cargo/config.toml') }}
 
       - name: Build WASM contracts
         run: |
