@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { TokenIcon } from '@/components/ui/token-icon';
-import { DepositModal } from '@/components/modals/DepositModal';
 import { BorrowModal } from '@/components/modals/BorrowModal';
 import { RepayModal } from '@/components/modals/RepayModal';
 import { AdvancedTab } from '@/components/markets/advanced';
@@ -20,6 +19,7 @@ import {
   formatDisplayAmount,
   formatPercentage,
   microToBase,
+  baseToMicro,
 } from '@/lib/utils/format';
 import { Info, ExternalLink } from 'lucide-react';
 import {
@@ -64,19 +64,19 @@ const CHART_DATA = generateChartData();
 export default function MarketDetailPage() {
   const params = useParams();
   const marketId = params.id as string;
-  const { isConnected, address } = useWallet();
+  const { isConnected, signingClient } = useWallet();
 
   const { data: market, isLoading: marketLoading } = useMarket(marketId);
   const { data: position } = useUserPosition(marketId);
 
-  const [depositModalOpen, setDepositModalOpen] = useState(false);
-  const [depositType, setDepositType] = useState<'supply' | 'collateral'>('supply');
   const [borrowModalOpen, setBorrowModalOpen] = useState(false);
   const [repayModalOpen, setRepayModalOpen] = useState(false);
 
   const [collateralAmount, setCollateralAmount] = useState('');
   const [borrowAmount, setBorrowAmount] = useState('');
   const [chartMetric, setChartMetric] = useState<'borrow' | 'supply' | 'liquidity'>('borrow');
+  const [isSupplying, setIsSupplying] = useState(false);
+  const [supplyError, setSupplyError] = useState<string | null>(null);
 
   // Fetch user balance for the collateral input
   const { balance: collateralBalance } = useBalance(
@@ -113,9 +113,23 @@ export default function MarketDetailPage() {
     );
   }
 
-  const handleOpenDeposit = (type: 'supply' | 'collateral') => {
-    setDepositType(type);
-    setDepositModalOpen(true);
+  const handleSupplyCollateral = async () => {
+    if (!signingClient || !isConnected) return;
+    if (!collateralAmount || parseFloat(collateralAmount) <= 0) return;
+
+    setIsSupplying(true);
+    setSupplyError(null);
+
+    try {
+      const microAmount = baseToMicro(collateralAmount);
+      const coin = { denom: market.config.collateral_denom, amount: microAmount };
+      await signingClient.supplyCollateral(market.address, coin);
+      setCollateralAmount('');
+    } catch (err) {
+      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+    } finally {
+      setIsSupplying(false);
+    }
   };
 
   // Calculate display values
@@ -611,13 +625,18 @@ export default function MarketDetailPage() {
                   </div>
                 </div>
 
+                {/* Error Display */}
+                {supplyError && (
+                  <p className="text-sm text-destructive">{supplyError}</p>
+                )}
+
                 {/* Action Button */}
                 <Button
                   className="w-full h-12 text-base"
-                  disabled={!isConnected || (!collateralAmount && !borrowAmount)}
+                  disabled={!isConnected || (!collateralAmount && !borrowAmount) || isSupplying}
                   onClick={() => {
                     if (collateralAmount && parseFloat(collateralAmount) > 0) {
-                      handleOpenDeposit('collateral');
+                      handleSupplyCollateral();
                     } else if (borrowAmount && parseFloat(borrowAmount) > 0) {
                       setBorrowModalOpen(true);
                     }
@@ -625,6 +644,8 @@ export default function MarketDetailPage() {
                 >
                   {!isConnected
                     ? 'Connect Wallet'
+                    : isSupplying
+                    ? 'Processing...'
                     : !collateralAmount && !borrowAmount
                     ? 'Enter an amount'
                     : collateralAmount && parseFloat(collateralAmount) > 0
@@ -648,9 +669,10 @@ export default function MarketDetailPage() {
                       <Button
                         variant="outline"
                         className="flex-1"
-                        onClick={() => handleOpenDeposit('supply')}
+                        onClick={handleSupplyCollateral}
+                        disabled={isSupplying || !collateralAmount || parseFloat(collateralAmount) <= 0}
                       >
-                        Supply More
+                        {isSupplying ? 'Processing...' : 'Supply More'}
                       </Button>
                     )}
                   </div>
@@ -662,15 +684,6 @@ export default function MarketDetailPage() {
       </main>
 
       {/* Modals */}
-      <DepositModal
-        open={depositModalOpen}
-        onOpenChange={setDepositModalOpen}
-        marketAddress={market.address}
-        denom={depositType === 'supply' ? market.config.debt_denom : market.config.collateral_denom}
-        displayDenom={depositType === 'supply' ? market.debtDenom : market.collateralDenom}
-        type={depositType}
-      />
-
       <BorrowModal
         open={borrowModalOpen}
         onOpenChange={setBorrowModalOpen}
