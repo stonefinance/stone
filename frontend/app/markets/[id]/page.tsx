@@ -408,7 +408,7 @@ export default function MarketDetailPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Created on</span>
-                        <span className="font-medium">2024-09-04</span>
+                        <span className="font-medium">{market.createdAt ? new Date(market.createdAt).toLocaleDateString() : '-'}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Liquidation LTV</span>
