@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: {
     command: 'docker compose -f docker-compose.e2e.yml up',
     url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true, // CI starts docker-compose separately, local dev may have it running
     timeout: 180000, // 3 minutes for full stack to start
   },
 });
