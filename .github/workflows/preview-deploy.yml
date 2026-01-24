@@ -301,20 +301,24 @@ jobs:
             echo "Copied artifacts from /tmp/artifacts"
           fi
 
-          # Update frontend env for external access
-          cat > "$REPO_DIR/e2e/docker-compose.override.yml" << 'COMPOSE_OVERRIDE'
+          # Get host IP for external access
+          HOST_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
+          echo "Host IP: $HOST_IP"
+
+          # Create override file with build args for frontend (NEXT_PUBLIC vars must be baked in at build time)
+          cat > "$REPO_DIR/e2e/docker-compose.override.yml" << COMPOSE_OVERRIDE
           services:
             frontend:
-              environment:
-                NEXT_PUBLIC_RPC_ENDPOINT: http://HOST_IP:26657
-                NEXT_PUBLIC_REST_ENDPOINT: http://HOST_IP:1317
-                NEXT_PUBLIC_GRAPHQL_ENDPOINT: http://HOST_IP:4000/graphql
-                NEXT_PUBLIC_WS_ENDPOINT: ws://HOST_IP:4000/graphql
+              build:
+                context: ../frontend
+                dockerfile: Dockerfile.e2e
+                args:
+                  NEXT_PUBLIC_GRAPHQL_URL: http://$HOST_IP:4000/graphql
+                  NEXT_PUBLIC_GRAPHQL_WS_URL: ws://$HOST_IP:4000/graphql
+                  NEXT_PUBLIC_CHAIN_ID: stone-local-1
+                  NEXT_PUBLIC_RPC_ENDPOINT: http://$HOST_IP:26657
+                  NEXT_PUBLIC_REST_ENDPOINT: http://$HOST_IP:1317
           COMPOSE_OVERRIDE
-
-          # Replace HOST_IP with actual IP
-          HOST_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
-          sed -i "s/HOST_IP/$HOST_IP/g" "$REPO_DIR/e2e/docker-compose.override.yml"
 
           # Debug: show artifacts
           echo "=== Artifacts in $REPO_DIR/artifacts ==="

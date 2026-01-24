@@ -2,6 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Build arguments for NEXT_PUBLIC env vars (baked in at build time)
+ARG NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4000/graphql
+ARG NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4000/graphql
+ARG NEXT_PUBLIC_CHAIN_ID=stone-local-1
+ARG NEXT_PUBLIC_RPC_ENDPOINT=http://localhost:26657
+ARG NEXT_PUBLIC_REST_ENDPOINT=http://localhost:1317
+
+# Set as environment variables for the build
+ENV NEXT_PUBLIC_GRAPHQL_URL=$NEXT_PUBLIC_GRAPHQL_URL
+ENV NEXT_PUBLIC_GRAPHQL_WS_URL=$NEXT_PUBLIC_GRAPHQL_WS_URL
+ENV NEXT_PUBLIC_CHAIN_ID=$NEXT_PUBLIC_CHAIN_ID
+ENV NEXT_PUBLIC_RPC_ENDPOINT=$NEXT_PUBLIC_RPC_ENDPOINT
+ENV NEXT_PUBLIC_REST_ENDPOINT=$NEXT_PUBLIC_REST_ENDPOINT
+
 # Install dependencies
 COPY package*.json ./
 RUN npm ci
@@ -9,7 +23,7 @@ RUN npm ci
 # Copy source
 COPY . .
 
-# Build the application
+# Build the application (NEXT_PUBLIC vars are baked in here)
 RUN npm run build
 
 # Expose port
