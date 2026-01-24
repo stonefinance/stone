@@ -216,20 +216,37 @@ Where should external price data come from?
 
 ## Implementation Priority
 
-### Phase 1: Available Data (No Backend Changes)
-1. Instantaneous Rates with historical chart
-2. IRM Breakdown with curve visualization
-3. Liquidation parameters (LLTV, penalty)
-4. Liquidation History table
-5. Oracle address display
+### Phase 1: Available Data (No Backend Changes) - IMPLEMENTED
+1. ✅ Instantaneous Rates with historical chart
+2. ✅ IRM Breakdown with curve visualization
+3. ✅ Liquidation parameters (LLTV, penalty)
+4. ✅ Liquidation History table (using mock data)
+5. ✅ Oracle address display
 
-### Phase 2: Oracle Integration
-1. Oracle price querying
-2. Value secured calculation
-3. Borrow amount to target (USD)
+### Phase 2: Oracle Integration - TODO
+1. TODO: Oracle price querying (currently using mock data in `lib/mock/advanced-tab-data.ts`)
+2. TODO: Value secured calculation (requires oracle price)
+3. TODO: Borrow amount to target in USD (requires oracle price)
 
-### Phase 3: Advanced Features
-1. Collateral at risk chart
-2. Bad debt tracking (if decided)
-3. Reference price integration
-4. "Trusted by" oracle metadata
+### Phase 3: Advanced Features - TODO
+1. TODO: Collateral at risk chart data (currently using mock positions in `lib/mock/advanced-tab-data.ts`)
+2. TODO: Bad debt tracking (if decided)
+3. TODO: Reference price integration (CoinGecko/DefiLlama)
+4. TODO: "Trusted by" oracle metadata
+
+---
+
+## Implementation Notes
+
+The Advanced tab has been implemented with mock data for features requiring backend/oracle integration.
+
+**Files with TODO items:**
+- `lib/mock/advanced-tab-data.ts` - Mock data file with TODO comments for each data source
+- `components/markets/advanced/AdvancedTab.tsx` - Main component with TODO comments
+- `components/markets/advanced/OracleAttributes.tsx` - Oracle data component
+- `components/markets/advanced/CollateralAtRisk.tsx` - Collateral risk chart
+- `components/markets/advanced/LiquidationHistory.tsx` - Liquidation history table
+
+**Calculation utilities (well-tested):**
+- `lib/utils/irm.ts` - Interest Rate Model calculations (22 tests)
+- `lib/utils/collateral-risk.ts` - Collateral at risk calculations (21 tests)
