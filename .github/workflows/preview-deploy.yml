@@ -102,9 +102,11 @@ jobs:
         run: |
           cargo build --release --target wasm32-unknown-unknown -p stone-factory
           cargo build --release --target wasm32-unknown-unknown -p stone-market
+          cargo build --release --target wasm32-unknown-unknown -p mock-oracle
           mkdir -p artifacts
           cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/
           cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/
+          cp target/wasm32-unknown-unknown/release/mock_oracle.wasm artifacts/
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -89,3 +89,4 @@ jobs:
         run: |
           cargo build --release --target wasm32-unknown-unknown -p stone-factory
           cargo build --release --target wasm32-unknown-unknown -p stone-market
+          cargo build --release --target wasm32-unknown-unknown -p mock-oracle
