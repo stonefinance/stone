@@ -20,6 +20,7 @@ interface WithdrawModalProps {
   marketAddress: string;
   displayDenom?: string;
   currentSupply?: string;
+  onSuccess?: () => void;
 }
 
 export function WithdrawModal({
@@ -28,6 +29,7 @@ export function WithdrawModal({
   marketAddress,
   displayDenom,
   currentSupply,
+  onSuccess,
 }: WithdrawModalProps) {
   const { signingClient, isConnected } = useWallet();
   const [amount, setAmount] = useState('');
@@ -54,6 +56,7 @@ export function WithdrawModal({
 
       setAmount('');
       onOpenChange(false);
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {

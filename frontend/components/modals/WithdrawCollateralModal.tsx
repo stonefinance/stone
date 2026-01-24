@@ -21,6 +21,7 @@ interface WithdrawCollateralModalProps {
   displayDenom?: string;
   currentCollateral?: string;
   hasDebt?: boolean;
+  onSuccess?: () => void;
 }
 
 export function WithdrawCollateralModal({
@@ -30,6 +31,7 @@ export function WithdrawCollateralModal({
   displayDenom,
   currentCollateral,
   hasDebt,
+  onSuccess,
 }: WithdrawCollateralModalProps) {
   const { signingClient, isConnected } = useWallet();
   const [amount, setAmount] = useState('');
@@ -56,6 +58,7 @@ export function WithdrawCollateralModal({
 
       setAmount('');
       onOpenChange(false);
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {

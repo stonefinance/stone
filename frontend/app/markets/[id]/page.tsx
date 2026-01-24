@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { TokenIcon } from '@/components/ui/token-icon';
-import { BorrowModal } from '@/components/modals/BorrowModal';
 import { RepayModal } from '@/components/modals/RepayModal';
 import { WithdrawModal } from '@/components/modals/WithdrawModal';
 import { WithdrawCollateralModal } from '@/components/modals/WithdrawCollateralModal';
@@ -68,11 +67,15 @@ export default function MarketDetailPage() {
   const marketId = params.id as string;
   const { isConnected, signingClient } = useWallet();
 
-  const { data: market, isLoading: marketLoading } = useMarket(marketId);
-  const { data: position } = useUserPosition(marketId);
+  const { data: market, isLoading: marketLoading, refetch: refetchMarket } = useMarket(marketId);
+  const { data: position, refetch: refetchPosition } = useUserPosition(marketId);
 
-  const [borrowModalOpen, setBorrowModalOpen] = useState(false);
+  // Refetch data after transactions
+  const refetchAll = async () => {
+    await Promise.all([refetchMarket(), refetchPosition()]);
+  };
   const [repayModalOpen, setRepayModalOpen] = useState(false);
+  const [isBorrowing, setIsBorrowing] = useState(false);
   const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
   const [withdrawCollateralModalOpen, setWithdrawCollateralModalOpen] = useState(false);
 
@@ -137,6 +140,7 @@ export default function MarketDetailPage() {
       const coin = { denom: market.config.collateral_denom, amount: microAmount };
       await signingClient.supplyCollateral(market.address, coin);
       setCollateralAmount('');
+      await refetchAll();
     } catch (err) {
       setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {
@@ -156,10 +160,30 @@ export default function MarketDetailPage() {
       const coin = { denom: market.config.debt_denom, amount: microAmount };
       await signingClient.supply(market.address, coin);
       setSupplyAmount('');
+      await refetchAll();
     } catch (err) {
       setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {
       setIsSupplying(false);
+    }
+  };
+
+  const handleBorrow = async () => {
+    if (!signingClient || !isConnected) return;
+    if (!borrowAmount || parseFloat(borrowAmount) <= 0) return;
+
+    setIsBorrowing(true);
+    setSupplyError(null);
+
+    try {
+      const microAmount = baseToMicro(borrowAmount);
+      await signingClient.borrow(market.address, microAmount);
+      setBorrowAmount('');
+      await refetchAll();
+    } catch (err) {
+      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+    } finally {
+      setIsBorrowing(false);
     }
   };
 
@@ -646,10 +670,10 @@ export default function MarketDetailPage() {
                   </>
                 ) : (
                   <>
-                    {/* Supply Collateral Input */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Collateral {market.collateralDenom}</span>
+                    {/* Add Collateral Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Add Collateral</span>
                         <Info className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="relative">
@@ -678,11 +702,24 @@ export default function MarketDetailPage() {
                           </Button>
                         </div>
                       </div>
+                      <Button
+                        className="w-full"
+                        disabled={!isConnected || !collateralAmount || parseFloat(collateralAmount) <= 0 || isSupplyingCollateral}
+                        onClick={handleSupplyCollateral}
+                      >
+                        {!isConnected
+                          ? 'Connect Wallet'
+                          : isSupplyingCollateral
+                          ? 'Processing...'
+                          : 'Add Collateral'}
+                      </Button>
                     </div>
 
-                    {/* Borrow Input */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
+                    <div className="border-t" />
+
+                    {/* Borrow Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Borrow {market.debtDenom}</span>
                         <Info className="h-4 w-4 text-muted-foreground" />
                       </div>
@@ -712,6 +749,17 @@ export default function MarketDetailPage() {
                           </Button>
                         </div>
                       </div>
+                      <Button
+                        className="w-full"
+                        disabled={!isConnected || !borrowAmount || parseFloat(borrowAmount) <= 0 || isBorrowing}
+                        onClick={handleBorrow}
+                      >
+                        {!isConnected
+                          ? 'Connect Wallet'
+                          : isBorrowing
+                          ? 'Processing...'
+                          : 'Borrow'}
+                      </Button>
                     </div>
 
                     {/* Position Summary */}
@@ -754,29 +802,6 @@ export default function MarketDetailPage() {
                       <p className="text-sm text-destructive">{supplyError}</p>
                     )}
 
-                    {/* Action Button */}
-                    <Button
-                      className="w-full h-12 text-base"
-                      disabled={!isConnected || (!collateralAmount && !borrowAmount) || isSupplyingCollateral}
-                      onClick={() => {
-                        if (collateralAmount && parseFloat(collateralAmount) > 0) {
-                          handleSupplyCollateral();
-                        } else if (borrowAmount && parseFloat(borrowAmount) > 0) {
-                          setBorrowModalOpen(true);
-                        }
-                      }}
-                    >
-                      {!isConnected
-                        ? 'Connect Wallet'
-                        : isSupplyingCollateral
-                        ? 'Processing...'
-                        : !collateralAmount && !borrowAmount
-                        ? 'Enter an amount'
-                        : collateralAmount && parseFloat(collateralAmount) > 0
-                        ? 'Add Collateral'
-                        : 'Borrow'}
-                    </Button>
-
                     {/* Quick Actions */}
                     {isConnected && (userCollateral > 0 || userDebt > 0) && (
                       <div className="flex gap-2 pt-2">
@@ -795,7 +820,7 @@ export default function MarketDetailPage() {
                             className="flex-1"
                             onClick={() => setWithdrawCollateralModalOpen(true)}
                           >
-                            Withdraw
+                            Withdraw Collateral
                           </Button>
                         )}
                       </div>
@@ -809,15 +834,6 @@ export default function MarketDetailPage() {
       </main>
 
       {/* Modals */}
-      <BorrowModal
-        open={borrowModalOpen}
-        onOpenChange={setBorrowModalOpen}
-        marketAddress={market.address}
-        denom={market.config.debt_denom}
-        displayDenom={market.debtDenom}
-        maxBorrowValue={position?.maxBorrowValue}
-      />
-
       <RepayModal
         open={repayModalOpen}
         onOpenChange={setRepayModalOpen}
@@ -825,6 +841,7 @@ export default function MarketDetailPage() {
         denom={market.config.debt_denom}
         displayDenom={market.debtDenom}
         currentDebt={position?.debtAmount}
+        onSuccess={refetchAll}
       />
 
       <WithdrawModal
@@ -833,6 +850,7 @@ export default function MarketDetailPage() {
         marketAddress={market.address}
         displayDenom={market.debtDenom}
         currentSupply={position?.supplyAmount}
+        onSuccess={refetchAll}
       />
 
       <WithdrawCollateralModal
@@ -842,6 +860,7 @@ export default function MarketDetailPage() {
         displayDenom={market.collateralDenom}
         currentCollateral={position?.collateralAmount}
         hasDebt={userDebt > 0}
+        onSuccess={refetchAll}
       />
     </div>
   );

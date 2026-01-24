@@ -21,6 +21,7 @@ interface RepayModalProps {
   denom: string; // Minimal denom for transactions (e.g., "ustone")
   displayDenom?: string; // Display denom for UI (e.g., "STONE")
   currentDebt?: string;
+  onSuccess?: () => void;
 }
 
 export function RepayModal({
@@ -30,6 +31,7 @@ export function RepayModal({
   denom,
   displayDenom,
   currentDebt,
+  onSuccess,
 }: RepayModalProps) {
   const { signingClient, isConnected } = useWallet();
   const [amount, setAmount] = useState('');
@@ -58,6 +60,7 @@ export function RepayModal({
 
       setAmount('');
       onOpenChange(false);
+      onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {
