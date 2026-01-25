@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { TokenIcon } from '@/components/ui/token-icon';
-import { BorrowModal } from '@/components/modals/BorrowModal';
 import { RepayModal } from '@/components/modals/RepayModal';
+import { WithdrawModal } from '@/components/modals/WithdrawModal';
+import { WithdrawCollateralModal } from '@/components/modals/WithdrawCollateralModal';
 import { AdvancedTab } from '@/components/markets/advanced';
 import { useMarket } from '@/hooks/useMarkets';
 import { useUserPosition } from '@/hooks/useUserPosition';
@@ -66,21 +67,35 @@ export default function MarketDetailPage() {
   const marketId = params.id as string;
   const { isConnected, signingClient } = useWallet();
 
-  const { data: market, isLoading: marketLoading } = useMarket(marketId);
-  const { data: position } = useUserPosition(marketId);
+  const { data: market, isLoading: marketLoading, refetch: refetchMarket } = useMarket(marketId);
+  const { data: position, refetch: refetchPosition } = useUserPosition(marketId);
 
-  const [borrowModalOpen, setBorrowModalOpen] = useState(false);
+  // Refetch data after transactions
+  const refetchAll = async () => {
+    await Promise.all([refetchMarket(), refetchPosition()]);
+  };
   const [repayModalOpen, setRepayModalOpen] = useState(false);
+  const [isBorrowing, setIsBorrowing] = useState(false);
+  const [withdrawModalOpen, setWithdrawModalOpen] = useState(false);
+  const [withdrawCollateralModalOpen, setWithdrawCollateralModalOpen] = useState(false);
 
+  const [actionTab, setActionTab] = useState<'lend' | 'borrow'>('borrow');
+  const [supplyAmount, setSupplyAmount] = useState('');
   const [collateralAmount, setCollateralAmount] = useState('');
   const [borrowAmount, setBorrowAmount] = useState('');
   const [chartMetric, setChartMetric] = useState<'borrow' | 'supply' | 'liquidity'>('borrow');
   const [isSupplying, setIsSupplying] = useState(false);
+  const [isSupplyingCollateral, setIsSupplyingCollateral] = useState(false);
   const [supplyError, setSupplyError] = useState<string | null>(null);
 
   // Fetch user balance for the collateral input
   const { balance: collateralBalance } = useBalance(
     isConnected && market ? market.config.collateral_denom : undefined
+  );
+
+  // Fetch user balance for the debt token (for lending/supply)
+  const { balance: debtBalance } = useBalance(
+    isConnected && market ? market.config.debt_denom : undefined
   );
 
   // Only show loading skeleton if we don't have cached data yet
@@ -117,7 +132,7 @@ export default function MarketDetailPage() {
     if (!signingClient || !isConnected) return;
     if (!collateralAmount || parseFloat(collateralAmount) <= 0) return;
 
-    setIsSupplying(true);
+    setIsSupplyingCollateral(true);
     setSupplyError(null);
 
     try {
@@ -125,6 +140,27 @@ export default function MarketDetailPage() {
       const coin = { denom: market.config.collateral_denom, amount: microAmount };
       await signingClient.supplyCollateral(market.address, coin);
       setCollateralAmount('');
+      await refetchAll();
+    } catch (err) {
+      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+    } finally {
+      setIsSupplyingCollateral(false);
+    }
+  };
+
+  const handleSupply = async () => {
+    if (!signingClient || !isConnected) return;
+    if (!supplyAmount || parseFloat(supplyAmount) <= 0) return;
+
+    setIsSupplying(true);
+    setSupplyError(null);
+
+    try {
+      const microAmount = baseToMicro(supplyAmount);
+      const coin = { denom: market.config.debt_denom, amount: microAmount };
+      await signingClient.supply(market.address, coin);
+      setSupplyAmount('');
+      await refetchAll();
     } catch (err) {
       setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
     } finally {
@@ -132,11 +168,29 @@ export default function MarketDetailPage() {
     }
   };
 
+  const handleBorrow = async () => {
+    if (!signingClient || !isConnected) return;
+    if (!borrowAmount || parseFloat(borrowAmount) <= 0) return;
+
+    setIsBorrowing(true);
+    setSupplyError(null);
+
+    try {
+      const microAmount = baseToMicro(borrowAmount);
+      await signingClient.borrow(market.address, microAmount);
+      setBorrowAmount('');
+      await refetchAll();
+    } catch (err) {
+      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+    } finally {
+      setIsBorrowing(false);
+    }
+  };
+
   // Calculate display values
   const totalMarketSize = parseFloat(microToBase(market.totalSupplied));
   const totalLiquidity = parseFloat(microToBase(market.availableLiquidity));
   const rate = market.borrowApy;
-  const ltv = market.loanToValue * 100;
   const liquidationLtv = market.params?.liquidation_threshold
     ? parseFloat(market.params.liquidation_threshold) * 100
     : 86;
@@ -354,7 +408,7 @@ export default function MarketDetailPage() {
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Created on</span>
-                        <span className="font-medium">2024-09-04</span>
+                        <span className="font-medium">{market.createdAt ? new Date(market.createdAt).toLocaleDateString() : '-'}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Liquidation LTV</span>
@@ -509,173 +563,269 @@ export default function MarketDetailPage() {
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex bg-muted rounded-lg p-1">
-                  <button className="flex-1 px-4 py-2 text-sm font-medium rounded-md bg-background shadow">
+                  <button
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      actionTab === 'lend'
+                        ? 'bg-background shadow'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    onClick={() => setActionTab('lend')}
+                  >
+                    Lend
+                  </button>
+                  <button
+                    className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      actionTab === 'borrow'
+                        ? 'bg-background shadow'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                    onClick={() => setActionTab('borrow')}
+                  >
                     Borrow
                   </button>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Supply Collateral Input */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Supply Collateral {market.collateralDenom}</span>
-                    <Info className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="relative">
-                    <Input
-                      type="text"
-                      placeholder="0.00"
-                      value={collateralAmount}
-                      onChange={(e) => setCollateralAmount(e.target.value)}
-                      className="pr-20 text-lg h-12"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        {collateralBalance ? formatDisplayAmount(parseFloat(microToBase(collateralBalance)), 2) : '0.00'} {market.collateralDenom}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => {
-                          if (collateralBalance) {
-                            setCollateralAmount(microToBase(collateralBalance));
-                          }
-                        }}
-                      >
-                        MAX
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Borrow Input */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Borrow {market.debtDenom}</span>
-                    <Info className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                  <div className="relative">
-                    <Input
-                      type="text"
-                      placeholder="0.00"
-                      value={borrowAmount}
-                      onChange={(e) => setBorrowAmount(e.target.value)}
-                      className="pr-20 text-lg h-12"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        {position?.maxBorrowValue ? formatDisplayAmount(position.maxBorrowValue, 2) : '0.00'} {market.debtDenom}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => {
-                          if (position?.maxBorrowValue) {
-                            setBorrowAmount(position.maxBorrowValue.toString());
-                          }
-                        }}
-                      >
-                        MAX
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Position Summary */}
-                <div className="space-y-3 pt-2 border-t">
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span className="text-muted-foreground">Collateral ({market.collateralDenom})</span>
-                    </div>
-                    <span>{formatDisplayAmount(userCollateral)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full bg-purple-500" />
-                      <span className="text-muted-foreground">Supplied ({market.debtDenom})</span>
-                    </div>
-                    <span>{formatDisplayAmount(userSupply)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1">
-                      <div className="w-2 h-2 rounded-full bg-red-500" />
-                      <span className="text-muted-foreground">Debt ({market.debtDenom})</span>
-                    </div>
-                    <span>{formatDisplayAmount(userDebt)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">LTV</span>
-                    <span>{currentLtv.toFixed(0)}%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Liquidation LTV</span>
-                      <div className="w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center">
-                        <span className="text-[10px] text-black font-bold">!</span>
+                {actionTab === 'lend' ? (
+                  <>
+                    {/* Supply (Lend) Input */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Supply {market.debtDenom}</span>
+                        <Info className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          placeholder="0.00"
+                          value={supplyAmount}
+                          onChange={(e) => setSupplyAmount(e.target.value)}
+                          className="pr-20 text-lg h-12"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {debtBalance ? formatDisplayAmount(parseFloat(microToBase(debtBalance)), 2) : '0.00'} {market.debtDenom}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              if (debtBalance) {
+                                setSupplyAmount(microToBase(debtBalance));
+                              }
+                            }}
+                          >
+                            MAX
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                    <span>{liquidationLtv.toFixed(0)}%</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Rate</span>
-                    <span>{formatPercentage(rate)}</span>
-                  </div>
-                </div>
 
-                {/* Error Display */}
-                {supplyError && (
-                  <p className="text-sm text-destructive">{supplyError}</p>
-                )}
+                    {/* Lend Position Summary */}
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-purple-500" />
+                          <span className="text-muted-foreground">Your Supply ({market.debtDenom})</span>
+                        </div>
+                        <span>{formatDisplayAmount(userSupply)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Supply APY</span>
+                        <span className="text-green-600">{formatPercentage(market.supplyApy)}</span>
+                      </div>
+                    </div>
 
-                {/* Action Button */}
-                <Button
-                  className="w-full h-12 text-base"
-                  disabled={!isConnected || (!collateralAmount && !borrowAmount) || isSupplying}
-                  onClick={() => {
-                    if (collateralAmount && parseFloat(collateralAmount) > 0) {
-                      handleSupplyCollateral();
-                    } else if (borrowAmount && parseFloat(borrowAmount) > 0) {
-                      setBorrowModalOpen(true);
-                    }
-                  }}
-                >
-                  {!isConnected
-                    ? 'Connect Wallet'
-                    : isSupplying
-                    ? 'Processing...'
-                    : !collateralAmount && !borrowAmount
-                    ? 'Enter an amount'
-                    : collateralAmount && parseFloat(collateralAmount) > 0
-                    ? 'Supply Collateral'
-                    : 'Borrow'}
-                </Button>
+                    {/* Error Display */}
+                    {supplyError && (
+                      <p className="text-sm text-destructive">{supplyError}</p>
+                    )}
 
-                {/* Quick Actions */}
-                {isConnected && (userCollateral > 0 || userDebt > 0) && (
-                  <div className="flex gap-2 pt-2">
-                    {userDebt > 0 && (
+                    {/* Supply Action Button */}
+                    <Button
+                      className="w-full h-12 text-base"
+                      disabled={!isConnected || !supplyAmount || parseFloat(supplyAmount) <= 0 || isSupplying}
+                      onClick={handleSupply}
+                    >
+                      {!isConnected
+                        ? 'Connect Wallet'
+                        : isSupplying
+                        ? 'Processing...'
+                        : !supplyAmount || parseFloat(supplyAmount) <= 0
+                        ? 'Enter an amount'
+                        : 'Supply'}
+                    </Button>
+
+                    {/* Withdraw Supply */}
+                    {isConnected && userSupply > 0 && (
                       <Button
                         variant="outline"
-                        className="flex-1"
-                        onClick={() => setRepayModalOpen(true)}
+                        className="w-full"
+                        onClick={() => setWithdrawModalOpen(true)}
                       >
-                        Repay
+                        Withdraw Supply
                       </Button>
                     )}
-                    {userCollateral > 0 && (
+                  </>
+                ) : (
+                  <>
+                    {/* Add Collateral Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Add Collateral</span>
+                        <Info className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          placeholder="0.00"
+                          value={collateralAmount}
+                          onChange={(e) => setCollateralAmount(e.target.value)}
+                          className="pr-20 text-lg h-12"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {collateralBalance ? formatDisplayAmount(parseFloat(microToBase(collateralBalance)), 2) : '0.00'} {market.collateralDenom}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              if (collateralBalance) {
+                                setCollateralAmount(microToBase(collateralBalance));
+                              }
+                            }}
+                          >
+                            MAX
+                          </Button>
+                        </div>
+                      </div>
                       <Button
-                        variant="outline"
-                        className="flex-1"
+                        className="w-full"
+                        disabled={!isConnected || !collateralAmount || parseFloat(collateralAmount) <= 0 || isSupplyingCollateral}
                         onClick={handleSupplyCollateral}
-                        disabled={isSupplying || !collateralAmount || parseFloat(collateralAmount) <= 0}
                       >
-                        {isSupplying ? 'Processing...' : 'Supply More'}
+                        {!isConnected
+                          ? 'Connect Wallet'
+                          : isSupplyingCollateral
+                          ? 'Processing...'
+                          : 'Add Collateral'}
                       </Button>
+                    </div>
+
+                    <div className="border-t" />
+
+                    {/* Borrow Section */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Borrow {market.debtDenom}</span>
+                        <Info className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div className="relative">
+                        <Input
+                          type="text"
+                          placeholder="0.00"
+                          value={borrowAmount}
+                          onChange={(e) => setBorrowAmount(e.target.value)}
+                          className="pr-20 text-lg h-12"
+                        />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {position?.maxBorrowValue ? formatDisplayAmount(position.maxBorrowValue, 2) : '0.00'} {market.debtDenom}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              if (position?.maxBorrowValue) {
+                                setBorrowAmount(position.maxBorrowValue.toString());
+                              }
+                            }}
+                          >
+                            MAX
+                          </Button>
+                        </div>
+                      </div>
+                      <Button
+                        className="w-full"
+                        disabled={!isConnected || !borrowAmount || parseFloat(borrowAmount) <= 0 || isBorrowing}
+                        onClick={handleBorrow}
+                      >
+                        {!isConnected
+                          ? 'Connect Wallet'
+                          : isBorrowing
+                          ? 'Processing...'
+                          : 'Borrow'}
+                      </Button>
+                    </div>
+
+                    {/* Position Summary */}
+                    <div className="space-y-3 pt-2 border-t">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                          <span className="text-muted-foreground">Collateral ({market.collateralDenom})</span>
+                        </div>
+                        <span>{formatDisplayAmount(userCollateral)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full bg-red-500" />
+                          <span className="text-muted-foreground">Debt ({market.debtDenom})</span>
+                        </div>
+                        <span>{formatDisplayAmount(userDebt)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">LTV</span>
+                        <span>{currentLtv.toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">Liquidation LTV</span>
+                          <div className="w-4 h-4 rounded-full bg-yellow-500 flex items-center justify-center">
+                            <span className="text-[10px] text-black font-bold">!</span>
+                          </div>
+                        </div>
+                        <span>{liquidationLtv.toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Borrow APY</span>
+                        <span className="text-red-600">{formatPercentage(rate)}</span>
+                      </div>
+                    </div>
+
+                    {/* Error Display */}
+                    {supplyError && (
+                      <p className="text-sm text-destructive">{supplyError}</p>
                     )}
-                  </div>
+
+                    {/* Quick Actions */}
+                    {isConnected && (userCollateral > 0 || userDebt > 0) && (
+                      <div className="flex gap-2 pt-2">
+                        {userDebt > 0 && (
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => setRepayModalOpen(true)}
+                          >
+                            Repay
+                          </Button>
+                        )}
+                        {userCollateral > 0 && (
+                          <Button
+                            variant="outline"
+                            className="flex-1"
+                            onClick={() => setWithdrawCollateralModalOpen(true)}
+                          >
+                            Withdraw Collateral
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -684,15 +834,6 @@ export default function MarketDetailPage() {
       </main>
 
       {/* Modals */}
-      <BorrowModal
-        open={borrowModalOpen}
-        onOpenChange={setBorrowModalOpen}
-        marketAddress={market.address}
-        denom={market.config.debt_denom}
-        displayDenom={market.debtDenom}
-        maxBorrowValue={position?.maxBorrowValue}
-      />
-
       <RepayModal
         open={repayModalOpen}
         onOpenChange={setRepayModalOpen}
@@ -700,6 +841,26 @@ export default function MarketDetailPage() {
         denom={market.config.debt_denom}
         displayDenom={market.debtDenom}
         currentDebt={position?.debtAmount}
+        onSuccess={refetchAll}
+      />
+
+      <WithdrawModal
+        open={withdrawModalOpen}
+        onOpenChange={setWithdrawModalOpen}
+        marketAddress={market.address}
+        displayDenom={market.debtDenom}
+        currentSupply={position?.supplyAmount}
+        onSuccess={refetchAll}
+      />
+
+      <WithdrawCollateralModal
+        open={withdrawCollateralModalOpen}
+        onOpenChange={setWithdrawCollateralModalOpen}
+        marketAddress={market.address}
+        displayDenom={market.collateralDenom}
+        currentCollateral={position?.collateralAmount}
+        hasDebt={userDebt > 0}
+        onSuccess={refetchAll}
       />
     </div>
   );

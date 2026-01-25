@@ -14,31 +14,29 @@ import { Label } from '@/components/ui/label';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { baseToMicro, formatDisplayAmount, microToBase } from '@/lib/utils/format';
 
-interface RepayModalProps {
+interface WithdrawModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   marketAddress: string;
-  denom: string; // Minimal denom for transactions (e.g., "ustone")
-  displayDenom?: string; // Display denom for UI (e.g., "STONE")
-  currentDebt?: string;
+  displayDenom?: string;
+  currentSupply?: string;
   onSuccess?: () => void;
 }
 
-export function RepayModal({
+export function WithdrawModal({
   open,
   onOpenChange,
   marketAddress,
-  denom,
   displayDenom,
-  currentDebt,
+  currentSupply,
   onSuccess,
-}: RepayModalProps) {
+}: WithdrawModalProps) {
   const { signingClient, isConnected } = useWallet();
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRepay = async () => {
+  const handleWithdraw = async () => {
     if (!signingClient || !isConnected) {
       setError('Please connect your wallet');
       return;
@@ -54,9 +52,7 @@ export function RepayModal({
 
     try {
       const microAmount = baseToMicro(amount);
-      const coin = { denom, amount: microAmount };
-
-      await signingClient.repay(marketAddress, coin);
+      await signingClient.withdraw(marketAddress, microAmount);
 
       setAmount('');
       onOpenChange(false);
@@ -68,10 +64,10 @@ export function RepayModal({
     }
   };
 
-  const handleRepayMax = () => {
-    if (currentDebt) {
-      const debtInBase = microToBase(currentDebt);
-      setAmount(debtInBase);
+  const handleWithdrawMax = () => {
+    if (currentSupply) {
+      const supplyInBase = microToBase(currentSupply);
+      setAmount(supplyInBase);
     }
   };
 
@@ -79,30 +75,30 @@ export function RepayModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Repay</DialogTitle>
+          <DialogTitle>Withdraw Supply</DialogTitle>
           <DialogDescription>
-            Repay your borrowed assets
+            Withdraw your supplied liquidity
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pt-4">
-          {currentDebt && (
+          {currentSupply && (
             <div className="p-3 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">Current debt</p>
+              <p className="text-sm text-muted-foreground">Your supply</p>
               <p className="text-lg font-semibold">
-                {formatDisplayAmount(microToBase(currentDebt))} {displayDenom || denom}
+                {formatDisplayAmount(microToBase(currentSupply))} {displayDenom}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="repay-amount">Amount ({displayDenom || denom})</Label>
-              {currentDebt && (
+              <Label htmlFor="withdraw-amount">Amount ({displayDenom})</Label>
+              {currentSupply && (
                 <Button
                   variant="link"
                   size="sm"
-                  onClick={handleRepayMax}
+                  onClick={handleWithdrawMax}
                   className="h-auto p-0 text-xs"
                 >
                   MAX
@@ -110,7 +106,7 @@ export function RepayModal({
               )}
             </div>
             <Input
-              id="repay-amount"
+              id="withdraw-amount"
               type="number"
               placeholder="0.00"
               value={amount}
@@ -133,11 +129,11 @@ export function RepayModal({
               Cancel
             </Button>
             <Button
-              onClick={handleRepay}
+              onClick={handleWithdraw}
               className="flex-1"
               disabled={isLoading || !isConnected}
             >
-              {isLoading ? 'Processing...' : 'Repay'}
+              {isLoading ? 'Processing...' : 'Withdraw'}
             </Button>
           </div>
         </div>

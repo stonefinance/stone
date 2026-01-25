@@ -14,31 +14,31 @@ import { Label } from '@/components/ui/label';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { baseToMicro, formatDisplayAmount, microToBase } from '@/lib/utils/format';
 
-interface RepayModalProps {
+interface WithdrawCollateralModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   marketAddress: string;
-  denom: string; // Minimal denom for transactions (e.g., "ustone")
-  displayDenom?: string; // Display denom for UI (e.g., "STONE")
-  currentDebt?: string;
+  displayDenom?: string;
+  currentCollateral?: string;
+  hasDebt?: boolean;
   onSuccess?: () => void;
 }
 
-export function RepayModal({
+export function WithdrawCollateralModal({
   open,
   onOpenChange,
   marketAddress,
-  denom,
   displayDenom,
-  currentDebt,
+  currentCollateral,
+  hasDebt,
   onSuccess,
-}: RepayModalProps) {
+}: WithdrawCollateralModalProps) {
   const { signingClient, isConnected } = useWallet();
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRepay = async () => {
+  const handleWithdraw = async () => {
     if (!signingClient || !isConnected) {
       setError('Please connect your wallet');
       return;
@@ -54,9 +54,7 @@ export function RepayModal({
 
     try {
       const microAmount = baseToMicro(amount);
-      const coin = { denom, amount: microAmount };
-
-      await signingClient.repay(marketAddress, coin);
+      await signingClient.withdrawCollateral(marketAddress, microAmount);
 
       setAmount('');
       onOpenChange(false);
@@ -68,10 +66,10 @@ export function RepayModal({
     }
   };
 
-  const handleRepayMax = () => {
-    if (currentDebt) {
-      const debtInBase = microToBase(currentDebt);
-      setAmount(debtInBase);
+  const handleWithdrawMax = () => {
+    if (currentCollateral) {
+      const collateralInBase = microToBase(currentCollateral);
+      setAmount(collateralInBase);
     }
   };
 
@@ -79,30 +77,38 @@ export function RepayModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Repay</DialogTitle>
+          <DialogTitle>Withdraw Collateral</DialogTitle>
           <DialogDescription>
-            Repay your borrowed assets
+            Withdraw your posted collateral
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pt-4">
-          {currentDebt && (
+          {currentCollateral && (
             <div className="p-3 bg-muted rounded-lg">
-              <p className="text-sm text-muted-foreground">Current debt</p>
+              <p className="text-sm text-muted-foreground">Your collateral</p>
               <p className="text-lg font-semibold">
-                {formatDisplayAmount(microToBase(currentDebt))} {displayDenom || denom}
+                {formatDisplayAmount(microToBase(currentCollateral))} {displayDenom}
+              </p>
+            </div>
+          )}
+
+          {hasDebt && (
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-sm text-yellow-600 dark:text-yellow-500">
+                You have outstanding debt. Withdrawal is limited to maintain your LTV ratio.
               </p>
             </div>
           )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="repay-amount">Amount ({displayDenom || denom})</Label>
-              {currentDebt && (
+              <Label htmlFor="withdraw-collateral-amount">Amount ({displayDenom})</Label>
+              {currentCollateral && !hasDebt && (
                 <Button
                   variant="link"
                   size="sm"
-                  onClick={handleRepayMax}
+                  onClick={handleWithdrawMax}
                   className="h-auto p-0 text-xs"
                 >
                   MAX
@@ -110,7 +116,7 @@ export function RepayModal({
               )}
             </div>
             <Input
-              id="repay-amount"
+              id="withdraw-collateral-amount"
               type="number"
               placeholder="0.00"
               value={amount}
@@ -133,11 +139,11 @@ export function RepayModal({
               Cancel
             </Button>
             <Button
-              onClick={handleRepay}
+              onClick={handleWithdraw}
               className="flex-1"
               disabled={isLoading || !isConnected}
             >
-              {isLoading ? 'Processing...' : 'Repay'}
+              {isLoading ? 'Processing...' : 'Withdraw'}
             </Button>
           </div>
         </div>
