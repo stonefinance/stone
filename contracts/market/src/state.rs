@@ -1,6 +1,9 @@
 use cw_storage_plus::{Item, Map};
 use stone_types::{MarketConfig, MarketParams, MarketState};
 
+#[cfg(test)]
+use stone_types::{OracleConfig, OracleType};
+
 pub const CONTRACT_NAME: &str = "crates.io:stone-market";
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -38,7 +41,13 @@ mod tests {
         let config = MarketConfig {
             factory: Addr::unchecked("factory"),
             curator: Addr::unchecked("curator"),
-            oracle: Addr::unchecked("oracle"),
+            oracle_config: OracleConfig {
+                address: Addr::unchecked("oracle"),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: Addr::unchecked("collector"),

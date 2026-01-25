@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Coin};
 
-use crate::CreateMarketParams;
+use crate::{CreateMarketParams, OracleConfigUnchecked};
 
 /// Factory contract configuration.
 #[cw_serde]
@@ -59,8 +59,8 @@ pub enum FactoryExecuteMsg {
         collateral_denom: String,
         /// Debt asset denom
         debt_denom: String,
-        /// Oracle contract address
-        oracle: String,
+        /// Oracle configuration with address and type
+        oracle_config: OracleConfigUnchecked,
         /// Market parameters (boxed to reduce enum size)
         params: Box<CreateMarketParams>,
         /// Optional salt for creating multiple markets with same pair

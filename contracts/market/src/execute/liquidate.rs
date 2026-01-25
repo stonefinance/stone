@@ -64,10 +64,10 @@ pub fn execute_liquidate(
     // Get prices
     let collateral_price = query_price(
         deps.as_ref(),
-        config.oracle.as_str(),
+        config.oracle_config.address.as_str(),
         &config.collateral_denom,
     )?;
-    let debt_price = query_price(deps.as_ref(), config.oracle.as_str(), &config.debt_denom)?;
+    let debt_price = query_price(deps.as_ref(), config.oracle_config.address.as_str(), &config.debt_denom)?;
 
     // Calculate collateral to seize
     // debt_value = actual_debt_repaid * debt_price
@@ -212,7 +212,7 @@ mod tests {
         coins, from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery,
     };
     use stone_types::{
-        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse,
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg, OracleType, PriceResponse,
     };
 
     fn setup_liquidatable_position(
@@ -230,7 +230,13 @@ mod tests {
         let config = MarketConfig {
             factory: api.addr_make("factory"),
             curator: api.addr_make("curator"),
-            oracle: oracle.clone(),
+            oracle_config: OracleConfig {
+                address: oracle.clone(),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),

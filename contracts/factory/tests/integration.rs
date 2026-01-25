@@ -9,7 +9,7 @@ use stone_testing::{
 };
 use stone_types::{
     FactoryExecuteMsg, FactoryInstantiateMsg, FactoryQueryMsg, MarketConfigResponse,
-    MarketCountResponse, MarketQueryMsg, MarketsResponse,
+    MarketCountResponse, MarketQueryMsg, MarketsResponse, OracleConfigUnchecked, OracleType,
 };
 
 fn factory_wrapper() -> Box<dyn Contract<Empty>> {
@@ -109,7 +109,13 @@ fn create_market_deploys_and_indexes() {
     let create_msg = FactoryExecuteMsg::CreateMarket {
         collateral_denom: COLLATERAL_DENOM.to_string(),
         debt_denom: DEBT_DENOM.to_string(),
-        oracle: env.oracle_addr.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: env.oracle_addr.to_string(),
+            oracle_type: OracleType::Generic {
+                expected_code_id: None,
+                max_staleness_secs: 300,
+            },
+        },
         params: Box::new(default_market_params()),
         salt: None,
     };
@@ -185,7 +191,13 @@ fn create_market_requires_fee() {
     let create_msg = FactoryExecuteMsg::CreateMarket {
         collateral_denom: COLLATERAL_DENOM.to_string(),
         debt_denom: DEBT_DENOM.to_string(),
-        oracle: env.oracle_addr.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: env.oracle_addr.to_string(),
+            oracle_type: OracleType::Generic {
+                expected_code_id: None,
+                max_staleness_secs: 300,
+            },
+        },
         params: Box::new(default_market_params()),
         salt: None,
     };
@@ -219,7 +231,13 @@ fn create_market_rejects_invalid_oracle() {
     let create_msg = FactoryExecuteMsg::CreateMarket {
         collateral_denom: COLLATERAL_DENOM.to_string(),
         debt_denom: DEBT_DENOM.to_string(),
-        oracle: env.oracle_addr.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: env.oracle_addr.to_string(),
+            oracle_type: OracleType::Generic {
+                expected_code_id: None,
+                max_staleness_secs: 300,
+            },
+        },
         params: Box::new(default_market_params()),
         salt: None,
     };
@@ -248,7 +266,13 @@ fn create_market_rejects_duplicates() {
     let create_msg = FactoryExecuteMsg::CreateMarket {
         collateral_denom: COLLATERAL_DENOM.to_string(),
         debt_denom: DEBT_DENOM.to_string(),
-        oracle: env.oracle_addr.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: env.oracle_addr.to_string(),
+            oracle_type: OracleType::Generic {
+                expected_code_id: None,
+                max_staleness_secs: 300,
+            },
+        },
         params: Box::new(default_market_params()),
         salt: None,
     };

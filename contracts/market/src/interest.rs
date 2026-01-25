@@ -156,7 +156,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::mock_dependencies;
     use cosmwasm_std::Addr;
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
+    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
 
     fn setup_market(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -168,7 +168,13 @@ mod tests {
         let config = MarketConfig {
             factory: Addr::unchecked("factory"),
             curator: Addr::unchecked("curator"),
-            oracle: Addr::unchecked("oracle"),
+            oracle_config: OracleConfig {
+                address: Addr::unchecked("oracle"),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: Addr::unchecked("collector"),

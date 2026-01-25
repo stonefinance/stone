@@ -1,7 +1,7 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 
-use crate::InterestRateModel;
+use crate::{InterestRateModel, OracleConfig, OracleConfigUnchecked, OracleType};
 
 /// Market configuration set at instantiation (mostly immutable).
 #[cw_serde]
@@ -10,8 +10,8 @@ pub struct MarketConfig {
     pub factory: Addr,
     /// Curator who created and manages this market
     pub curator: Addr,
-    /// Oracle contract for price feeds
-    pub oracle: Addr,
+    /// Oracle configuration with address and validation rules
+    pub oracle_config: OracleConfig,
     /// Collateral asset denom
     pub collateral_denom: String,
     /// Debt asset denom (the asset being lent/borrowed)
@@ -167,7 +167,7 @@ pub struct MarketParamsUpdate {
 #[cw_serde]
 pub struct MarketInstantiateMsg {
     pub curator: String,
-    pub oracle: String,
+    pub oracle_config: OracleConfigUnchecked,
     pub collateral_denom: String,
     pub debt_denom: String,
     pub protocol_fee_collector: String,
@@ -259,7 +259,10 @@ pub enum MarketQueryMsg {
 pub struct MarketConfigResponse {
     pub factory: String,
     pub curator: String,
+    /// Oracle contract address
     pub oracle: String,
+    /// Oracle type with validation configuration
+    pub oracle_type: OracleType,
     pub collateral_denom: String,
     pub debt_denom: String,
     pub protocol_fee_collector: String,

@@ -17,7 +17,8 @@ pub fn config(deps: Deps) -> ContractResult<MarketConfigResponse> {
     Ok(MarketConfigResponse {
         factory: config.factory.to_string(),
         curator: config.curator.to_string(),
-        oracle: config.oracle.to_string(),
+        oracle: config.oracle_config.address.to_string(),
+        oracle_type: config.oracle_config.oracle_type,
         collateral_denom: config.collateral_denom,
         debt_denom: config.debt_denom,
         protocol_fee_collector: config.protocol_fee_collector.to_string(),
@@ -77,10 +78,10 @@ pub fn user_position(deps: Deps, user: String) -> ContractResult<UserPositionRes
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
 
     // Get prices (handle errors gracefully)
-    let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)
+    let collateral_price = query_price(deps, config.oracle_config.address.as_str(), &config.collateral_denom)
         .unwrap_or(Decimal::zero());
     let debt_price =
-        query_price(deps, config.oracle.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
+        query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
 
     // Calculate values
     let collateral_value = Decimal::from_ratio(collateral_amount, 1u128) * collateral_price;
@@ -125,7 +126,7 @@ pub fn user_supply(deps: Deps, user: String) -> ContractResult<UserBalanceRespon
     let amount = stone_types::scaled_to_amount(scaled, state.liquidity_index);
 
     let debt_price =
-        query_price(deps, config.oracle.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
+        query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * debt_price;
 
     Ok(UserBalanceResponse {
@@ -144,7 +145,7 @@ pub fn user_collateral(deps: Deps, user: String) -> ContractResult<UserBalanceRe
         .may_load(deps.storage, user_addr.as_str())?
         .unwrap_or_default();
 
-    let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)
+    let collateral_price = query_price(deps, config.oracle_config.address.as_str(), &config.collateral_denom)
         .unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * collateral_price;
 
@@ -167,7 +168,7 @@ pub fn user_debt(deps: Deps, user: String) -> ContractResult<UserBalanceResponse
     let amount = stone_types::scaled_to_amount(scaled, state.borrow_index);
 
     let debt_price =
-        query_price(deps, config.oracle.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
+        query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom).unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * debt_price;
 
     Ok(UserBalanceResponse {
@@ -203,7 +204,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, MockApi};
     use cosmwasm_std::Uint128;
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
+    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
 
     fn setup_market(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -217,7 +218,13 @@ mod tests {
         let config = MarketConfig {
             factory: api.addr_make("factory"),
             curator: curator.clone(),
-            oracle: api.addr_make("oracle"),
+            oracle_config: OracleConfig {
+                address: api.addr_make("oracle"),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),

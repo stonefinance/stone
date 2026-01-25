@@ -23,7 +23,7 @@ pub fn instantiate(
     let config = MarketConfig {
         factory: info.sender.clone(), // Factory is the one instantiating
         curator: deps.api.addr_validate(&msg.curator)?,
-        oracle: deps.api.addr_validate(&msg.oracle)?,
+        oracle_config: msg.oracle_config.validate(deps.api)?,
         collateral_denom: msg.collateral_denom,
         debt_denom: msg.debt_denom,
         protocol_fee_collector: deps.api.addr_validate(&msg.protocol_fee_collector)?,
@@ -122,7 +122,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::{from_json, Decimal};
-    use stone_types::{CreateMarketParams, InterestRateModel, MarketConfigResponse};
+    use stone_types::{CreateMarketParams, InterestRateModel, MarketConfigResponse, OracleConfigUnchecked, OracleType};
 
     fn test_addrs() -> (
         cosmwasm_std::Addr,
@@ -143,7 +143,13 @@ mod tests {
         let (_, curator, oracle, collector) = test_addrs();
         MarketInstantiateMsg {
             curator: curator.to_string(),
-            oracle: oracle.to_string(),
+            oracle_config: OracleConfigUnchecked {
+                address: oracle.to_string(),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: collector.to_string(),

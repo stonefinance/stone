@@ -182,7 +182,7 @@ mod tests {
     use crate::state::STATE;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::Uint128;
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
+    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
 
     fn setup_mutable_market(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -195,7 +195,13 @@ mod tests {
         let config = MarketConfig {
             factory: api.addr_make("factory"),
             curator: api.addr_make("curator"),
-            oracle: api.addr_make("oracle"),
+            oracle_config: OracleConfig {
+                address: api.addr_make("oracle"),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
