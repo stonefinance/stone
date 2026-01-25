@@ -35,46 +35,69 @@ export async function handleMarketCreated(event: PartialMarketCreatedEvent): Pro
     const { config, params } = await queryMarketInfo(event.marketAddress);
     logger.info('Market info fetched', { marketAddress: event.marketAddress });
 
-    await prisma.market.create({
-      data: {
-        id: event.marketId,
-        marketAddress: event.marketAddress,
-        curator: config.curator,
-        collateralDenom: config.collateral_denom,
-        debtDenom: config.debt_denom,
-        oracle: config.oracle,
-        createdAt: new Date(event.timestamp * 1000),
-        createdAtBlock: BigInt(event.blockHeight),
+    await prisma.$transaction(async (tx) => {
+      await tx.market.create({
+        data: {
+          id: event.marketId,
+          marketAddress: event.marketAddress,
+          curator: config.curator,
+          collateralDenom: config.collateral_denom,
+          debtDenom: config.debt_denom,
+          oracle: config.oracle,
+          createdAt: new Date(event.timestamp * 1000),
+          createdAtBlock: BigInt(event.blockHeight),
 
-        // Use params from contract params query
-        loanToValue: new Decimal(params.loan_to_value),
-        liquidationThreshold: new Decimal(params.liquidation_threshold),
-        liquidationBonus: new Decimal(params.liquidation_bonus),
-        liquidationProtocolFee: new Decimal(params.liquidation_protocol_fee),
-        closeFactor: new Decimal(params.close_factor),
-        interestRateModel: params.interest_rate_model as object,
-        protocolFee: new Decimal(params.protocol_fee),
-        curatorFee: new Decimal(params.curator_fee),
-        supplyCap: params.supply_cap ? new Decimal(params.supply_cap) : null,
-        borrowCap: params.borrow_cap ? new Decimal(params.borrow_cap) : null,
-        enabled: params.enabled,
-        isMutable: params.is_mutable,
+          // Use params from contract params query
+          loanToValue: new Decimal(params.loan_to_value),
+          liquidationThreshold: new Decimal(params.liquidation_threshold),
+          liquidationBonus: new Decimal(params.liquidation_bonus),
+          liquidationProtocolFee: new Decimal(params.liquidation_protocol_fee),
+          closeFactor: new Decimal(params.close_factor),
+          interestRateModel: params.interest_rate_model as object,
+          protocolFee: new Decimal(params.protocol_fee),
+          curatorFee: new Decimal(params.curator_fee),
+          supplyCap: params.supply_cap ? new Decimal(params.supply_cap) : null,
+          borrowCap: params.borrow_cap ? new Decimal(params.borrow_cap) : null,
+          enabled: params.enabled,
+          isMutable: params.is_mutable,
 
-        // Initialize state
-        borrowIndex: new Decimal(1),
-        liquidityIndex: new Decimal(1),
-        borrowRate: new Decimal(0),
-        liquidityRate: new Decimal(0),
-        totalSupplyScaled: new Decimal(0),
-        totalDebtScaled: new Decimal(0),
-        totalCollateral: new Decimal(0),
-        lastUpdate: BigInt(event.timestamp),
-        utilization: new Decimal(0),
-        availableLiquidity: new Decimal(0),
-      },
+          // Initialize state
+          borrowIndex: new Decimal(1),
+          liquidityIndex: new Decimal(1),
+          borrowRate: new Decimal(0),
+          liquidityRate: new Decimal(0),
+          totalSupplyScaled: new Decimal(0),
+          totalDebtScaled: new Decimal(0),
+          totalCollateral: new Decimal(0),
+          lastUpdate: BigInt(event.timestamp),
+          utilization: new Decimal(0),
+          availableLiquidity: new Decimal(0),
+        },
+      });
+
+      // Create initial snapshot for the market
+      await tx.marketSnapshot.create({
+        data: {
+          id: `${event.marketId}:${event.timestamp}`,
+          marketId: event.marketId,
+          timestamp: new Date(event.timestamp * 1000),
+          blockHeight: BigInt(event.blockHeight),
+          borrowIndex: new Decimal(1),
+          liquidityIndex: new Decimal(1),
+          borrowRate: new Decimal(0),
+          liquidityRate: new Decimal(0),
+          totalSupply: new Decimal(0),
+          totalDebt: new Decimal(0),
+          totalCollateral: new Decimal(0),
+          utilization: new Decimal(0),
+          loanToValue: new Decimal(params.loan_to_value),
+          liquidationThreshold: new Decimal(params.liquidation_threshold),
+          enabled: params.enabled,
+        },
+      });
     });
 
-    logger.info('Market created in database', {
+    logger.info('Market created in database with initial snapshot', {
       marketId: event.marketId,
       collateralDenom: config.collateral_denom,
       debtDenom: config.debt_denom,
@@ -614,7 +637,7 @@ export async function handleAccrueInterest(
   try {
     await prisma.$transaction(async (tx) => {
       // Update market state
-      await tx.market.update({
+      const market = await tx.market.update({
         where: { id: marketId },
         data: {
           borrowIndex: new Decimal(event.borrowIndex),
@@ -637,6 +660,32 @@ export async function handleAccrueInterest(
           liquidityIndex: new Decimal(event.liquidityIndex),
           borrowRate: new Decimal(event.borrowRate),
           liquidityRate: new Decimal(event.liquidityRate),
+        },
+      });
+
+      // Create market snapshot for historical tracking
+      const borrowIndex = new Decimal(event.borrowIndex);
+      const liquidityIndex = new Decimal(event.liquidityIndex);
+      const totalSupply = new Decimal(market.totalSupplyScaled.toString()).mul(liquidityIndex);
+      const totalDebt = new Decimal(market.totalDebtScaled.toString()).mul(borrowIndex);
+
+      await tx.marketSnapshot.create({
+        data: {
+          id: `${marketId}:${event.timestamp}`,
+          marketId,
+          timestamp: new Date(event.timestamp * 1000),
+          blockHeight: BigInt(event.blockHeight),
+          borrowIndex,
+          liquidityIndex,
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
+          totalSupply,
+          totalDebt,
+          totalCollateral: market.totalCollateral,
+          utilization: market.utilization || new Decimal(0),
+          loanToValue: market.loanToValue,
+          liquidationThreshold: market.liquidationThreshold,
+          enabled: market.enabled,
         },
       });
     });

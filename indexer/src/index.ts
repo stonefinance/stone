@@ -10,6 +10,7 @@ import {
   handleReorg,
 } from './indexer/block-processor';
 import { startGraphQLServer } from './api/server';
+import { pruneSnapshots, shouldPruneSnapshots } from './indexer/snapshot-pruning';
 
 let shouldStop = false;
 let graphQLShutdown: (() => Promise<void>) | null = null;
@@ -94,6 +95,11 @@ async function runIndexer(): Promise<void> {
               lagPercentage: ((lag / currentHeight) * 100).toFixed(2) + '%',
             });
           }
+        }
+
+        // Prune old snapshots periodically to manage database size
+        if (shouldPruneSnapshots(lastProcessed)) {
+          await pruneSnapshots();
         }
 
         // Small delay between batches to avoid overwhelming the RPC
