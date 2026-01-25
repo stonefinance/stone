@@ -12,7 +12,13 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "lint": "eslint src --ext .ts",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:scenarios": "vitest run tests/scenarios"
   },
   "keywords": [
     "cosmwasm",
@@ -49,11 +55,13 @@
     "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^6.17.0",
     "@typescript-eslint/parser": "^6.17.0",
+    "@vitest/coverage-v8": "^2.1.0",
     "eslint": "^8.56.0",
     "prettier": "^3.1.1",
     "prisma": "^5.22.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.0"
   },
   "engines": {
     "node": ">=18.0.0"
