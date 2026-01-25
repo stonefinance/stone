@@ -30,6 +30,19 @@ export const MarketResolvers = {
     return supply.sub(debt).toFixed(0);
   },
 
+  utilization(parent: Market) {
+    const supply = new Decimal(parent.totalSupplyScaled.toString()).mul(
+      parent.liquidityIndex.toString()
+    );
+    if (supply.isZero()) {
+      return '0';
+    }
+    const debt = new Decimal(parent.totalDebtScaled.toString()).mul(
+      parent.borrowIndex.toString()
+    );
+    return debt.div(supply).toString();
+  },
+
   // Relations
   async positions(
     parent: Market,

@@ -1,4 +1,4 @@
-.PHONY: build test e2e-build e2e-up e2e-test e2e-down e2e-logs e2e clean e2e-sync-env
+.PHONY: build test e2e-build e2e-up e2e-test e2e-down e2e-logs e2e-refresh-frontend e2e clean e2e-sync-env
 
 # Contract build targets (only contracts, not testing package which has non-wasm deps)
 build:
@@ -10,8 +10,8 @@ test:
 # E2E testing targets
 e2e-build: build
 	mkdir -p artifacts
-	cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/factory.wasm
-	cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/market.wasm
+	cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/stone_factory.wasm
+	cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/stone_market.wasm
 	cp target/wasm32-unknown-unknown/release/mock_oracle.wasm artifacts/mock_oracle.wasm
 
 e2e-up: e2e-build
@@ -36,6 +36,9 @@ e2e-down:
 
 e2e-logs:
 	cd e2e && docker compose -f docker-compose.e2e.yml logs -f
+
+e2e-refresh-frontend:
+	cd e2e && docker compose -f docker-compose.e2e.yml up -d --build --force-recreate frontend
 
 e2e-clean: e2e-down
 	rm -rf e2e/chain
@@ -79,6 +82,7 @@ help:
 	@echo "  e2e-test-smoke     - Run smoke tests only"
 	@echo "  e2e-down           - Stop E2E test stack"
 	@echo "  e2e-logs           - Follow E2E stack logs"
+	@echo "  e2e-refresh-frontend - Rebuild and restart frontend container"
 	@echo "  e2e-clean          - Clean E2E artifacts"
 	@echo "  e2e-sync-env       - Copy deployment addresses to frontend/.env.local"
 	@echo "  e2e                - Full E2E run (build, up, test)"
