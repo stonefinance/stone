@@ -17,6 +17,13 @@ import { useUserPosition } from '@/hooks/useUserPosition';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { useBalance } from '@/hooks/useBalance';
 import {
+  useMarketSnapshots,
+  TimeRange,
+  ChartMetric,
+  getChartDataKey,
+  getChartLabel,
+} from '@/hooks/useMarketSnapshots';
+import {
   formatDisplayAmount,
   formatPercentage,
   microToBase,
@@ -32,35 +39,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 
-// TODO: Remove mock chart data once real historical market data is available from the API
-// Seeded random number generator for consistent chart data
-function seededRandom(seed: number) {
-  const x = Math.sin(seed) * 10000;
-  return x - Math.floor(x);
-}
 
-// Generate deterministic chart data to avoid hydration mismatch
-function generateChartData() {
-  const data = [];
-  const startDate = new Date('2024-10-27');
-  let value = 900000000;
-
-  for (let i = 0; i < 90; i++) {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    value = value + (seededRandom(i + 1) - 0.3) * 20000000;
-    value = Math.max(value, 800000000);
-
-    data.push({
-      date: date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
-      value: value,
-    });
-  }
-  return data;
-}
-
-// Pre-generate chart data at module level for consistency
-const CHART_DATA = generateChartData();
 
 export default function MarketDetailPage() {
   const params = useParams();
@@ -83,7 +62,8 @@ export default function MarketDetailPage() {
   const [supplyAmount, setSupplyAmount] = useState('');
   const [collateralAmount, setCollateralAmount] = useState('');
   const [borrowAmount, setBorrowAmount] = useState('');
-  const [chartMetric, setChartMetric] = useState<'borrow' | 'supply' | 'liquidity'>('borrow');
+  const [chartMetric, setChartMetric] = useState<ChartMetric>('borrow');
+  const [chartTimeRange, setChartTimeRange] = useState<TimeRange>('3m');
   const [isSupplying, setIsSupplying] = useState(false);
   const [isSupplyingCollateral, setIsSupplyingCollateral] = useState(false);
   const [supplyError, setSupplyError] = useState<string | null>(null);
@@ -97,6 +77,17 @@ export default function MarketDetailPage() {
   const { balance: debtBalance } = useBalance(
     isConnected && market ? market.config.debt_denom : undefined
   );
+
+  // Fetch historical market snapshots for charts
+  const {
+    data: chartData,
+    hasData: hasChartData,
+    isLoading: chartLoading,
+  } = useMarketSnapshots(marketId, chartTimeRange);
+
+  // Get the current chart value based on selected metric
+  const chartDataKey = getChartDataKey(chartMetric);
+  const chartLabel = getChartLabel(chartMetric);
 
   // Only show loading skeleton if we don't have cached data yet
   // This prevents flash when Apollo refetches in the background
@@ -425,12 +416,18 @@ export default function MarketDetailPage() {
                 {/* Chart */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
                       <div>
-                        <p className="text-sm text-muted-foreground">Total Borrow (USD)</p>
-                        <p className="text-3xl font-bold">{formatLargeNumber(parseFloat(microToBase(market.totalBorrowed)))}</p>
+                        <p className="text-sm text-muted-foreground">{chartLabel} (USD)</p>
+                        <p className="text-3xl font-bold">
+                          {chartMetric === 'borrow'
+                            ? formatLargeNumber(parseFloat(microToBase(market.totalBorrowed)))
+                            : chartMetric === 'supply'
+                            ? formatLargeNumber(parseFloat(microToBase(market.totalSupplied)))
+                            : formatLargeNumber(parseFloat(microToBase(market.totalCollateral || '0')))}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div className="flex bg-muted rounded-lg p-1">
                           <button
                             onClick={() => setChartMetric('borrow')}
@@ -460,67 +457,107 @@ export default function MarketDetailPage() {
                                 : 'text-muted-foreground hover:text-foreground'
                             }`}
                           >
-                            Liquidity
+                            Collateral
                           </button>
                         </div>
                         <div className="flex bg-muted rounded-lg p-1">
-                          <button className="px-3 py-1 text-sm rounded-md text-muted-foreground hover:text-foreground">
-                            {market.debtDenom}
+                          <button
+                            onClick={() => setChartTimeRange('1w')}
+                            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                              chartTimeRange === '1w'
+                                ? 'bg-background shadow text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            1W
                           </button>
-                          <button className="px-3 py-1 text-sm rounded-md bg-background shadow text-foreground">
-                            USD
+                          <button
+                            onClick={() => setChartTimeRange('1m')}
+                            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                              chartTimeRange === '1m'
+                                ? 'bg-background shadow text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            1M
+                          </button>
+                          <button
+                            onClick={() => setChartTimeRange('3m')}
+                            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                              chartTimeRange === '3m'
+                                ? 'bg-background shadow text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                          >
+                            3M
                           </button>
                         </div>
-                        <select className="bg-muted rounded-lg px-3 py-1.5 text-sm border-0 outline-none">
-                          <option>3 months</option>
-                          <option>1 month</option>
-                          <option>1 week</option>
-                        </select>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={CHART_DATA}>
-                          <defs>
-                            <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <XAxis
-                            dataKey="date"
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: '#888', fontSize: 12 }}
-                            interval="preserveStartEnd"
-                          />
-                          <YAxis
-                            axisLine={false}
-                            tickLine={false}
-                            tick={{ fill: '#888', fontSize: 12 }}
-                            tickFormatter={(value) => `$${(value / 1000000).toFixed(0)}M`}
-                            domain={['dataMin - 100000000', 'dataMax + 100000000']}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'var(--background)',
-                              border: '1px solid var(--border)',
-                              borderRadius: '8px',
-                            }}
-                            formatter={(value) => [`$${(Number(value) / 1000000).toFixed(2)}M`, 'Value']}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#3b82f6"
-                            strokeWidth={2}
-                            fillOpacity={1}
-                            fill="url(#colorValue)"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                      {chartLoading ? (
+                        <div className="h-full flex items-center justify-center">
+                          <div className="animate-pulse text-muted-foreground">Loading chart data...</div>
+                        </div>
+                      ) : !hasChartData ? (
+                        <div className="h-full flex items-center justify-center">
+                          <p className="text-muted-foreground">No historical data available yet</p>
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={chartData}>
+                            <defs>
+                              <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <XAxis
+                              dataKey="date"
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: '#888', fontSize: 12 }}
+                              interval="preserveStartEnd"
+                            />
+                            <YAxis
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: '#888', fontSize: 12 }}
+                              tickFormatter={(value) => {
+                                if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
+                                if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
+                                if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}K`;
+                                return `$${value.toFixed(0)}`;
+                              }}
+                              domain={['auto', 'auto']}
+                            />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'var(--background)',
+                                border: '1px solid var(--border)',
+                                borderRadius: '8px',
+                              }}
+                              formatter={(value) => {
+                                const num = Number(value);
+                                if (num >= 1e9) return [`$${(num / 1e9).toFixed(2)}B`, chartLabel];
+                                if (num >= 1e6) return [`$${(num / 1e6).toFixed(2)}M`, chartLabel];
+                                if (num >= 1e3) return [`$${(num / 1e3).toFixed(2)}K`, chartLabel];
+                                return [`$${num.toFixed(2)}`, chartLabel];
+                              }}
+                            />
+                            <Area
+                              type="monotone"
+                              dataKey={chartDataKey}
+                              stroke="#3b82f6"
+                              strokeWidth={2}
+                              fillOpacity={1}
+                              fill="url(#colorValue)"
+                            />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

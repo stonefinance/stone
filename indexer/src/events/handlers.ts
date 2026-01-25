@@ -20,6 +20,57 @@ import {
 } from './types';
 import { PartialMarketCreatedEvent } from './parser';
 
+// Type for transaction client used in Prisma transactions
+type TransactionClient = Omit<
+  typeof prisma,
+  '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'
+>;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Creates a market snapshot capturing the current state of a market.
+ * Used to track historical market data for charts and analytics.
+ */
+async function createMarketSnapshot(
+  tx: TransactionClient,
+  marketId: string,
+  timestamp: number,
+  blockHeight: number
+): Promise<void> {
+  const market = await tx.market.findUnique({ where: { id: marketId } });
+  if (!market) {
+    logger.warn('Cannot create snapshot: market not found', { marketId });
+    return;
+  }
+
+  await tx.marketSnapshot.create({
+    data: {
+      id: `${marketId}:${timestamp}`,
+      marketId,
+      timestamp: new Date(timestamp * 1000),
+      blockHeight: BigInt(blockHeight),
+      borrowIndex: market.borrowIndex,
+      liquidityIndex: market.liquidityIndex,
+      borrowRate: market.borrowRate,
+      liquidityRate: market.liquidityRate,
+      totalSupply: new Decimal(market.totalSupplyScaled.toString()).mul(
+        market.liquidityIndex
+      ),
+      totalDebt: new Decimal(market.totalDebtScaled.toString()).mul(market.borrowIndex),
+      totalCollateral: market.totalCollateral,
+      utilization: market.utilization || new Decimal(0),
+      loanToValue: market.loanToValue,
+      liquidationThreshold: market.liquidationThreshold,
+      enabled: market.enabled,
+    },
+  });
+
+  logger.debug('Market snapshot created', { marketId, timestamp });
+}
+
 // ============================================================================
 // Factory Event Handlers
 // ============================================================================
@@ -637,7 +688,7 @@ export async function handleAccrueInterest(
   try {
     await prisma.$transaction(async (tx) => {
       // Update market state
-      const market = await tx.market.update({
+      await tx.market.update({
         where: { id: marketId },
         data: {
           borrowIndex: new Decimal(event.borrowIndex),
@@ -664,30 +715,7 @@ export async function handleAccrueInterest(
       });
 
       // Create market snapshot for historical tracking
-      const borrowIndex = new Decimal(event.borrowIndex);
-      const liquidityIndex = new Decimal(event.liquidityIndex);
-      const totalSupply = new Decimal(market.totalSupplyScaled.toString()).mul(liquidityIndex);
-      const totalDebt = new Decimal(market.totalDebtScaled.toString()).mul(borrowIndex);
-
-      await tx.marketSnapshot.create({
-        data: {
-          id: `${marketId}:${event.timestamp}`,
-          marketId,
-          timestamp: new Date(event.timestamp * 1000),
-          blockHeight: BigInt(event.blockHeight),
-          borrowIndex,
-          liquidityIndex,
-          borrowRate: new Decimal(event.borrowRate),
-          liquidityRate: new Decimal(event.liquidityRate),
-          totalSupply,
-          totalDebt,
-          totalCollateral: market.totalCollateral,
-          utilization: market.utilization || new Decimal(0),
-          loanToValue: market.loanToValue,
-          liquidationThreshold: market.liquidationThreshold,
-          enabled: market.enabled,
-        },
-      });
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     logger.debug('AccrueInterest event processed', { marketId });
@@ -723,31 +751,8 @@ export async function handleUpdateParams(
         },
       });
 
-      // Optionally create a snapshot to track parameter changes
-      const market = await tx.market.findUnique({ where: { id: marketId } });
-      if (market) {
-        await tx.marketSnapshot.create({
-          data: {
-            id: `${marketId}:${event.timestamp}`,
-            marketId,
-            timestamp: new Date(event.timestamp * 1000),
-            blockHeight: BigInt(event.blockHeight),
-            borrowIndex: market.borrowIndex,
-            liquidityIndex: market.liquidityIndex,
-            borrowRate: market.borrowRate,
-            liquidityRate: market.liquidityRate,
-            totalSupply: new Decimal(market.totalSupplyScaled.toString()).mul(
-              market.liquidityIndex
-            ),
-            totalDebt: new Decimal(market.totalDebtScaled.toString()).mul(market.borrowIndex),
-            totalCollateral: market.totalCollateral,
-            utilization: market.utilization || new Decimal(0),
-            loanToValue: new Decimal(event.finalLtv),
-            liquidationThreshold: new Decimal(event.finalLiquidationThreshold),
-            enabled: event.finalEnabled === 'true',
-          },
-        });
-      }
+      // Create snapshot to track parameter changes
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     logger.debug('UpdateParams event processed', { marketId });
