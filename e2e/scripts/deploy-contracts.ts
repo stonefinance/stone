@@ -140,6 +140,18 @@ async function main() {
   // Create test markets
   const testMarkets: TestMarket[] = [];
 
+  // Build oracle config for market creation
+  // Use Generic oracle type with optional code ID validation
+  const oracleConfig = {
+    address: oracleAddress || account.address, // Use deployer address as fallback
+    oracle_type: {
+      generic: {
+        expected_code_id: oracleCodeId > 0 ? oracleCodeId : null,
+        max_staleness_secs: 300, // 5 minutes
+      },
+    },
+  };
+
   // Market 1: ATOM/STONE (collateral/debt)
   console.log('Creating ATOM/STONE market...');
   const market1Result = await client.execute(
@@ -149,7 +161,7 @@ async function main() {
       create_market: {
         collateral_denom: 'uatom',
         debt_denom: 'ustone',
-        oracle: oracleAddress || account.address, // Use deployer address as fallback
+        oracle_config: oracleConfig,
         params: {
           loan_to_value: '0.75',          // 75%
           liquidation_threshold: '0.80',  // 80%
@@ -199,7 +211,7 @@ async function main() {
       create_market: {
         collateral_denom: 'uosmo',
         debt_denom: 'ustone',
-        oracle: oracleAddress || account.address,
+        oracle_config: oracleConfig,
         params: {
           loan_to_value: '0.65',          // 65%
           liquidation_threshold: '0.75',  // 75%
