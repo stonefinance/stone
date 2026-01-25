@@ -1,0 +1,349 @@
+name: Deploy Staging Environment
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  HETZNER_LOCATION: nbg1
+  HETZNER_SERVER_TYPE: ccx13
+  HETZNER_IMAGE: ubuntu-22.04
+  SERVER_NAME: stone-staging
+
+jobs:
+  build-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-wasm-v3-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+
+      - name: Build WASM contracts
+        run: |
+          cargo build --release --target wasm32-unknown-unknown -p stone-factory
+          cargo build --release --target wasm32-unknown-unknown -p stone-market
+          cargo build --release --target wasm32-unknown-unknown -p mock-oracle
+          mkdir -p artifacts
+          cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/
+          cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/
+          cp target/wasm32-unknown-unknown/release/mock_oracle.wasm artifacts/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-contracts-staging
+          path: artifacts/
+          retention-days: 7
+
+  deploy:
+    needs: build-contracts
+    runs-on: ubuntu-latest
+    outputs:
+      server_ip: ${{ steps.get-ip.outputs.ip }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download WASM contracts
+        uses: actions/download-artifact@v4
+        with:
+          name: wasm-contracts-staging
+          path: artifacts/
+
+      - name: Provision or reuse Hetzner VM
+        id: provision
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+          SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+        run: |
+          # Check if staging server already exists
+          EXISTING=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/servers?name=${{ env.SERVER_NAME }}" | jq -r '.servers[0].id')
+
+          if [[ "$EXISTING" != "null" && -n "$EXISTING" ]]; then
+            echo "Reusing existing staging server: $EXISTING"
+            echo "server_id=$EXISTING" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Create SSH key if it doesn't exist in Hetzner
+          SSH_KEY_NAME="github-actions-preview"
+          EXISTING_KEY=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            "https://api.hetzner.cloud/v1/ssh_keys?name=$SSH_KEY_NAME" | jq -r '.ssh_keys[0].id')
+
+          if [[ "$EXISTING_KEY" == "null" ]]; then
+            echo "Creating SSH key in Hetzner..."
+            SSH_KEY_ID=$(curl -s -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"name\": \"$SSH_KEY_NAME\", \"public_key\": \"$SSH_PUBLIC_KEY\"}" \
+              "https://api.hetzner.cloud/v1/ssh_keys" | jq -r '.ssh_key.id')
+          else
+            SSH_KEY_ID="$EXISTING_KEY"
+          fi
+
+          echo "Using SSH key ID: $SSH_KEY_ID"
+
+          # Create server
+          echo "Creating Hetzner staging server..."
+          RESPONSE=$(curl -s -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"name\": \"${{ env.SERVER_NAME }}\",
+              \"server_type\": \"${{ env.HETZNER_SERVER_TYPE }}\",
+              \"location\": \"${{ env.HETZNER_LOCATION }}\",
+              \"image\": \"${{ env.HETZNER_IMAGE }}\",
+              \"ssh_keys\": [$SSH_KEY_ID],
+              \"labels\": {
+                \"purpose\": \"staging\",
+                \"repo\": \"${GITHUB_REPOSITORY//\//-}\"
+              }
+            }" \
+            "https://api.hetzner.cloud/v1/servers")
+
+          SERVER_ID=$(echo "$RESPONSE" | jq -r '.server.id')
+          if [[ "$SERVER_ID" == "null" ]]; then
+            echo "::error::Failed to create server: $(echo "$RESPONSE" | jq -r '.error.message')"
+            exit 1
+          fi
+
+          echo "Server created with ID: $SERVER_ID"
+          echo "server_id=$SERVER_ID" >> $GITHUB_OUTPUT
+
+      - name: Wait for server and get IP
+        id: get-ip
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+        run: |
+          SERVER_ID="${{ steps.provision.outputs.server_id }}"
+
+          echo "Waiting for server $SERVER_ID to be ready..."
+          for i in {1..60}; do
+            STATUS=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+              "https://api.hetzner.cloud/v1/servers/$SERVER_ID" | jq -r '.server.status')
+
+            if [[ "$STATUS" == "running" ]]; then
+              IP=$(curl -s -H "Authorization: Bearer $HETZNER_API_TOKEN" \
+                "https://api.hetzner.cloud/v1/servers/$SERVER_ID" | jq -r '.server.public_net.ipv4.ip')
+              echo "Server is running at $IP"
+              echo "ip=$IP" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            echo "Status: $STATUS, waiting..."
+            sleep 5
+          done
+
+          echo "::error::Server failed to start within timeout"
+          exit 1
+
+      - name: Wait for SSH
+        run: |
+          IP="${{ steps.get-ip.outputs.ip }}"
+          echo "Waiting for SSH on $IP..."
+          for i in {1..30}; do
+            if nc -z -w5 "$IP" 22 2>/dev/null; then
+              echo "SSH is ready"
+              exit 0
+            fi
+            echo "Attempt $i: SSH not ready, waiting..."
+            sleep 10
+          done
+          echo "::error::SSH failed to become available"
+          exit 1
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ steps.get-ip.outputs.ip }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy to VM
+        env:
+          SERVER_IP: ${{ steps.get-ip.outputs.ip }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.sha }}
+        run: |
+          # Create setup script
+          cat > /tmp/setup-vm.sh << 'SETUP_SCRIPT'
+          #!/bin/bash
+          set -euo pipefail
+
+          echo "=== Stone Finance Staging Environment Setup ==="
+
+          # Install Docker
+          if ! command -v docker &> /dev/null; then
+            echo "Installing Docker..."
+            curl -fsSL https://get.docker.com | sh
+            systemctl enable docker
+            systemctl start docker
+          fi
+
+          # Install Docker Compose plugin
+          if ! docker compose version &> /dev/null; then
+            echo "Installing Docker Compose..."
+            apt-get update
+            apt-get install -y docker-compose-plugin
+          fi
+
+          # Clone or update repo
+          REPO_DIR="/opt/stone-staging"
+          if [[ -d "$REPO_DIR" ]]; then
+            echo "Updating existing repo..."
+            cd "$REPO_DIR"
+            git fetch origin
+            git checkout master
+            git reset --hard origin/master
+          else
+            echo "Cloning repo..."
+            git clone "https://github.com/$REPO.git" "$REPO_DIR"
+            cd "$REPO_DIR"
+            git checkout master
+          fi
+
+          # Copy artifacts - clear old ones first, then copy from /tmp/artifacts
+          echo "Setting up artifacts..."
+          rm -rf "$REPO_DIR/artifacts"
+          mkdir -p "$REPO_DIR/artifacts"
+          if [[ -d /tmp/artifacts ]]; then
+            cp -r /tmp/artifacts/* "$REPO_DIR/artifacts/"
+            echo "Copied artifacts from /tmp/artifacts"
+          fi
+
+          # Get host IP for external access
+          HOST_IP=$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4 || hostname -I | awk '{print $1}')
+          echo "Host IP: $HOST_IP"
+
+          # Create override file with build args for frontend
+          cat > "$REPO_DIR/e2e/docker-compose.override.yml" << COMPOSE_OVERRIDE
+          services:
+            frontend:
+              build:
+                context: ../frontend
+                dockerfile: Dockerfile.e2e
+                args:
+                  NEXT_PUBLIC_GRAPHQL_URL: http://$HOST_IP:4000/graphql
+                  NEXT_PUBLIC_GRAPHQL_WS_URL: ws://$HOST_IP:4000/graphql
+                  NEXT_PUBLIC_CHAIN_ID: stone-local-1
+                  NEXT_PUBLIC_RPC_ENDPOINT: http://$HOST_IP:26657
+                  NEXT_PUBLIC_REST_ENDPOINT: http://$HOST_IP:1317
+          COMPOSE_OVERRIDE
+
+          # Debug: show artifacts
+          echo "=== Artifacts in $REPO_DIR/artifacts ==="
+          ls -la "$REPO_DIR/artifacts/" || echo "No artifacts directory"
+
+          # Start services
+          echo "Starting services..."
+          cd "$REPO_DIR/e2e"
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml down -v --remove-orphans 2>/dev/null || true
+
+          # Start services but don't fail immediately - we want to capture logs
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml up -d --build || true
+
+          # Wait for deployer to complete and show its logs regardless of success/failure
+          echo "Waiting for deployer to finish..."
+          for i in {1..30}; do
+            STATUS=$(docker inspect -f '{{.State.Status}}' stone-deployer 2>/dev/null || echo "unknown")
+            if [[ "$STATUS" == "exited" ]]; then
+              break
+            fi
+            echo "Deployer status: $STATUS ($i/30)"
+            sleep 5
+          done
+
+          echo ""
+          echo "=== Deployer Container Logs ==="
+          docker logs stone-deployer 2>&1 || echo "Could not get deployer logs"
+          echo "=== End Deployer Logs ==="
+          echo ""
+
+          # Check if deployer succeeded
+          EXIT_CODE=$(docker inspect -f '{{.State.ExitCode}}' stone-deployer 2>/dev/null || echo "1")
+          if [[ "$EXIT_CODE" != "0" ]]; then
+            echo "ERROR: Deployer failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+
+          # Wait for services
+          echo "Waiting for services to be healthy..."
+          for i in {1..60}; do
+            if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+              echo "Frontend is ready!"
+              break
+            fi
+            echo "Waiting for frontend... ($i/60)"
+            sleep 10
+          done
+
+          # Final health check
+          echo ""
+          echo "=== Service Status ==="
+          docker compose -f docker-compose.e2e.yml -f docker-compose.override.yml ps
+          echo ""
+          echo "=== Staging Deployment Complete ==="
+          echo "Frontend: http://$HOST_IP:3000"
+          echo "GraphQL:  http://$HOST_IP:4000/graphql"
+          echo "Chain:    http://$HOST_IP:26657"
+          SETUP_SCRIPT
+
+          # Copy script and artifacts to server
+          scp -o StrictHostKeyChecking=no /tmp/setup-vm.sh root@$SERVER_IP:/tmp/setup-vm.sh
+          ssh -o StrictHostKeyChecking=no root@$SERVER_IP "mkdir -p /tmp/artifacts"
+          scp -o StrictHostKeyChecking=no -r artifacts/* root@$SERVER_IP:/tmp/artifacts/ 2>/dev/null || true
+
+          # Run setup
+          ssh -o StrictHostKeyChecking=no root@$SERVER_IP "
+            export REPO='$REPO'
+            export REF='$REF'
+            chmod +x /tmp/setup-vm.sh
+            /tmp/setup-vm.sh
+          "
+
+      - name: Verify deployment
+        run: |
+          IP="${{ steps.get-ip.outputs.ip }}"
+          echo "Verifying deployment at $IP..."
+
+          # Check frontend
+          if curl -sf "http://$IP:3000" > /dev/null; then
+            echo "✓ Frontend is accessible"
+          else
+            echo "✗ Frontend check failed"
+            exit 1
+          fi
+
+          # Check GraphQL
+          if curl -sf "http://$IP:4000/health" > /dev/null; then
+            echo "✓ GraphQL is accessible"
+          else
+            echo "✗ GraphQL check failed"
+            exit 1
+          fi
+
+          echo ""
+          echo "Deployment verified successfully!"
+          echo ""
+          echo "=== Staging Environment URLs ==="
+          echo "Frontend: http://$IP:3000"
+          echo "GraphQL:  http://$IP:4000/graphql"
+          echo "Chain:    http://$IP:26657"
