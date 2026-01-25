@@ -1,11 +1,11 @@
 use cosmwasm_std::{
-    to_json_binary, Addr, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
-    WasmMsg,
+    to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
+    WasmMsg, WasmQuery,
 };
 
 use stone_types::{
-    compute_market_id, CreateMarketParams, MarketInstantiateMsg, MarketRecord, OracleQueryMsg,
-    PriceResponse,
+    compute_market_id, ContractError as TypesError, CreateMarketParams, MarketInstantiateMsg,
+    MarketRecord, OracleConfig, OracleConfigUnchecked, OracleQueryMsg, PriceResponse,
 };
 
 use crate::error::ContractError;
@@ -61,37 +61,87 @@ fn validate_market_params(params: &CreateMarketParams) -> Result<(), ContractErr
 }
 
 /// Validate that the oracle can provide prices for both denoms.
+/// Performs code ID validation and full response validation.
 fn validate_oracle(
     deps: &DepsMut,
-    oracle: &Addr,
+    env: &Env,
+    oracle_config: &OracleConfig,
     collateral_denom: &str,
     debt_denom: &str,
 ) -> Result<(), ContractError> {
-    // Query collateral price
-    let _: PriceResponse = deps
+    // 1. Validate code ID if required by oracle type
+    if let Some(expected_code_id) = oracle_config.oracle_type.expected_code_id() {
+        let contract_info: cosmwasm_std::ContractInfoResponse = deps.querier.query(
+            &WasmQuery::ContractInfo {
+                contract_addr: oracle_config.address.to_string(),
+            }
+            .into(),
+        )?;
+
+        if contract_info.code_id != expected_code_id {
+            return Err(TypesError::OracleCodeIdMismatch {
+                expected: expected_code_id,
+                actual: contract_info.code_id,
+            }
+            .into());
+        }
+    }
+
+    // 2. Validate prices can be fetched and are valid for both denoms
+    validate_price_query(deps, env, oracle_config, collateral_denom)?;
+    validate_price_query(deps, env, oracle_config, debt_denom)?;
+
+    Ok(())
+}
+
+/// Validate a single price query from the oracle.
+fn validate_price_query(
+    deps: &DepsMut,
+    env: &Env,
+    oracle_config: &OracleConfig,
+    denom: &str,
+) -> Result<(), ContractError> {
+    let response: PriceResponse = deps
         .querier
         .query_wasm_smart(
-            oracle,
+            &oracle_config.address,
             &OracleQueryMsg::Price {
-                denom: collateral_denom.to_string(),
+                denom: denom.to_string(),
             },
         )
         .map_err(|_| ContractError::InvalidOracle {
-            denom: collateral_denom.to_string(),
+            denom: denom.to_string(),
         })?;
 
-    // Query debt price
-    let _: PriceResponse = deps
-        .querier
-        .query_wasm_smart(
-            oracle,
-            &OracleQueryMsg::Price {
-                denom: debt_denom.to_string(),
-            },
-        )
-        .map_err(|_| ContractError::InvalidOracle {
-            denom: debt_denom.to_string(),
-        })?;
+    // Validate denom matches
+    if response.denom != denom {
+        return Err(TypesError::OracleDenomMismatch {
+            requested: denom.to_string(),
+            returned: response.denom,
+        }
+        .into());
+    }
+
+    // Validate non-zero price
+    if response.price.is_zero() {
+        return Err(TypesError::OracleZeroPrice {
+            denom: denom.to_string(),
+        }
+        .into());
+    }
+
+    // Validate staleness
+    let max_staleness = oracle_config.oracle_type.max_staleness_secs();
+    let current_time = env.block.time.seconds();
+
+    if current_time > response.updated_at + max_staleness {
+        return Err(TypesError::OraclePriceStale {
+            updated_at: response.updated_at,
+            current_time,
+            max_staleness,
+        }
+        .into());
+    }
 
     Ok(())
 }
@@ -103,7 +153,7 @@ pub fn create_market(
     info: MessageInfo,
     collateral_denom: String,
     debt_denom: String,
-    oracle: String,
+    oracle_config: OracleConfigUnchecked,
     params: CreateMarketParams,
     salt: Option<u64>,
 ) -> Result<Response, ContractError> {
@@ -133,9 +183,15 @@ pub fn create_market(
     // Validate parameters
     validate_market_params(&params)?;
 
-    // Validate oracle
-    let oracle_addr = deps.api.addr_validate(&oracle)?;
-    validate_oracle(&deps, &oracle_addr, &collateral_denom, &debt_denom)?;
+    // Validate oracle configuration (code ID and price queries)
+    let validated_oracle_config = oracle_config.validate(deps.api)?;
+    validate_oracle(
+        &deps,
+        &env,
+        &validated_oracle_config,
+        &collateral_denom,
+        &debt_denom,
+    )?;
 
     // Generate market ID
     let curator = info.sender.as_str();
@@ -147,9 +203,13 @@ pub fn create_market(
     }
 
     // Create instantiate message for market contract
+    // Pass the unchecked config - market will re-validate on instantiation
     let market_instantiate_msg = MarketInstantiateMsg {
         curator: info.sender.to_string(),
-        oracle,
+        oracle_config: OracleConfigUnchecked {
+            address: validated_oracle_config.address.to_string(),
+            oracle_type: validated_oracle_config.oracle_type,
+        },
         collateral_denom: collateral_denom.clone(),
         debt_denom: debt_denom.clone(),
         protocol_fee_collector: config.protocol_fee_collector.to_string(),

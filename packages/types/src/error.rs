@@ -77,6 +77,28 @@ pub enum ContractError {
     #[error("Invalid oracle: failed to query price for {denom}")]
     InvalidOracle { denom: String },
 
+    #[error("Oracle code ID mismatch: expected {expected}, got {actual}")]
+    OracleCodeIdMismatch { expected: u64, actual: u64 },
+
+    #[error("Oracle price stale: updated at {updated_at}, current time {current_time}, max staleness {max_staleness}s")]
+    OraclePriceStale {
+        updated_at: u64,
+        current_time: u64,
+        max_staleness: u64,
+    },
+
+    #[error("Oracle returned zero price for {denom}")]
+    OracleZeroPrice { denom: String },
+
+    #[error("Oracle denom mismatch: requested {requested}, got {returned}")]
+    OracleDenomMismatch { requested: String, returned: String },
+
+    #[error("Oracle confidence too high: {confidence} exceeds max {max_confidence}")]
+    OracleConfidenceTooHigh {
+        confidence: String,
+        max_confidence: String,
+    },
+
     #[error("Zero amount not allowed")]
     ZeroAmount,
 

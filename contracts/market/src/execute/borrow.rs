@@ -109,7 +109,7 @@ mod tests {
         from_json, to_json_binary, ContractResult, Decimal, QuerierResult, WasmQuery,
     };
     use stone_types::{
-        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleQueryMsg, PriceResponse,
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg, OracleType, PriceResponse,
     };
 
     fn setup_market_with_oracle(
@@ -124,7 +124,13 @@ mod tests {
         let config = MarketConfig {
             factory: api.addr_make("factory"),
             curator: api.addr_make("curator"),
-            oracle: oracle_addr.clone(),
+            oracle_config: OracleConfig {
+                address: oracle_addr.clone(),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),

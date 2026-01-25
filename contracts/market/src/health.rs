@@ -37,8 +37,8 @@ pub fn calculate_health_factor(deps: Deps, user: &str) -> Result<Option<Decimal>
         return Ok(None);
     }
 
-    let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
+    let collateral_price = query_price(deps, config.oracle_config.address.as_str(), &config.collateral_denom)?;
+    let debt_price = query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom)?;
 
     let collateral_value =
         Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
@@ -68,8 +68,8 @@ pub fn calculate_max_borrow(deps: Deps, user: &str) -> Result<Uint128, ContractE
     let collateral_amount = get_user_collateral(deps.storage, user)?;
     let debt_amount = get_user_debt(deps.storage, user)?;
 
-    let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
+    let collateral_price = query_price(deps, config.oracle_config.address.as_str(), &config.collateral_denom)?;
+    let debt_price = query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom)?;
 
     let collateral_value =
         Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
@@ -103,8 +103,8 @@ pub fn check_borrow_allowed(
     let collateral_amount = get_user_collateral(deps.storage, user)?;
     let current_debt = get_user_debt(deps.storage, user)?;
 
-    let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
+    let collateral_price = query_price(deps, config.oracle_config.address.as_str(), &config.collateral_denom)?;
+    let debt_price = query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom)?;
 
     let collateral_value =
         Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
@@ -147,8 +147,8 @@ pub fn check_withdrawal_allowed(
 
     let new_collateral = collateral_amount.checked_sub(withdraw_amount)?;
 
-    let collateral_price = query_price(deps, config.oracle.as_str(), &config.collateral_denom)?;
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
+    let collateral_price = query_price(deps, config.oracle_config.address.as_str(), &config.collateral_denom)?;
+    let debt_price = query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom)?;
 
     let new_collateral_value =
         Decimal::from_ratio(new_collateral, 1u128).checked_mul(collateral_price)?;
@@ -186,7 +186,7 @@ pub fn calculate_liquidation_price(
         return Ok(None);
     }
 
-    let debt_price = query_price(deps, config.oracle.as_str(), &config.debt_denom)?;
+    let debt_price = query_price(deps, config.oracle_config.address.as_str(), &config.debt_denom)?;
     let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
 
     // liquidation_price = debt_value / (collateral_amount * liquidation_threshold)
@@ -202,7 +202,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, MockQuerier};
     use cosmwasm_std::{from_json, to_json_binary, Addr, ContractResult, QuerierResult, WasmQuery};
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState};
+    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
 
     fn setup_with_oracle(
         deps: &mut cosmwasm_std::OwnedDeps<
@@ -217,7 +217,13 @@ mod tests {
         let config = MarketConfig {
             factory: Addr::unchecked("factory"),
             curator: Addr::unchecked("curator"),
-            oracle: Addr::unchecked("oracle"),
+            oracle_config: OracleConfig {
+                address: Addr::unchecked("oracle"),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: Addr::unchecked("collector"),

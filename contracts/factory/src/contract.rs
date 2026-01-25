@@ -47,7 +47,7 @@ pub fn execute(
         FactoryExecuteMsg::CreateMarket {
             collateral_denom,
             debt_denom,
-            oracle,
+            oracle_config,
             params,
             salt,
         } => create_market(
@@ -56,7 +56,7 @@ pub fn execute(
             info,
             collateral_denom,
             debt_denom,
-            oracle,
+            oracle_config,
             *params,
             salt,
         ),
