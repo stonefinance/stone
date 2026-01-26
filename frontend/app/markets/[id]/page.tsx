@@ -15,6 +15,7 @@ import { AdvancedTab } from '@/components/markets/advanced';
 import { useMarket } from '@/hooks/useMarkets';
 import { useUserPosition } from '@/hooks/useUserPosition';
 import { useWallet } from '@/lib/cosmjs/wallet';
+import { usePendingTransactions, TransactionAction } from '@/lib/contexts/TransactionContext';
 import { useBalance } from '@/hooks/useBalance';
 import {
   useMarketSnapshots,
@@ -45,6 +46,7 @@ export default function MarketDetailPage() {
   const params = useParams();
   const marketId = params.id as string;
   const { isConnected, signingClient } = useWallet();
+  const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
 
   const { data: market, isLoading: marketLoading, refetch: refetchMarket } = useMarket(marketId);
   const { data: position, refetch: refetchPosition } = useUserPosition(marketId);
@@ -126,14 +128,24 @@ export default function MarketDetailPage() {
     setIsSupplyingCollateral(true);
     setSupplyError(null);
 
+    const txId = addPendingTransaction({
+      action: TransactionAction.SupplyCollateral,
+      amount: collateralAmount,
+      denom: market.collateralDenom,
+      marketAddress: market.address,
+    });
+
     try {
       const microAmount = baseToMicro(collateralAmount);
       const coin = { denom: market.config.collateral_denom, amount: microAmount };
-      await signingClient.supplyCollateral(market.address, coin);
+      const result = await signingClient.supplyCollateral(market.address, coin);
+      markCompleted(txId, result.transactionHash);
       setCollateralAmount('');
       await refetchAll();
     } catch (err) {
-      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      markFailed(txId, errorMessage);
+      setSupplyError(errorMessage);
     } finally {
       setIsSupplyingCollateral(false);
     }
@@ -146,14 +158,24 @@ export default function MarketDetailPage() {
     setIsSupplying(true);
     setSupplyError(null);
 
+    const txId = addPendingTransaction({
+      action: TransactionAction.Supply,
+      amount: supplyAmount,
+      denom: market.debtDenom,
+      marketAddress: market.address,
+    });
+
     try {
       const microAmount = baseToMicro(supplyAmount);
       const coin = { denom: market.config.debt_denom, amount: microAmount };
-      await signingClient.supply(market.address, coin);
+      const result = await signingClient.supply(market.address, coin);
+      markCompleted(txId, result.transactionHash);
       setSupplyAmount('');
       await refetchAll();
     } catch (err) {
-      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      markFailed(txId, errorMessage);
+      setSupplyError(errorMessage);
     } finally {
       setIsSupplying(false);
     }
@@ -166,13 +188,23 @@ export default function MarketDetailPage() {
     setIsBorrowing(true);
     setSupplyError(null);
 
+    const txId = addPendingTransaction({
+      action: TransactionAction.Borrow,
+      amount: borrowAmount,
+      denom: market.debtDenom,
+      marketAddress: market.address,
+    });
+
     try {
       const microAmount = baseToMicro(borrowAmount);
-      await signingClient.borrow(market.address, microAmount);
+      const result = await signingClient.borrow(market.address, microAmount);
+      markCompleted(txId, result.transactionHash);
       setBorrowAmount('');
       await refetchAll();
     } catch (err) {
-      setSupplyError(err instanceof Error ? err.message : 'Transaction failed');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      markFailed(txId, errorMessage);
+      setSupplyError(errorMessage);
     } finally {
       setIsBorrowing(false);
     }

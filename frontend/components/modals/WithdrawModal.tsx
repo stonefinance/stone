@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWallet } from '@/lib/cosmjs/wallet';
+import { usePendingTransactions, TransactionAction } from '@/lib/contexts/TransactionContext';
 import { baseToMicro, formatDisplayAmount, microToBase } from '@/lib/utils/format';
 
 interface WithdrawModalProps {
@@ -32,6 +33,7 @@ export function WithdrawModal({
   onSuccess,
 }: WithdrawModalProps) {
   const { signingClient, isConnected } = useWallet();
+  const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,15 +52,25 @@ export function WithdrawModal({
     setIsLoading(true);
     setError(null);
 
+    const txId = addPendingTransaction({
+      action: TransactionAction.Withdraw,
+      amount: amount,
+      denom: displayDenom || 'TOKEN',
+      marketAddress,
+    });
+
     try {
       const microAmount = baseToMicro(amount);
-      await signingClient.withdraw(marketAddress, microAmount);
+      const result = await signingClient.withdraw(marketAddress, microAmount);
 
+      markCompleted(txId, result.transactionHash);
       setAmount('');
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      markFailed(txId, errorMessage);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

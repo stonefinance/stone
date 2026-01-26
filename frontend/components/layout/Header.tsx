@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { TransactionHistoryDropdown } from '@/components/transactions/TransactionHistoryDropdown';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { shortenAddress } from '@/lib/utils/format';
 
@@ -40,6 +41,7 @@ export function Header() {
                 <div className="hidden sm:block text-sm text-muted-foreground">
                   {shortenAddress(address!)}
                 </div>
+                <TransactionHistoryDropdown />
                 <Button variant="outline" onClick={disconnect} size="sm">
                   Disconnect
                 </Button>
