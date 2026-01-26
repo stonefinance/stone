@@ -286,10 +286,10 @@ describe('Event Parsers', () => {
     });
 
     describe('repay', () => {
-      it('parses repay event with repayer and borrower', () => {
+      it('parses repay event with payer and borrower', () => {
         const attributes = {
           action: 'repay',
-          repayer: ADDRESSES.userB,
+          payer: ADDRESSES.userB,
           borrower: ADDRESSES.userA,
           amount: DECIMALS.oneToken,
           scaled_decrease: DECIMALS.oneToken,

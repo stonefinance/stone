@@ -159,7 +159,7 @@ export function parseMarketEvent(
     case 'repay':
       return {
         action: 'repay',
-        repayer: attributes.repayer,
+        repayer: attributes.payer,
         borrower: attributes.borrower,
         amount: attributes.amount,
         scaledDecrease: attributes.scaled_decrease,

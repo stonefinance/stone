@@ -227,7 +227,7 @@ export function eventToRawAttributes(
     attrs.recipient = event.recipient;
   }
   if ('borrower' in event && 'repayer' in event) {
-    attrs.repayer = event.repayer;
+    attrs.payer = event.repayer;
     attrs.borrower = event.borrower;
   } else if ('borrower' in event && !('liquidator' in event)) {
     attrs.borrower = event.borrower;
