@@ -12,6 +12,8 @@ import { RepayModal } from '@/components/modals/RepayModal';
 import { WithdrawModal } from '@/components/modals/WithdrawModal';
 import { WithdrawCollateralModal } from '@/components/modals/WithdrawCollateralModal';
 import { AdvancedTab } from '@/components/markets/advanced';
+import { LtvHealthBar } from '@/components/markets/LtvHealthBar';
+import { PositionSummary } from '@/components/markets/PositionSummary';
 import { useMarket } from '@/hooks/useMarkets';
 import { useUserPosition } from '@/hooks/useUserPosition';
 import { useWallet } from '@/lib/cosmjs/wallet';
@@ -230,6 +232,15 @@ export default function MarketDetailPage() {
     : 0;
   const currentLtv = userCollateral > 0 && userDebt > 0 ? (userDebt / userCollateral) * 100 : 0;
 
+  // Ratio form (0-1) for position tab components
+  const currentLtvRatio = userCollateral > 0 && userDebt > 0 ? userDebt / userCollateral : 0;
+  const liquidationLtvRatio = market.params?.liquidation_threshold
+    ? parseFloat(market.params.liquidation_threshold)
+    : 0.86;
+
+  // Utilization as percentage for display
+  const utilizationPercent = market.utilization != null ? market.utilization : undefined;
+
   // Format large numbers
   const formatLargeNumber = (num: number) => {
     if (num >= 1000000000) return `$${(num / 1000000000).toFixed(2)}B`;
@@ -348,53 +359,21 @@ export default function MarketDetailPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                          Your Collateral
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-2xl font-bold">
-                          {formatDisplayAmount(userCollateral)} {market.collateralDenom}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                          Your Debt
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-2xl font-bold">
-                          {formatDisplayAmount(userDebt)} {market.debtDenom}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                          Current LTV
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-2xl font-bold">{currentLtv.toFixed(1)}%</p>
-                      </CardContent>
-                    </Card>
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">
-                          Health Factor
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-2xl font-bold text-green-600">
-                          {position?.healthFactor?.toFixed(2) || '∞'}
-                        </p>
-                      </CardContent>
-                    </Card>
+                  <div className="space-y-6">
+                    <LtvHealthBar
+                      currentLtv={currentLtvRatio}
+                      liquidationLtv={liquidationLtvRatio}
+                    />
+                    <PositionSummary
+                      collateralAmount={userCollateral}
+                      collateralDenom={market.collateralDenom}
+                      debtAmount={userDebt}
+                      debtDenom={market.debtDenom}
+                      currentLtv={currentLtvRatio}
+                      liquidationLtv={liquidationLtvRatio}
+                      healthFactor={position?.healthFactor}
+                      utilization={utilizationPercent}
+                    />
                   </div>
                 )}
               </TabsContent>
