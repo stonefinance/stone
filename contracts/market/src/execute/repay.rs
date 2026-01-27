@@ -88,14 +88,21 @@ pub fn execute_repay(
     let total_debt = state.total_debt();
     let utilization = state.utilization();
 
+    // Calculate current rates based on post-transaction state
+    let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
+
     // Build response
     let mut response = Response::new()
         .add_messages(fee_messages)
         .add_attribute("action", "repay")
-        .add_attribute("payer", &info.sender)
+        .add_attribute("repayer", &info.sender)
         .add_attribute("borrower", &borrower)
         .add_attribute("amount", repay_amount)
         .add_attribute("scaled_decrease", scaled_decrease)
+        .add_attribute("borrow_index", state.borrow_index.to_string())
+        .add_attribute("liquidity_index", state.liquidity_index.to_string())
+        .add_attribute("borrow_rate", borrow_rate.to_string())
+        .add_attribute("liquidity_rate", liquidity_rate.to_string())
         .add_attribute("total_supply", total_supply)
         .add_attribute("total_debt", total_debt)
         .add_attribute("utilization", utilization.to_string());
@@ -257,7 +264,7 @@ mod tests {
         assert!(res
             .attributes
             .iter()
-            .any(|a| a.key == "payer" && a.value == user2.as_str()));
+            .any(|a| a.key == "repayer" && a.value == user2.as_str()));
         assert!(res
             .attributes
             .iter()

@@ -86,6 +86,9 @@ pub fn execute_supply(
     let total_debt = state.total_debt();
     let utilization = state.utilization();
 
+    // Calculate current rates based on post-transaction state
+    let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
+
     Ok(Response::new()
         .add_messages(fee_messages)
         .add_attribute("action", "supply")
@@ -93,6 +96,10 @@ pub fn execute_supply(
         .add_attribute("recipient", recipient_addr)
         .add_attribute("amount", amount)
         .add_attribute("scaled_amount", scaled_amount)
+        .add_attribute("borrow_index", state.borrow_index.to_string())
+        .add_attribute("liquidity_index", state.liquidity_index.to_string())
+        .add_attribute("borrow_rate", borrow_rate.to_string())
+        .add_attribute("liquidity_rate", liquidity_rate.to_string())
         .add_attribute("total_supply", total_supply)
         .add_attribute("total_debt", total_debt)
         .add_attribute("utilization", utilization.to_string()))
@@ -162,7 +169,7 @@ mod tests {
 
         let res = execute_supply(deps.as_mut(), env, info, None).unwrap();
 
-        assert_eq!(res.attributes.len(), 8);
+        assert_eq!(res.attributes.len(), 12); // Updated to include borrow_rate and liquidity_rate
 
         // Check user's supply was recorded
         let supply = SUPPLIES

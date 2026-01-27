@@ -18,28 +18,39 @@ pub fn apply_accumulated_interest(
     let config = CONFIG.load(storage)?;
 
     let time_elapsed = current_time.saturating_sub(state.last_update);
-    if time_elapsed == 0 {
-        return Ok(vec![]);
-    }
 
-    // If no debt, just update timestamp
-    if state.total_debt_scaled.is_zero() {
-        state.last_update = current_time;
-        state.borrow_rate = params
-            .interest_rate_model
-            .calculate_borrow_rate(Decimal::zero());
-        state.liquidity_rate = Decimal::zero();
+    // Calculate current utilization and rates (even if no time elapsed, rates should reflect current utilization)
+    let utilization = state.utilization();
+    let borrow_rate = params
+        .interest_rate_model
+        .calculate_borrow_rate(utilization);
+    let liquidity_rate = if utilization.is_zero() {
+        Decimal::zero()
+    } else {
+        let fee_share = Decimal::one()
+            .checked_sub(params.protocol_fee)?
+            .checked_sub(params.curator_fee)?;
+        borrow_rate
+            .checked_mul(utilization)?
+            .checked_mul(fee_share)?
+    };
+
+    // If no time elapsed, just update rates and return (no interest accrual or index changes)
+    if time_elapsed == 0 {
+        state.borrow_rate = borrow_rate;
+        state.liquidity_rate = liquidity_rate;
         STATE.save(storage, &state)?;
         return Ok(vec![]);
     }
 
-    // Calculate current utilization
-    let utilization = state.utilization();
-
-    // Get borrow rate from interest rate model
-    let borrow_rate = params
-        .interest_rate_model
-        .calculate_borrow_rate(utilization);
+    // If no debt, update timestamp and rates
+    if state.total_debt_scaled.is_zero() {
+        state.last_update = current_time;
+        state.borrow_rate = borrow_rate;
+        state.liquidity_rate = liquidity_rate;
+        STATE.save(storage, &state)?;
+        return Ok(vec![]);
+    }
 
     // Calculate borrow index increase
     // Linear interest: index_new = index_old * (1 + rate * time / year)
@@ -77,19 +88,7 @@ pub fn apply_accumulated_interest(
         }
     };
 
-    // Calculate liquidity rate (APY for suppliers)
-    let liquidity_rate = if utilization.is_zero() {
-        Decimal::zero()
-    } else {
-        let fee_share = Decimal::one()
-            .checked_sub(params.protocol_fee)?
-            .checked_sub(params.curator_fee)?;
-        borrow_rate
-            .checked_mul(utilization)?
-            .checked_mul(fee_share)?
-    };
-
-    // Update state
+    // Update state (rates were already calculated above)
     state.borrow_index = new_borrow_index;
     state.liquidity_index = new_liquidity_index;
     state.borrow_rate = borrow_rate;
@@ -149,6 +148,33 @@ pub fn get_user_collateral(storage: &dyn Storage, user: &str) -> Result<Uint128,
     Ok(crate::state::COLLATERAL
         .may_load(storage, user)?
         .unwrap_or_default())
+}
+
+/// Calculate current rates based on utilization and interest rate model.
+/// This should be called after state updates to get accurate rates for events.
+pub fn calculate_current_rates(
+    storage: &dyn Storage,
+) -> Result<(cosmwasm_std::Decimal, cosmwasm_std::Decimal), ContractError> {
+    use cosmwasm_std::Decimal;
+
+    let state = STATE.load(storage)?;
+    let params = PARAMS.load(storage)?;
+
+    let utilization = state.utilization();
+    let borrow_rate = params.interest_rate_model.calculate_borrow_rate(utilization);
+
+    let liquidity_rate = if utilization.is_zero() {
+        Decimal::zero()
+    } else {
+        let fee_share = Decimal::one()
+            .checked_sub(params.protocol_fee)?
+            .checked_sub(params.curator_fee)?;
+        borrow_rate
+            .checked_mul(utilization)?
+            .checked_mul(fee_share)?
+    };
+
+    Ok((borrow_rate, liquidity_rate))
 }
 
 #[cfg(test)]

@@ -122,6 +122,8 @@ type Transaction {
   totalDebt: BigInt
   totalCollateral: BigInt
   utilization: Decimal
+  borrowRate: Decimal
+  liquidityRate: Decimal
 }
 
 # ============================================================================

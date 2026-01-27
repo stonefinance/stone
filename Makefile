@@ -40,7 +40,11 @@ e2e-logs:
 e2e-refresh-frontend:
 	cd e2e && docker compose -f docker-compose.e2e.yml up -d --build --force-recreate frontend
 
+e2e-refresh-indexer:
+	cd e2e && docker compose -f docker-compose.e2e.yml up -d --build --force-recreate indexer
+
 e2e-clean: e2e-down
+	cd e2e && docker volume rm -f stone-finance_postgres_data stone-finance_deployment_state 2>/dev/null || true
 	rm -rf e2e/chain
 	rm -rf e2e/.env.deployment
 	rm -rf e2e/test-results
@@ -83,6 +87,7 @@ help:
 	@echo "  e2e-down           - Stop E2E test stack"
 	@echo "  e2e-logs           - Follow E2E stack logs"
 	@echo "  e2e-refresh-frontend - Rebuild and restart frontend container"
+	@echo "  e2e-refresh-indexer  - Rebuild and restart indexer container"
 	@echo "  e2e-clean          - Clean E2E artifacts"
 	@echo "  e2e-sync-env       - Copy deployment addresses to frontend/.env.local"
 	@echo "  e2e                - Full E2E run (build, up, test)"

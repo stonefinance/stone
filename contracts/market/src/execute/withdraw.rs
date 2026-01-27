@@ -70,6 +70,14 @@ pub fn execute_withdraw(
     state.total_supply_scaled = state.total_supply_scaled.saturating_sub(scaled_decrease);
     STATE.save(deps.storage, &state)?;
 
+    // Calculate unscaled totals for event
+    let total_supply = state.total_supply();
+    let total_debt = state.total_debt();
+    let utilization = state.utilization();
+
+    // Calculate current rates based on post-transaction state
+    let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
+
     // Determine recipient
     let recipient_addr = match recipient {
         Some(addr) => addr,
@@ -89,10 +97,17 @@ pub fn execute_withdraw(
         .add_messages(fee_messages)
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw")
-        .add_attribute("user", info.sender)
+        .add_attribute("withdrawer", info.sender)
         .add_attribute("recipient", recipient_addr)
         .add_attribute("amount", withdraw_amount)
-        .add_attribute("scaled_decrease", scaled_decrease))
+        .add_attribute("scaled_decrease", scaled_decrease)
+        .add_attribute("borrow_index", state.borrow_index.to_string())
+        .add_attribute("liquidity_index", state.liquidity_index.to_string())
+        .add_attribute("borrow_rate", borrow_rate.to_string())
+        .add_attribute("liquidity_rate", liquidity_rate.to_string())
+        .add_attribute("total_supply", total_supply)
+        .add_attribute("total_debt", total_debt)
+        .add_attribute("utilization", utilization.to_string()))
 }
 
 #[cfg(test)]
