@@ -6,6 +6,7 @@ import { formatDenom } from '@/lib/utils/format';
 import {
   useGetMarketsQuery,
   useGetMarketQuery,
+  GetMarketQuery,
   MarketSummaryFieldsFragment,
   MarketFieldsFragment,
   OnMarketUpdatedDocument,
@@ -117,7 +118,10 @@ export function useMarket(marketId: string | undefined) {
     const unsubscribe = (subscribeToMore as any)({
       document: OnMarketUpdatedDocument,
       variables: { marketId },
-      updateQuery: (prev, { subscriptionData }) => {
+      updateQuery: (
+        prev: GetMarketQuery,
+        { subscriptionData }: { subscriptionData: { data?: OnMarketUpdatedSubscription } }
+      ) => {
         if (!subscriptionData.data) return prev;
         return {
           ...prev,
