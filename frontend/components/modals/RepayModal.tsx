@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWallet } from '@/lib/cosmjs/wallet';
+import { usePendingTransactions, TransactionAction } from '@/lib/contexts/TransactionContext';
 import { baseToMicro, formatDisplayAmount, microToBase } from '@/lib/utils/format';
 
 interface RepayModalProps {
@@ -34,6 +35,7 @@ export function RepayModal({
   onSuccess,
 }: RepayModalProps) {
   const { signingClient, isConnected } = useWallet();
+  const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,17 +54,27 @@ export function RepayModal({
     setIsLoading(true);
     setError(null);
 
+    const txId = addPendingTransaction({
+      action: TransactionAction.Repay,
+      amount: amount,
+      denom: displayDenom || denom,
+      marketAddress,
+    });
+
     try {
       const microAmount = baseToMicro(amount);
       const coin = { denom, amount: microAmount };
 
-      await signingClient.repay(marketAddress, coin);
+      const result = await signingClient.repay(marketAddress, coin);
 
+      markCompleted(txId, result.transactionHash);
       setAmount('');
       onOpenChange(false);
       onSuccess?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      markFailed(txId, errorMessage);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }

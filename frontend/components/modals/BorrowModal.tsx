@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useWallet } from '@/lib/cosmjs/wallet';
+import { usePendingTransactions, TransactionAction } from '@/lib/contexts/TransactionContext';
 import { baseToMicro, formatUSD } from '@/lib/utils/format';
 
 interface BorrowModalProps {
@@ -32,6 +33,7 @@ export function BorrowModal({
   maxBorrowValue,
 }: BorrowModalProps) {
   const { signingClient, isConnected } = useWallet();
+  const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
   const [amount, setAmount] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,14 +52,24 @@ export function BorrowModal({
     setIsLoading(true);
     setError(null);
 
+    const txId = addPendingTransaction({
+      action: TransactionAction.Borrow,
+      amount: amount,
+      denom: displayDenom || denom,
+      marketAddress,
+    });
+
     try {
       const microAmount = baseToMicro(amount);
-      await signingClient.borrow(marketAddress, microAmount);
+      const result = await signingClient.borrow(marketAddress, microAmount);
 
+      markCompleted(txId, result.transactionHash);
       setAmount('');
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Transaction failed');
+      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
+      markFailed(txId, errorMessage);
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
