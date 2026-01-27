@@ -198,6 +198,9 @@ export async function handleSupply(event: SupplyEvent, marketId: string): Promis
           ),
           borrowIndex: new Decimal(event.borrowIndex),
           liquidityIndex: new Decimal(event.liquidityIndex),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
+          utilization: new Decimal(event.utilization),
         },
       });
 
@@ -248,12 +251,17 @@ export async function handleSupply(event: SupplyEvent, marketId: string): Promis
           totalSupply: new Decimal(event.totalSupply),
           totalDebt: new Decimal(event.totalDebt),
           utilization: new Decimal(event.utilization),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
         },
       });
 
       // Publish subscription events
       publishTransaction(transaction, marketId);
       publishPositionUpdate(event.recipient, existingPosition);
+
+      // Create market snapshot for historical tracking
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     // Publish market update after transaction completes
@@ -288,6 +296,9 @@ export async function handleWithdraw(event: WithdrawEvent, marketId: string): Pr
           ),
           borrowIndex: new Decimal(event.borrowIndex),
           liquidityIndex: new Decimal(event.liquidityIndex),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
+          utilization: new Decimal(event.utilization),
         },
       });
 
@@ -325,8 +336,13 @@ export async function handleWithdraw(event: WithdrawEvent, marketId: string): Pr
           totalSupply: new Decimal(event.totalSupply),
           totalDebt: new Decimal(event.totalDebt),
           utilization: new Decimal(event.utilization),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
         },
       });
+
+      // Create market snapshot for historical tracking
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     logger.debug('Withdraw event processed', { marketId });
@@ -495,6 +511,9 @@ export async function handleBorrow(event: BorrowEvent, marketId: string): Promis
           ),
           borrowIndex: new Decimal(event.borrowIndex),
           liquidityIndex: new Decimal(event.liquidityIndex),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
+          utilization: new Decimal(event.utilization),
         },
       });
 
@@ -545,8 +564,13 @@ export async function handleBorrow(event: BorrowEvent, marketId: string): Promis
           totalSupply: new Decimal(event.totalSupply),
           totalDebt: new Decimal(event.totalDebt),
           utilization: new Decimal(event.utilization),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
         },
       });
+
+      // Create market snapshot for historical tracking
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     logger.debug('Borrow event processed', { marketId });
@@ -575,6 +599,9 @@ export async function handleRepay(event: RepayEvent, marketId: string): Promise<
           ),
           borrowIndex: new Decimal(event.borrowIndex),
           liquidityIndex: new Decimal(event.liquidityIndex),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
+          utilization: new Decimal(event.utilization),
         },
       });
 
@@ -613,8 +640,13 @@ export async function handleRepay(event: RepayEvent, marketId: string): Promise<
           totalSupply: new Decimal(event.totalSupply),
           totalDebt: new Decimal(event.totalDebt),
           utilization: new Decimal(event.utilization),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
         },
       });
+
+      // Create market snapshot for historical tracking
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     logger.debug('Repay event processed', { marketId });
@@ -648,6 +680,9 @@ export async function handleLiquidate(event: LiquidateEvent, marketId: string): 
           totalCollateral: new Decimal(event.totalCollateral),
           borrowIndex: new Decimal(event.borrowIndex),
           liquidityIndex: new Decimal(event.liquidityIndex),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
+          utilization: new Decimal(event.utilization),
         },
       });
 
@@ -691,8 +726,13 @@ export async function handleLiquidate(event: LiquidateEvent, marketId: string): 
           totalDebt: new Decimal(event.totalDebt),
           totalCollateral: new Decimal(event.totalCollateral),
           utilization: new Decimal(event.utilization),
+          borrowRate: new Decimal(event.borrowRate),
+          liquidityRate: new Decimal(event.liquidityRate),
         },
       });
+
+      // Create market snapshot for historical tracking
+      await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
 
     logger.debug('Liquidate event processed', { marketId });

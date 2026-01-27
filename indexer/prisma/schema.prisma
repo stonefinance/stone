@@ -121,6 +121,8 @@ model Transaction {
   totalDebt       Decimal? @map("total_debt") @db.Decimal(78, 0)
   totalCollateral Decimal? @map("total_collateral") @db.Decimal(78, 0)
   utilization     Decimal? @db.Decimal(20, 18)
+  borrowRate      Decimal? @map("borrow_rate") @db.Decimal(20, 18)
+  liquidityRate   Decimal? @map("liquidity_rate") @db.Decimal(20, 18)
 
   // Relations
   market   Market        @relation(fields: [marketId], references: [id])
