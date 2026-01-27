@@ -13,7 +13,6 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { formatPercentage } from '@/lib/utils/format';
-import { generateMockRateHistory } from '@/lib/mock/advanced-tab-data';
 import { calculateRateAtTarget, IRMParams } from '@/lib/utils/irm';
 
 export interface InstantaneousRatesProps {
@@ -34,9 +33,9 @@ export function InstantaneousRates({
 }: InstantaneousRatesProps) {
   const [selectedRateType, setSelectedRateType] = useState<RateType>('borrow');
 
-  // Use provided history or generate mock data
+  // Only use real historical data — never generate fake/mock data
   const chartData = useMemo(() => {
-    const history = rateHistory || generateMockRateHistory(borrowRate);
+    const history = rateHistory ?? [];
 
     return history.map((point) => ({
       timestamp: point.timestamp,
@@ -51,7 +50,10 @@ export function InstantaneousRates({
       borrowRate: point.borrowRate * 100,
       liquidityRate: point.liquidityRate * 100,
     }));
-  }, [rateHistory, borrowRate]);
+  }, [rateHistory]);
+
+  const MIN_DATA_POINTS_FOR_CHART = 2;
+  const hasEnoughData = chartData.length >= MIN_DATA_POINTS_FOR_CHART;
 
   // Calculate rate at target if IRM params provided
   const rateAtTarget = useMemo(() => {
@@ -128,69 +130,75 @@ export function InstantaneousRates({
 
           {/* Historical Chart */}
           <div className="h-48 mt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="rateGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="date"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#888', fontSize: 11 }}
-                  interval="preserveStartEnd"
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: '#888', fontSize: 11 }}
-                  tickFormatter={(value) => `${value.toFixed(1)}%`}
-                  domain={['dataMin - 0.5', 'dataMax + 0.5']}
-                  width={45}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--background)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                  }}
-                  formatter={(value) => [`${(value as number).toFixed(2)}%`, selectedRateType === 'supply' ? 'Supply Rate' : 'Borrow Rate']}
-                  labelFormatter={(_, payload) => {
-                    if (payload && payload[0]) {
-                      const data = payload[0].payload;
-                      return `${data.date} ${data.time}`;
-                    }
-                    return '';
-                  }}
-                />
-                {/* Reference line for rate at target when viewing borrow rate */}
-                {selectedRateType !== 'supply' && rateAtTarget !== null && (
-                  <ReferenceLine
-                    y={rateAtTarget}
-                    stroke="#94a3b8"
-                    strokeDasharray="3 3"
-                    label={{
-                      value: 'Target',
-                      position: 'right',
-                      fill: '#94a3b8',
-                      fontSize: 10,
+            {hasEnoughData ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="rateGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="date"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#888', fontSize: 11 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#888', fontSize: 11 }}
+                    tickFormatter={(value) => `${value.toFixed(1)}%`}
+                    domain={['dataMin - 0.5', 'dataMax + 0.5']}
+                    width={45}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'var(--background)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    formatter={(value) => [`${(value as number).toFixed(2)}%`, selectedRateType === 'supply' ? 'Supply Rate' : 'Borrow Rate']}
+                    labelFormatter={(_, payload) => {
+                      if (payload && payload[0]) {
+                        const data = payload[0].payload;
+                        return `${data.date} ${data.time}`;
+                      }
+                      return '';
                     }}
                   />
-                )}
-                <Area
-                  type="monotone"
-                  dataKey={dataKey}
-                  stroke="#6366f1"
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#rateGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+                  {/* Reference line for rate at target when viewing borrow rate */}
+                  {selectedRateType !== 'supply' && rateAtTarget !== null && (
+                    <ReferenceLine
+                      y={rateAtTarget}
+                      stroke="#94a3b8"
+                      strokeDasharray="3 3"
+                      label={{
+                        value: 'Target',
+                        position: 'right',
+                        fill: '#94a3b8',
+                        fontSize: 10,
+                      }}
+                    />
+                  )}
+                  <Area
+                    type="monotone"
+                    dataKey={dataKey}
+                    stroke="#6366f1"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#rateGradient)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                <p>Not enough historical data to display chart. Rate data will appear as snapshots are collected.</p>
+              </div>
+            )}
           </div>
         </div>
       </CardContent>
