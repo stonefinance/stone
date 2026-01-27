@@ -56,18 +56,30 @@ impl OracleType {
     /// Returns the max staleness in seconds for this oracle type
     pub fn max_staleness_secs(&self) -> u64 {
         match self {
-            OracleType::Generic { max_staleness_secs, .. } => *max_staleness_secs,
-            OracleType::Pyth { max_staleness_secs, .. } => *max_staleness_secs,
-            OracleType::Chainlink { max_staleness_secs, .. } => *max_staleness_secs,
+            OracleType::Generic {
+                max_staleness_secs, ..
+            } => *max_staleness_secs,
+            OracleType::Pyth {
+                max_staleness_secs, ..
+            } => *max_staleness_secs,
+            OracleType::Chainlink {
+                max_staleness_secs, ..
+            } => *max_staleness_secs,
         }
     }
 
     /// Returns the expected code ID if validation is required
     pub fn expected_code_id(&self) -> Option<u64> {
         match self {
-            OracleType::Generic { expected_code_id, .. } => *expected_code_id,
-            OracleType::Pyth { expected_code_id, .. } => Some(*expected_code_id),
-            OracleType::Chainlink { expected_code_id, .. } => Some(*expected_code_id),
+            OracleType::Generic {
+                expected_code_id, ..
+            } => *expected_code_id,
+            OracleType::Pyth {
+                expected_code_id, ..
+            } => Some(*expected_code_id),
+            OracleType::Chainlink {
+                expected_code_id, ..
+            } => Some(*expected_code_id),
         }
     }
 }
