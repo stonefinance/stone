@@ -67,7 +67,11 @@ pub fn execute_liquidate(
         config.oracle_config.address.as_str(),
         &config.collateral_denom,
     )?;
-    let debt_price = query_price(deps.as_ref(), config.oracle_config.address.as_str(), &config.debt_denom)?;
+    let debt_price = query_price(
+        deps.as_ref(),
+        config.oracle_config.address.as_str(),
+        &config.debt_denom,
+    )?;
 
     // Calculate collateral to seize
     // debt_value = actual_debt_repaid * debt_price
@@ -220,7 +224,8 @@ mod tests {
         coins, from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery,
     };
     use stone_types::{
-        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg, OracleType, PriceResponse,
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg,
+        OracleType, PriceResponse,
     };
 
     fn setup_liquidatable_position(

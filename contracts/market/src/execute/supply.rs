@@ -110,7 +110,9 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::{coins, Decimal, Uint128};
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
+    use stone_types::{
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType,
+    };
 
     fn setup_market(
         deps: &mut cosmwasm_std::OwnedDeps<

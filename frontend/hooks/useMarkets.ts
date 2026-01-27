@@ -1,12 +1,16 @@
 'use client';
 
+import { useEffect } from 'react';
 import { Market, MarketDetail } from '@/types';
 import { formatDenom } from '@/lib/utils/format';
 import {
   useGetMarketsQuery,
   useGetMarketQuery,
+  GetMarketQuery,
   MarketSummaryFieldsFragment,
   MarketFieldsFragment,
+  OnMarketUpdatedDocument,
+  OnMarketUpdatedSubscription,
 } from '@/lib/graphql/generated/hooks';
 
 function parseRate(rate: string): number {
@@ -88,7 +92,6 @@ export function useMarkets() {
       limit: 100,
       enabledOnly: false,
     },
-    pollInterval: 30000, // Poll every 30 seconds
   });
 
   return {
@@ -100,13 +103,35 @@ export function useMarkets() {
 }
 
 export function useMarket(marketId: string | undefined) {
-  const { data, loading, error, refetch } = useGetMarketQuery({
+  const { data, loading, error, refetch, subscribeToMore } = useGetMarketQuery({
     variables: {
       id: marketId!,
     },
     skip: !marketId,
-    pollInterval: 30000,
   });
+
+  // Subscribe to real-time market updates
+  useEffect(() => {
+    if (!marketId) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = (subscribeToMore as any)({
+      document: OnMarketUpdatedDocument,
+      variables: { marketId },
+      updateQuery: (
+        prev: GetMarketQuery,
+        { subscriptionData }: { subscriptionData: { data?: OnMarketUpdatedSubscription } }
+      ) => {
+        if (!subscriptionData.data) return prev;
+        return {
+          ...prev,
+          market: subscriptionData.data.marketUpdated,
+        };
+      },
+    });
+
+    return () => unsubscribe();
+  }, [marketId, subscribeToMore]);
 
   return {
     data: data?.market ? transformMarketDetail(data.market) : undefined,

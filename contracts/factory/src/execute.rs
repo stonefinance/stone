@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg,
-    WasmMsg, WasmQuery,
+    to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, MessageInfo, Response, SubMsg, WasmMsg,
+    WasmQuery,
 };
 
 use stone_types::{
