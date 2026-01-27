@@ -18,6 +18,7 @@ Before committing ANY changes, run these checks and fix all issues:
 1. `cd frontend && npx eslint .` — no ESLint errors
 2. `cd frontend && npx tsc --noEmit` — no TypeScript errors
 3. `cd frontend && npx vitest run` — all tests must pass
+4. `cd frontend && npm run build` — Next.js production build must succeed (catches errors tsc alone misses)
 
 ### General
 - No `console.log` or `dbg!()` left in committed code (unless intentional logging)

@@ -76,6 +76,14 @@ if [ -n "$FRONTEND_CHANGED" ]; then
         echo -e "${RED}✗ Tests failing${NC}"
         ERRORS=$((ERRORS + 1))
     fi
+
+    echo -n "  build:  "
+    if (cd frontend && npm run build) > /dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗ Next.js build failed${NC}"
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 # ─── General checks ───────────────────────────────────────────
