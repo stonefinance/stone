@@ -95,6 +95,8 @@ pub fn execute_borrow(
         .add_attribute("recipient", recipient_addr)
         .add_attribute("amount", amount)
         .add_attribute("scaled_amount", scaled_amount)
+        .add_attribute("borrow_index", state.borrow_index.to_string())
+        .add_attribute("liquidity_index", state.liquidity_index.to_string())
         .add_attribute("total_supply", total_supply)
         .add_attribute("total_debt", total_debt)
         .add_attribute("utilization", utilization.to_string()))

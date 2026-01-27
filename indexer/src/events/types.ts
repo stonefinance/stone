@@ -37,6 +37,8 @@ export interface SupplyEvent {
   recipient: string;
   amount: string;
   scaledAmount: string;
+  borrowIndex: string;
+  liquidityIndex: string;
   totalSupply: string;
   totalDebt: string;
   utilization: string;
@@ -53,6 +55,8 @@ export interface WithdrawEvent {
   recipient: string;
   amount: string;
   scaledDecrease: string;
+  borrowIndex: string;
+  liquidityIndex: string;
   totalSupply: string;
   totalDebt: string;
   utilization: string;
@@ -93,6 +97,8 @@ export interface BorrowEvent {
   recipient: string;
   amount: string;
   scaledAmount: string;
+  borrowIndex: string;
+  liquidityIndex: string;
   totalSupply: string;
   totalDebt: string;
   utilization: string;
@@ -109,6 +115,8 @@ export interface RepayEvent {
   borrower: string;
   amount: string;
   scaledDecrease: string;
+  borrowIndex: string;
+  liquidityIndex: string;
   totalSupply: string;
   totalDebt: string;
   utilization: string;
@@ -127,6 +135,8 @@ export interface LiquidateEvent {
   collateralSeized: string;
   protocolFee: string;
   scaledDebtDecrease: string;
+  borrowIndex: string;
+  liquidityIndex: string;
   totalSupply: string;
   totalDebt: string;
   totalCollateral: string;
