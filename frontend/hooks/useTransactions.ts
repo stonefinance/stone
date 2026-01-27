@@ -63,15 +63,16 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
 
   // Subscribe to real-time new transactions
   useEffect(() => {
-    const unsubscribe = subscribeToMore<OnNewTransactionSubscription>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = (subscribeToMore as any)({
       document: OnNewTransactionDocument,
       variables: { marketId },
-      updateQuery: (prev, { subscriptionData }) => {
+      updateQuery: (prev: any, { subscriptionData }: { subscriptionData: { data?: OnNewTransactionSubscription } }) => {
         if (!subscriptionData.data) return prev;
         const newTx = subscriptionData.data.newTransaction;
         const existingTxs = prev.transactions ?? [];
         // Avoid duplicates
-        if (existingTxs.some((tx) => tx.id === newTx.id)) return prev;
+        if (existingTxs.some((tx: any) => tx.id === newTx.id)) return prev;
         // Prepend new transaction, keep within limit
         return {
           ...prev,

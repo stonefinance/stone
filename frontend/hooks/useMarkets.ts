@@ -113,7 +113,8 @@ export function useMarket(marketId: string | undefined) {
   useEffect(() => {
     if (!marketId) return;
 
-    const unsubscribe = subscribeToMore<OnMarketUpdatedSubscription>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = (subscribeToMore as any)({
       document: OnMarketUpdatedDocument,
       variables: { marketId },
       updateQuery: (prev, { subscriptionData }) => {

@@ -54,10 +54,11 @@ export function useUserPosition(marketId: string | undefined) {
   useEffect(() => {
     if (!isConnected || !address) return;
 
-    const unsubscribe = subscribeToMore<OnPositionUpdatedSubscription>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = (subscribeToMore as any)({
       document: OnPositionUpdatedDocument,
       variables: { userAddress: address },
-      updateQuery: (prev, { subscriptionData }) => {
+      updateQuery: (prev: any, { subscriptionData }: { subscriptionData: { data?: OnPositionUpdatedSubscription } }) => {
         if (!subscriptionData.data) return prev;
         const updatedPosition = subscriptionData.data.positionUpdated;
         // Only update if the position is for the current market
@@ -97,16 +98,17 @@ export function useUserPositions() {
   useEffect(() => {
     if (!isConnected || !address) return;
 
-    const unsubscribe = subscribeToMore<OnPositionUpdatedSubscription>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const unsubscribe = (subscribeToMore as any)({
       document: OnPositionUpdatedDocument,
       variables: { userAddress: address },
-      updateQuery: (prev, { subscriptionData }) => {
+      updateQuery: (prev: any, { subscriptionData }: { subscriptionData: { data?: OnPositionUpdatedSubscription } }) => {
         if (!subscriptionData.data) return prev;
         const updatedPosition = subscriptionData.data.positionUpdated;
         const existingPositions = prev.userPositions ?? [];
         // Replace the matching position or append if new
         const index = existingPositions.findIndex(
-          (p) => p.id === updatedPosition.id
+          (p: any) => p.id === updatedPosition.id
         );
         if (index >= 0) {
           const updated = [...existingPositions];
