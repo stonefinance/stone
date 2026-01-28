@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { queryClient } from '@/lib/cosmjs/client';
 
@@ -17,7 +17,7 @@ export function useBalance(denom: string | undefined): UseBalanceResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const fetchBalance = async () => {
+  const fetchBalance = useCallback(async () => {
     if (!address || !denom || !isConnected) {
       setBalance(null);
       return;
@@ -35,11 +35,11 @@ export function useBalance(denom: string | undefined): UseBalanceResult {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [address, denom, isConnected]);
 
   useEffect(() => {
     fetchBalance();
-  }, [address, denom, isConnected]);
+  }, [fetchBalance]);
 
   return {
     balance,

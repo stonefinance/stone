@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 // Generated file - type checking disabled due to Apollo Client 4.x compatibility issues
 import { gql } from '@apollo/client/index.js';

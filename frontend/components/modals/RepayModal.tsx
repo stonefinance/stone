@@ -23,6 +23,7 @@ interface RepayModalProps {
   displayDenom?: string; // Display denom for UI (e.g., "STONE")
   currentDebt?: string;
   onSuccess?: () => void;
+  onFullRepay?: () => void;
 }
 
 export function RepayModal({
@@ -33,6 +34,7 @@ export function RepayModal({
   displayDenom,
   currentDebt,
   onSuccess,
+  onFullRepay,
 }: RepayModalProps) {
   const { signingClient, isConnected } = useWallet();
   const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
@@ -68,9 +70,14 @@ export function RepayModal({
       const result = await signingClient.repay(marketAddress, coin);
 
       markCompleted(txId, result.transactionHash);
+      const repaidAmount = parseFloat(amount);
+      const currentDebtBase = currentDebt ? parseFloat(microToBase(currentDebt)) : undefined;
       setAmount('');
       onOpenChange(false);
       onSuccess?.();
+      if (currentDebtBase !== undefined && repaidAmount >= currentDebtBase) {
+        onFullRepay?.();
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
       markFailed(txId, errorMessage);
