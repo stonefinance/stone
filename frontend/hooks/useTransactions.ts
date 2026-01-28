@@ -8,6 +8,7 @@ import {
   OnNewTransactionDocument,
   OnNewTransactionSubscription,
   OnNewTransactionSubscriptionVariables,
+  GetTransactionsQuery,
 } from '@/lib/graphql/generated/hooks';
 
 export interface Transaction {
@@ -70,18 +71,18 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
     >({
       document: OnNewTransactionDocument,
       variables: { marketId },
-      updateQuery: (prev, { subscriptionData }) => {
-        if (!subscriptionData.data) return prev;
+      updateQuery: (prev, { subscriptionData }): GetTransactionsQuery => {
+        if (!subscriptionData.data) return prev as GetTransactionsQuery;
 
         const newTx = subscriptionData.data.newTransaction;
         const existingTxs = prev.transactions ?? [];
 
-        if (existingTxs.some((tx) => tx.id === newTx.id)) return prev;
+        if (existingTxs.some((tx) => tx.id === newTx.id)) return prev as GetTransactionsQuery;
 
-        const updatedTransactions = [newTx, ...existingTxs].slice(0, limit);
+        const updatedTransactions = [newTx, ...existingTxs].slice(0, limit) as GetTransactionsQuery['transactions'];
 
         return {
-          ...prev,
+          __typename: 'Query',
           transactions: updatedTransactions,
         };
       },

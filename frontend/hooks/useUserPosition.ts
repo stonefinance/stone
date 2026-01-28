@@ -63,14 +63,14 @@ export function useUserPosition(marketId: string | undefined) {
     >({
       document: OnPositionUpdatedDocument,
       variables: { userAddress: address },
-      updateQuery: (prev, { subscriptionData }) => {
-        if (!subscriptionData.data) return prev;
+      updateQuery: (prev, { subscriptionData }): GetUserPositionQuery => {
+        if (!subscriptionData.data) return prev as GetUserPositionQuery;
         const updatedPosition = subscriptionData.data.positionUpdated;
-        if (updatedPosition.market.id !== marketId) return prev;
+        if (updatedPosition.market.id !== marketId) return prev as GetUserPositionQuery;
         return {
-          ...prev,
-          userPosition: updatedPosition,
-        } satisfies GetUserPositionQuery;
+          __typename: 'Query',
+          userPosition: updatedPosition as GetUserPositionQuery['userPosition'],
+        };
       },
     });
 
@@ -108,8 +108,8 @@ export function useUserPositions() {
     >({
       document: OnPositionUpdatedDocument,
       variables: { userAddress: address },
-      updateQuery: (prev, { subscriptionData }) => {
-        if (!subscriptionData.data) return prev;
+      updateQuery: (prev, { subscriptionData }): GetUserPositionsQuery => {
+        if (!subscriptionData.data) return prev as GetUserPositionsQuery;
 
         const updatedPosition = subscriptionData.data.positionUpdated;
         const existingPositions = prev.userPositions ?? [];
@@ -118,13 +118,16 @@ export function useUserPositions() {
         if (index >= 0) {
           const updated = [...existingPositions];
           updated[index] = updatedPosition;
-          return { ...prev, userPositions: updated } satisfies GetUserPositionsQuery;
+          return {
+            __typename: 'Query',
+            userPositions: updated as GetUserPositionsQuery['userPositions'],
+          };
         }
 
         return {
-          ...prev,
-          userPositions: [...existingPositions, updatedPosition],
-        } satisfies GetUserPositionsQuery;
+          __typename: 'Query',
+          userPositions: [...existingPositions, updatedPosition] as GetUserPositionsQuery['userPositions'],
+        };
       },
     });
 
