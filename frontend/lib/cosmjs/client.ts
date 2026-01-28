@@ -16,7 +16,7 @@ import {
   MarketCountResponse,
   Coin,
 } from '@/types';
-import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_LIMITS, GAS_PRICE } from '@/lib/constants';
+import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_PRICE } from '@/lib/constants';
 
 // Query-only client (no wallet required)
 export class QueryClient {

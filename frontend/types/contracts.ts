@@ -12,9 +12,9 @@ export interface Decimal {
 
 // Market Query Messages
 export type MarketQueryMsg =
-  | { config: {} }
-  | { params: {} }
-  | { state: {} }
+  | { config: Record<string, never> }
+  | { params: Record<string, never> }
+  | { state: Record<string, never> }
   | { user_position: { user: string } }
   | { user_supply: { user: string } }
   | { user_collateral: { user: string } }
@@ -30,16 +30,16 @@ export type MarketExecuteMsg =
   | { borrow: { amount: string; recipient?: string } }
   | { repay: { on_behalf_of?: string } }
   | { liquidate: { borrower: string } }
-  | { accrue_interest: {} };
+  | { accrue_interest: Record<string, never> };
 
 // Factory Query Messages
 export type FactoryQueryMsg =
-  | { config: {} }
+  | { config: Record<string, never> }
   | { market: { market_id: string } }
   | { market_by_address: { address: string } }
   | { markets: { start_after?: string; limit?: number } }
   | { markets_by_curator: { curator: string; start_after?: string; limit?: number } }
-  | { market_count: {} };
+  | { market_count: Record<string, never> };
 
 // Market Config Response
 export interface MarketConfigResponse {

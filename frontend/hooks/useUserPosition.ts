@@ -9,6 +9,9 @@ import {
   PositionFieldsFragment,
   OnPositionUpdatedDocument,
   OnPositionUpdatedSubscription,
+  OnPositionUpdatedSubscriptionVariables,
+  GetUserPositionQuery,
+  GetUserPositionsQuery,
 } from '@/lib/graphql/generated/hooks';
 
 function transformPosition(position: PositionFieldsFragment): UserPosition {
@@ -54,18 +57,19 @@ export function useUserPosition(marketId: string | undefined) {
   useEffect(() => {
     if (!isConnected || !address) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const unsubscribe = (subscribeToMore as any)({
+    const unsubscribe = subscribeToMore<
+      OnPositionUpdatedSubscription,
+      OnPositionUpdatedSubscriptionVariables
+    >({
       document: OnPositionUpdatedDocument,
       variables: { userAddress: address },
-      updateQuery: (prev: any, { subscriptionData }: { subscriptionData: { data?: OnPositionUpdatedSubscription } }) => {
-        if (!subscriptionData.data) return prev;
+      updateQuery: (prev, { subscriptionData }): GetUserPositionQuery => {
+        if (!subscriptionData.data) return prev as GetUserPositionQuery;
         const updatedPosition = subscriptionData.data.positionUpdated;
-        // Only update if the position is for the current market
-        if (updatedPosition.market.id !== marketId) return prev;
+        if (updatedPosition.market.id !== marketId) return prev as GetUserPositionQuery;
         return {
-          ...prev,
-          userPosition: updatedPosition,
+          __typename: 'Query',
+          userPosition: updatedPosition as GetUserPositionQuery['userPosition'],
         };
       },
     });
@@ -98,24 +102,32 @@ export function useUserPositions() {
   useEffect(() => {
     if (!isConnected || !address) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const unsubscribe = (subscribeToMore as any)({
+    const unsubscribe = subscribeToMore<
+      OnPositionUpdatedSubscription,
+      OnPositionUpdatedSubscriptionVariables
+    >({
       document: OnPositionUpdatedDocument,
       variables: { userAddress: address },
-      updateQuery: (prev: any, { subscriptionData }: { subscriptionData: { data?: OnPositionUpdatedSubscription } }) => {
-        if (!subscriptionData.data) return prev;
+      updateQuery: (prev, { subscriptionData }): GetUserPositionsQuery => {
+        if (!subscriptionData.data) return prev as GetUserPositionsQuery;
+
         const updatedPosition = subscriptionData.data.positionUpdated;
         const existingPositions = prev.userPositions ?? [];
-        // Replace the matching position or append if new
-        const index = existingPositions.findIndex(
-          (p: any) => p.id === updatedPosition.id
-        );
+        const index = existingPositions.findIndex((p) => p.id === updatedPosition.id);
+
         if (index >= 0) {
           const updated = [...existingPositions];
           updated[index] = updatedPosition;
-          return { ...prev, userPositions: updated };
+          return {
+            __typename: 'Query',
+            userPositions: updated as GetUserPositionsQuery['userPositions'],
+          };
         }
-        return { ...prev, userPositions: [...existingPositions, updatedPosition] };
+
+        return {
+          __typename: 'Query',
+          userPositions: [...existingPositions, updatedPosition] as GetUserPositionsQuery['userPositions'],
+        };
       },
     });
 

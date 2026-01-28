@@ -6,7 +6,9 @@ import { SigningClient } from './client';
 import { CHAIN_ID, CHAIN_INFO } from '@/lib/constants';
 
 declare global {
-  interface Window extends KeplrWindow {}
+  interface Window extends KeplrWindow {
+    keplr?: KeplrWindow['keplr'];
+  }
 }
 
 interface WalletContextType {

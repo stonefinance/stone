@@ -78,7 +78,7 @@ export function useMarketSnapshots(
   const chartData = useMemo(() => {
     if (!data?.marketSnapshots) return [];
     return transformSnapshots(data.marketSnapshots);
-  }, [data?.marketSnapshots]);
+  }, [data]);
 
   // Check if we have enough data for a meaningful chart
   const hasData = chartData.length > 0;

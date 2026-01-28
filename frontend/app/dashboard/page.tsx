@@ -149,7 +149,7 @@ export default function DashboardPage() {
           {!hasPositions && (
             <Card>
               <CardContent className="py-12 text-center">
-                <p className="text-muted-foreground mb-4">You don't have any active positions</p>
+                <p className="text-muted-foreground mb-4">You don&apos;t have any active positions</p>
                 <Link
                   href="/markets"
                   className="text-primary hover:underline font-medium"

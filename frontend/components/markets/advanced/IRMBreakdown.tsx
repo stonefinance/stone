@@ -13,7 +13,7 @@ import {
   ReferenceLine,
   ReferenceDot,
 } from 'recharts';
-import { formatPercentage, formatDisplayAmount, shortenAddress } from '@/lib/utils/format';
+import { formatPercentage, shortenAddress } from '@/lib/utils/format';
 import {
   IRMParams,
   generateIRMCurvePoints,

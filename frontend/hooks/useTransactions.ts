@@ -7,6 +7,8 @@ import {
   TransactionFieldsFragment,
   OnNewTransactionDocument,
   OnNewTransactionSubscription,
+  OnNewTransactionSubscriptionVariables,
+  GetTransactionsQuery,
 } from '@/lib/graphql/generated/hooks';
 
 export interface Transaction {
@@ -63,20 +65,25 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
 
   // Subscribe to real-time new transactions
   useEffect(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const unsubscribe = (subscribeToMore as any)({
+    const unsubscribe = subscribeToMore<
+      OnNewTransactionSubscription,
+      OnNewTransactionSubscriptionVariables
+    >({
       document: OnNewTransactionDocument,
       variables: { marketId },
-      updateQuery: (prev: any, { subscriptionData }: { subscriptionData: { data?: OnNewTransactionSubscription } }) => {
-        if (!subscriptionData.data) return prev;
+      updateQuery: (prev, { subscriptionData }): GetTransactionsQuery => {
+        if (!subscriptionData.data) return prev as GetTransactionsQuery;
+
         const newTx = subscriptionData.data.newTransaction;
         const existingTxs = prev.transactions ?? [];
-        // Avoid duplicates
-        if (existingTxs.some((tx: any) => tx.id === newTx.id)) return prev;
-        // Prepend new transaction, keep within limit
+
+        if (existingTxs.some((tx) => tx.id === newTx.id)) return prev as GetTransactionsQuery;
+
+        const updatedTransactions = [newTx, ...existingTxs].slice(0, limit) as GetTransactionsQuery['transactions'];
+
         return {
-          ...prev,
-          transactions: [newTx, ...existingTxs].slice(0, limit),
+          __typename: 'Query',
+          transactions: updatedTransactions,
         };
       },
     });

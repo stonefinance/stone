@@ -50,19 +50,19 @@ export const apolloClient = new ApolloClient({
           markets: {
             keyArgs: ['curator', 'collateralDenom', 'debtDenom', 'enabledOnly'],
             merge(existing = [], incoming) {
-              return incoming;
+              return incoming ?? existing;
             },
           },
           userPositions: {
             keyArgs: ['userAddress', 'hasDebt'],
             merge(existing = [], incoming) {
-              return incoming;
+              return incoming ?? existing;
             },
           },
           transactions: {
             keyArgs: ['marketId', 'userAddress', 'action'],
             merge(existing = [], incoming) {
-              return incoming;
+              return incoming ?? existing;
             },
           },
         },

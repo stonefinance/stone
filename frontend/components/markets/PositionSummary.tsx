@@ -41,7 +41,6 @@ export function PositionSummary({
   const collateralNum = typeof collateralAmount === 'string' ? parseFloat(collateralAmount) : collateralAmount;
   const debtNum = typeof debtAmount === 'string' ? parseFloat(debtAmount) : debtAmount;
   const ltvDotColor = getLtvDotColor(currentLtv, liquidationLtv);
-  const healthColor = getHealthFactorColor(healthFactor);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
@@ -98,6 +97,14 @@ export function PositionSummary({
           <span className="text-sm text-muted-foreground">% drop to liquidation</span>
           <span className="text-sm font-medium">
             {percentToLiquidation != null ? `${percentToLiquidation.toFixed(1)}%` : '-'}
+          </span>
+        </div>
+
+        {/* Health factor */}
+        <div className="flex items-center justify-between py-3 border-b border-border">
+          <span className="text-sm text-muted-foreground">Health factor</span>
+          <span className={`text-sm font-medium ${getHealthFactorColor(healthFactor)}`}>
+            {healthFactor != null ? healthFactor.toFixed(2) : '-'}
           </span>
         </div>
 
