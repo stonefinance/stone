@@ -1,11 +1,17 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { UserPosition } from '@/types';
 import {
   useGetUserPositionQuery,
   useGetUserPositionsQuery,
   PositionFieldsFragment,
+  OnPositionUpdatedDocument,
+  OnPositionUpdatedSubscription,
+  OnPositionUpdatedSubscriptionVariables,
+  GetUserPositionQuery,
+  GetUserPositionsQuery,
 } from '@/lib/graphql/generated/hooks';
 import { getPositionType } from '@/lib/utils/position';
 
@@ -40,14 +46,37 @@ function transformPosition(position: PositionFieldsFragment): UserPosition {
 export function useUserPosition(marketId: string | undefined) {
   const { address, isConnected } = useWallet();
 
-  const { data, loading, error, refetch } = useGetUserPositionQuery({
+  const { data, loading, error, refetch, subscribeToMore } = useGetUserPositionQuery({
     variables: {
       marketId: marketId!,
       userAddress: address!,
     },
     skip: !isConnected || !address || !marketId,
-    pollInterval: 10000, // Poll every 10 seconds
   });
+
+  // Subscribe to real-time position updates
+  useEffect(() => {
+    if (!isConnected || !address) return;
+
+    const unsubscribe = subscribeToMore<
+      OnPositionUpdatedSubscription,
+      OnPositionUpdatedSubscriptionVariables
+    >({
+      document: OnPositionUpdatedDocument,
+      variables: { userAddress: address },
+      updateQuery: (prev, { subscriptionData }): GetUserPositionQuery => {
+        if (!subscriptionData.data) return prev as GetUserPositionQuery;
+        const updatedPosition = subscriptionData.data.positionUpdated;
+        if (updatedPosition.market.id !== marketId) return prev as GetUserPositionQuery;
+        return {
+          __typename: 'Query',
+          userPosition: updatedPosition as GetUserPositionQuery['userPosition'],
+        };
+      },
+    });
+
+    return () => unsubscribe();
+  }, [address, isConnected, marketId, subscribeToMore]);
 
   const position = data?.userPosition ? transformPosition(data.userPosition) : null;
   const positionType = getPositionType(position);
@@ -67,13 +96,48 @@ export function useUserPosition(marketId: string | undefined) {
 export function useUserPositions() {
   const { address, isConnected } = useWallet();
 
-  const { data, loading, error, refetch } = useGetUserPositionsQuery({
+  const { data, loading, error, refetch, subscribeToMore } = useGetUserPositionsQuery({
     variables: {
       userAddress: address!,
     },
     skip: !isConnected || !address,
-    pollInterval: 10000,
   });
+
+  // Subscribe to real-time position updates
+  useEffect(() => {
+    if (!isConnected || !address) return;
+
+    const unsubscribe = subscribeToMore<
+      OnPositionUpdatedSubscription,
+      OnPositionUpdatedSubscriptionVariables
+    >({
+      document: OnPositionUpdatedDocument,
+      variables: { userAddress: address },
+      updateQuery: (prev, { subscriptionData }): GetUserPositionsQuery => {
+        if (!subscriptionData.data) return prev as GetUserPositionsQuery;
+
+        const updatedPosition = subscriptionData.data.positionUpdated;
+        const existingPositions = prev.userPositions ?? [];
+        const index = existingPositions.findIndex((p) => p.id === updatedPosition.id);
+
+        if (index >= 0) {
+          const updated = [...existingPositions];
+          updated[index] = updatedPosition;
+          return {
+            __typename: 'Query',
+            userPositions: updated as GetUserPositionsQuery['userPositions'],
+          };
+        }
+
+        return {
+          __typename: 'Query',
+          userPositions: [...existingPositions, updatedPosition] as GetUserPositionsQuery['userPositions'],
+        };
+      },
+    });
+
+    return () => unsubscribe();
+  }, [address, isConnected, subscribeToMore]);
 
   const positions = data?.userPositions.map(transformPosition) ?? [];
 

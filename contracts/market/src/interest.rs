@@ -161,7 +161,9 @@ pub fn calculate_current_rates(
     let params = PARAMS.load(storage)?;
 
     let utilization = state.utilization();
-    let borrow_rate = params.interest_rate_model.calculate_borrow_rate(utilization);
+    let borrow_rate = params
+        .interest_rate_model
+        .calculate_borrow_rate(utilization);
 
     let liquidity_rate = if utilization.is_zero() {
         Decimal::zero()
@@ -182,7 +184,9 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::mock_dependencies;
     use cosmwasm_std::Addr;
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
+    use stone_types::{
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType,
+    };
 
     fn setup_market(
         deps: &mut cosmwasm_std::OwnedDeps<

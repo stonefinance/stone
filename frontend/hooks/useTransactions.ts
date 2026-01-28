@@ -1,9 +1,14 @@
 'use client';
 
+import { useEffect } from 'react';
 import {
   useGetTransactionsQuery,
   TransactionAction,
   TransactionFieldsFragment,
+  OnNewTransactionDocument,
+  OnNewTransactionSubscription,
+  OnNewTransactionSubscriptionVariables,
+  GetTransactionsQuery,
 } from '@/lib/graphql/generated/hooks';
 
 export interface Transaction {
@@ -47,16 +52,44 @@ interface UseTransactionsOptions {
 export function useTransactions(options: UseTransactionsOptions = {}) {
   const { marketId, userAddress, action, limit = 20, offset = 0 } = options;
 
-  const { data, loading, error, refetch, fetchMore } = useGetTransactionsQuery({
-    variables: {
-      marketId,
-      userAddress,
-      action,
-      limit,
-      offset,
-    },
-    pollInterval: 30000,
-  });
+  const { data, loading, error, refetch, fetchMore, subscribeToMore } =
+    useGetTransactionsQuery({
+      variables: {
+        marketId,
+        userAddress,
+        action,
+        limit,
+        offset,
+      },
+    });
+
+  // Subscribe to real-time new transactions
+  useEffect(() => {
+    const unsubscribe = subscribeToMore<
+      OnNewTransactionSubscription,
+      OnNewTransactionSubscriptionVariables
+    >({
+      document: OnNewTransactionDocument,
+      variables: { marketId },
+      updateQuery: (prev, { subscriptionData }): GetTransactionsQuery => {
+        if (!subscriptionData.data) return prev as GetTransactionsQuery;
+
+        const newTx = subscriptionData.data.newTransaction;
+        const existingTxs = prev.transactions ?? [];
+
+        if (existingTxs.some((tx) => tx.id === newTx.id)) return prev as GetTransactionsQuery;
+
+        const updatedTransactions = [newTx, ...existingTxs].slice(0, limit) as GetTransactionsQuery['transactions'];
+
+        return {
+          __typename: 'Query',
+          transactions: updatedTransactions,
+        };
+      },
+    });
+
+    return () => unsubscribe();
+  }, [marketId, limit, subscribeToMore]);
 
   return {
     data: data?.transactions.map(transformTransaction) ?? [],

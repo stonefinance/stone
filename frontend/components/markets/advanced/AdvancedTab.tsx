@@ -40,6 +40,7 @@ export function AdvancedTab({ market }: AdvancedTabProps) {
   const interestRateModel = market.params?.interest_rate_model;
 
   // Parse IRM params from market data or use mock
+  const interestRateModel = market.params?.interest_rate_model;
   const irmParams: IRMParams = useMemo(() => {
     if (interestRateModel) {
       return parseIRMParams(interestRateModel);

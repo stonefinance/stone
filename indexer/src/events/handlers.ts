@@ -321,7 +321,7 @@ export async function handleWithdraw(event: WithdrawEvent, marketId: string): Pr
       }
 
       // Create transaction record
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           id: `${event.txHash}:${event.logIndex}`,
           txHash: event.txHash,
@@ -341,9 +341,19 @@ export async function handleWithdraw(event: WithdrawEvent, marketId: string): Pr
         },
       });
 
+      // Publish subscription events
+      publishTransaction(transaction, marketId);
+      publishPositionUpdate(event.withdrawer, existingPosition);
+
       // Create market snapshot for historical tracking
       await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('Withdraw event processed', { marketId });
   } catch (error) {
@@ -404,7 +414,7 @@ export async function handleSupplyCollateral(
       }
 
       // Create transaction record
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           id: `${event.txHash}:${event.logIndex}`,
           txHash: event.txHash,
@@ -418,7 +428,17 @@ export async function handleSupplyCollateral(
           totalCollateral: newTotalCollateral,
         },
       });
+
+      // Publish subscription events
+      publishTransaction(transaction, marketId);
+      publishPositionUpdate(event.recipient, existingPosition);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('SupplyCollateral event processed', { marketId });
   } catch (error) {
@@ -469,7 +489,7 @@ export async function handleWithdrawCollateral(
       }
 
       // Create transaction record
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           id: `${event.txHash}:${event.logIndex}`,
           txHash: event.txHash,
@@ -483,7 +503,17 @@ export async function handleWithdrawCollateral(
           totalCollateral: newTotalCollateral,
         },
       });
+
+      // Publish subscription events
+      publishTransaction(transaction, marketId);
+      publishPositionUpdate(event.withdrawer, existingPosition);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('WithdrawCollateral event processed', { marketId });
   } catch (error) {
@@ -549,7 +579,7 @@ export async function handleBorrow(event: BorrowEvent, marketId: string): Promis
       }
 
       // Create transaction record
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           id: `${event.txHash}:${event.logIndex}`,
           txHash: event.txHash,
@@ -569,9 +599,19 @@ export async function handleBorrow(event: BorrowEvent, marketId: string): Promis
         },
       });
 
+      // Publish subscription events
+      publishTransaction(transaction, marketId);
+      publishPositionUpdate(event.borrower, existingPosition);
+
       // Create market snapshot for historical tracking
       await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('Borrow event processed', { marketId });
   } catch (error) {
@@ -626,7 +666,7 @@ export async function handleRepay(event: RepayEvent, marketId: string): Promise<
       }
 
       // Create transaction record
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           id: `${event.txHash}:${event.logIndex}`,
           txHash: event.txHash,
@@ -645,9 +685,19 @@ export async function handleRepay(event: RepayEvent, marketId: string): Promise<
         },
       });
 
+      // Publish subscription events
+      publishTransaction(transaction, marketId);
+      publishPositionUpdate(event.borrower, existingPosition);
+
       // Create market snapshot for historical tracking
       await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('Repay event processed', { marketId });
   } catch (error) {
@@ -708,7 +758,7 @@ export async function handleLiquidate(event: LiquidateEvent, marketId: string): 
       }
 
       // Create transaction record
-      await tx.transaction.create({
+      const transaction = await tx.transaction.create({
         data: {
           id: `${event.txHash}:${event.logIndex}`,
           txHash: event.txHash,
@@ -731,9 +781,19 @@ export async function handleLiquidate(event: LiquidateEvent, marketId: string): 
         },
       });
 
+      // Publish subscription events
+      publishTransaction(transaction, marketId);
+      publishPositionUpdate(event.borrower, existingPosition);
+
       // Create market snapshot for historical tracking
       await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('Liquidate event processed', { marketId });
   } catch (error) {
@@ -780,6 +840,12 @@ export async function handleAccrueInterest(
       // Create market snapshot for historical tracking
       await createMarketSnapshot(tx, marketId, event.timestamp, event.blockHeight);
     });
+
+    // Publish market update after transaction completes
+    const updatedMarket = await prisma.market.findUnique({ where: { id: marketId } });
+    if (updatedMarket) {
+      publishMarketUpdate(marketId, updatedMarket);
+    }
 
     logger.debug('AccrueInterest event processed', { marketId });
   } catch (error) {

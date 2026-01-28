@@ -49,23 +49,20 @@ export const apolloClient = new ApolloClient({
         fields: {
           markets: {
             keyArgs: ['curator', 'collateralDenom', 'debtDenom', 'enabledOnly'],
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            merge(_existing = [], incoming) {
-              return incoming;
+            merge(existing = [], incoming) {
+              return incoming ?? existing;
             },
           },
           userPositions: {
             keyArgs: ['userAddress', 'hasDebt'],
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            merge(_existing = [], incoming) {
-              return incoming;
+            merge(existing = [], incoming) {
+              return incoming ?? existing;
             },
           },
           transactions: {
             keyArgs: ['marketId', 'userAddress', 'action'],
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            merge(_existing = [], incoming) {
-              return incoming;
+            merge(existing = [], incoming) {
+              return incoming ?? existing;
             },
           },
         },

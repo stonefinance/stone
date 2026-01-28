@@ -182,7 +182,9 @@ mod tests {
     use crate::state::STATE;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::Uint128;
-    use stone_types::{InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType};
+    use stone_types::{
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType,
+    };
 
     fn setup_mutable_market(
         deps: &mut cosmwasm_std::OwnedDeps<

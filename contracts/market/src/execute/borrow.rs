@@ -116,7 +116,8 @@ mod tests {
         from_json, to_json_binary, ContractResult, Decimal, QuerierResult, WasmQuery,
     };
     use stone_types::{
-        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg, OracleType, PriceResponse,
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg,
+        OracleType, PriceResponse,
     };
 
     fn setup_market_with_oracle(

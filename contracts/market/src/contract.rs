@@ -122,7 +122,10 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::{from_json, Decimal};
-    use stone_types::{CreateMarketParams, InterestRateModel, MarketConfigResponse, OracleConfigUnchecked, OracleType};
+    use stone_types::{
+        CreateMarketParams, InterestRateModel, MarketConfigResponse, OracleConfigUnchecked,
+        OracleType,
+    };
 
     fn test_addrs() -> (
         cosmwasm_std::Addr,
