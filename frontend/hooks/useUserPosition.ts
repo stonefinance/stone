@@ -13,6 +13,7 @@ import {
   GetUserPositionQuery,
   GetUserPositionsQuery,
 } from '@/lib/graphql/generated/hooks';
+import { getPositionType } from '@/lib/utils/position';
 
 function transformPosition(position: PositionFieldsFragment): UserPosition {
   // Note: GraphQL returns amounts as strings (BigInt)
@@ -77,8 +78,12 @@ export function useUserPosition(marketId: string | undefined) {
     return () => unsubscribe();
   }, [address, isConnected, marketId, subscribeToMore]);
 
+  const position = data?.userPosition ? transformPosition(data.userPosition) : null;
+  const positionType = getPositionType(position);
+
   return {
-    data: data?.userPosition ? transformPosition(data.userPosition) : null,
+    data: position,
+    positionType,
     isLoading: loading,
     error: error ? new Error(error.message) : undefined,
     refetch,
@@ -134,8 +139,10 @@ export function useUserPositions() {
     return () => unsubscribe();
   }, [address, isConnected, subscribeToMore]);
 
+  const positions = data?.userPositions.map(transformPosition) ?? [];
+
   return {
-    data: data?.userPositions.map(transformPosition) ?? [],
+    data: positions,
     isLoading: loading,
     error: error ? new Error(error.message) : undefined,
     refetch,

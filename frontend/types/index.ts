@@ -56,6 +56,8 @@ export interface MarketDetail extends Market {
   };
 }
 
+export type PositionType = 'none' | 'supply' | 'borrow' | 'both';
+
 export interface UserPosition {
   marketId: string;
   collateralAmount: string;

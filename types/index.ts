@@ -1,6 +1,8 @@
 export * from './contracts';
 
 // UI-specific types
+export type PositionType = 'none' | 'supply' | 'borrow' | 'both';
+
 export interface Market {
   id: string;
   address: string;

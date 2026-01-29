@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,11 +12,12 @@ import { RepayModal } from '@/components/modals/RepayModal';
 import { WithdrawModal } from '@/components/modals/WithdrawModal';
 import { WithdrawCollateralModal } from '@/components/modals/WithdrawCollateralModal';
 import { AdvancedTab } from '@/components/markets/advanced';
-import { LtvHealthBar } from '@/components/markets/LtvHealthBar';
-import { PositionSummary } from '@/components/markets/PositionSummary';
+import { PositionDisplay } from '@/components/markets/position';
+import { DebtBlocker } from '@/components/markets/actions/DebtBlocker';
 import { useMarket } from '@/hooks/useMarkets';
 import { useUserPosition } from '@/hooks/useUserPosition';
 import { useWallet } from '@/lib/cosmjs/wallet';
+import { hasActiveDebt } from '@/lib/utils/position';
 import { usePendingTransactions, TransactionAction } from '@/lib/contexts/TransactionContext';
 import { useBalance } from '@/hooks/useBalance';
 import {
@@ -51,7 +52,7 @@ export default function MarketDetailPage() {
   const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
 
   const { data: market, isLoading: marketLoading, refetch: refetchMarket } = useMarket(marketId);
-  const { data: position, refetch: refetchPosition } = useUserPosition(marketId);
+  const { data: position, positionType, refetch: refetchPosition } = useUserPosition(marketId);
 
   // Refetch data after transactions
   const refetchAll = async () => {
@@ -63,6 +64,7 @@ export default function MarketDetailPage() {
   const [withdrawCollateralModalOpen, setWithdrawCollateralModalOpen] = useState(false);
 
   const [actionTab, setActionTab] = useState<'lend' | 'borrow'>('borrow');
+  const [initializedTab, setInitializedTab] = useState(false);
   const [supplyAmount, setSupplyAmount] = useState('');
   const [collateralAmount, setCollateralAmount] = useState('');
   const [borrowAmount, setBorrowAmount] = useState('');
@@ -88,6 +90,14 @@ export default function MarketDetailPage() {
     hasData: hasChartData,
     isLoading: chartLoading,
   } = useMarketSnapshots(marketId, chartTimeRange);
+
+  useEffect(() => {
+    if (initializedTab) return;
+    if (positionType === 'supply') {
+      setActionTab('lend');
+    }
+    setInitializedTab(true);
+  }, [initializedTab, positionType]);
 
   // Get the current chart value based on selected metric
   const chartDataKey = getChartDataKey(chartMetric);
@@ -231,15 +241,7 @@ export default function MarketDetailPage() {
     ? parseFloat(microToBase(position.supplyAmount))
     : 0;
   const currentLtv = userCollateral > 0 && userDebt > 0 ? (userDebt / userCollateral) * 100 : 0;
-
-  // Ratio form (0-1) for position tab components
-  const currentLtvRatio = userCollateral > 0 && userDebt > 0 ? userDebt / userCollateral : 0;
-  const liquidationLtvRatio = market.params?.liquidation_threshold
-    ? parseFloat(market.params.liquidation_threshold)
-    : 0.86;
-
-  // Utilization as percentage for display
-  const utilizationPercent = market.utilization != null ? market.utilization : undefined;
+  const hasDebt = hasActiveDebt(position);
 
   // Format large numbers
   const formatLargeNumber = (num: number) => {
@@ -352,30 +354,12 @@ export default function MarketDetailPage() {
               </TabsList>
 
               <TabsContent value="position" className="mt-6">
-                {!isConnected ? (
-                  <Card>
-                    <CardContent className="py-12 text-center">
-                      <p className="text-muted-foreground">Connect your wallet to view your position</p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <div className="space-y-6">
-                    <LtvHealthBar
-                      currentLtv={currentLtvRatio}
-                      liquidationLtv={liquidationLtvRatio}
-                    />
-                    <PositionSummary
-                      collateralAmount={userCollateral}
-                      collateralDenom={market.collateralDenom}
-                      debtAmount={userDebt}
-                      debtDenom={market.debtDenom}
-                      currentLtv={currentLtvRatio}
-                      liquidationLtv={liquidationLtvRatio}
-                      healthFactor={position?.healthFactor}
-                      utilization={utilizationPercent}
-                    />
-                  </div>
-                )}
+                <PositionDisplay
+                  position={position}
+                  positionType={positionType}
+                  market={market}
+                  isConnected={isConnected}
+                />
               </TabsContent>
 
               <TabsContent value="overview" className="mt-6 space-y-6">
@@ -635,87 +619,96 @@ export default function MarketDetailPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 {actionTab === 'lend' ? (
-                  <>
-                    {/* Supply (Lend) Input */}
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Supply {market.debtDenom}</span>
-                        <Info className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                      <div className="relative">
-                        <Input
-                          type="text"
-                          placeholder="0.00"
-                          value={supplyAmount}
-                          onChange={(e) => setSupplyAmount(e.target.value)}
-                          className="pr-20 text-lg h-12"
-                        />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">
-                            {debtBalance ? formatDisplayAmount(parseFloat(microToBase(debtBalance)), 2) : '0.00'} {market.debtDenom}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs"
-                            onClick={() => {
-                              if (debtBalance) {
-                                setSupplyAmount(microToBase(debtBalance));
-                              }
-                            }}
-                          >
-                            MAX
-                          </Button>
+                  hasDebt ? (
+                    <DebtBlocker
+                      debtAmount={userDebt}
+                      debtDenom={market.debtDenom}
+                      borrowApy={rate}
+                      onRepayClick={() => setRepayModalOpen(true)}
+                    />
+                  ) : (
+                    <>
+                      {/* Supply (Lend) Input */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">Supply {market.debtDenom}</span>
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="relative">
+                          <Input
+                            type="text"
+                            placeholder="0.00"
+                            value={supplyAmount}
+                            onChange={(e) => setSupplyAmount(e.target.value)}
+                            className="pr-20 text-lg h-12"
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {debtBalance ? formatDisplayAmount(parseFloat(microToBase(debtBalance)), 2) : '0.00'} {market.debtDenom}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-xs"
+                              onClick={() => {
+                                if (debtBalance) {
+                                  setSupplyAmount(microToBase(debtBalance));
+                                }
+                              }}
+                            >
+                              MAX
+                            </Button>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Lend Position Summary */}
-                    <div className="space-y-3 pt-2 border-t">
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center gap-1">
-                          <div className="w-2 h-2 rounded-full bg-purple-500" />
-                          <span className="text-muted-foreground">Your Supply ({market.debtDenom})</span>
+                      {/* Lend Position Summary */}
+                      <div className="space-y-3 pt-2 border-t">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-purple-500" />
+                            <span className="text-muted-foreground">Your Supply ({market.debtDenom})</span>
+                          </div>
+                          <span>{formatDisplayAmount(userSupply)}</span>
                         </div>
-                        <span>{formatDisplayAmount(userSupply)}</span>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Supply APY</span>
+                          <span className="text-green-600">{formatPercentage(market.supplyApy)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">Supply APY</span>
-                        <span className="text-green-600">{formatPercentage(market.supplyApy)}</span>
-                      </div>
-                    </div>
 
-                    {/* Error Display */}
-                    {supplyError && (
-                      <p className="text-sm text-destructive">{supplyError}</p>
-                    )}
+                      {/* Error Display */}
+                      {supplyError && (
+                        <p className="text-sm text-destructive">{supplyError}</p>
+                      )}
 
-                    {/* Supply Action Button */}
-                    <Button
-                      className="w-full h-12 text-base"
-                      disabled={!isConnected || !supplyAmount || parseFloat(supplyAmount) <= 0 || isSupplying}
-                      onClick={handleSupply}
-                    >
-                      {!isConnected
-                        ? 'Connect Wallet'
-                        : isSupplying
-                        ? 'Processing...'
-                        : !supplyAmount || parseFloat(supplyAmount) <= 0
-                        ? 'Enter an amount'
-                        : 'Supply'}
-                    </Button>
-
-                    {/* Withdraw Supply */}
-                    {isConnected && userSupply > 0 && (
+                      {/* Supply Action Button */}
                       <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => setWithdrawModalOpen(true)}
+                        className="w-full h-12 text-base"
+                        disabled={!isConnected || !supplyAmount || parseFloat(supplyAmount) <= 0 || isSupplying}
+                        onClick={handleSupply}
                       >
-                        Withdraw Supply
+                        {!isConnected
+                          ? 'Connect Wallet'
+                          : isSupplying
+                          ? 'Processing...'
+                          : !supplyAmount || parseFloat(supplyAmount) <= 0
+                          ? 'Enter an amount'
+                          : 'Supply'}
                       </Button>
-                    )}
-                  </>
+
+                      {/* Withdraw Supply */}
+                      {isConnected && userSupply > 0 && (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => setWithdrawModalOpen(true)}
+                        >
+                          Withdraw Supply
+                        </Button>
+                      )}
+                    </>
+                  )
                 ) : (
                   <>
                     {/* Add Collateral Section */}
@@ -890,6 +883,7 @@ export default function MarketDetailPage() {
         displayDenom={market.debtDenom}
         currentDebt={position?.debtAmount}
         onSuccess={refetchAll}
+        onFullRepay={() => setActionTab('lend')}
       />
 
       <WithdrawModal
