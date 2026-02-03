@@ -87,6 +87,12 @@ pub enum ContractError {
     #[error("Curator fee exceeds maximum of 25%")]
     CuratorFeeExceedsMax,
 
+    #[error("Total fees must be less than 100%: protocol {protocol_fee}, curator {curator_fee}")]
+    TotalFeeExceedsMax {
+        protocol_fee: String,
+        curator_fee: String,
+    },
+
     #[error("Invalid LTV: must be less than liquidation threshold and between 1% and 95%")]
     InvalidLtv,
 

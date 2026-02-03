@@ -43,7 +43,11 @@ fn validate_market_params(params: &CreateMarketParams) -> Result<(), ContractErr
     }
 
     // Total fees must be less than 100%
-    if params.protocol_fee + params.curator_fee >= cosmwasm_std::Decimal::one() {
+    let total_fee = params
+        .protocol_fee
+        .checked_add(params.curator_fee)
+        .map_err(|_| TypesError::InvalidFees)?;
+    if total_fee >= cosmwasm_std::Decimal::one() {
         return Err(TypesError::InvalidFees.into());
     }
 
@@ -489,6 +493,14 @@ mod tests {
         let mut params = valid_params();
         params.liquidation_bonus = Decimal::percent(20); // > 15%
         assert!(validate_market_params(&params).is_err());
+    }
+
+    #[test]
+    fn test_validate_market_params_fees_at_boundary_succeeds() {
+        let mut params = valid_params();
+        params.protocol_fee = Decimal::percent(74);
+        params.curator_fee = Decimal::percent(25); // Total = 99% < 100%, should succeed
+        assert!(validate_market_params(&params).is_ok());
     }
 
     #[test]

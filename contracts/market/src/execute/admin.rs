@@ -91,6 +91,13 @@ pub fn execute_update_params(
         if new_fee > Decimal::percent(25) {
             return Err(ContractError::CuratorFeeExceedsMax);
         }
+        let total_fee = params.protocol_fee.checked_add(new_fee)?;
+        if total_fee >= Decimal::one() {
+            return Err(ContractError::TotalFeeExceedsMax {
+                protocol_fee: params.protocol_fee.to_string(),
+                curator_fee: new_fee.to_string(),
+            });
+        }
         params.curator_fee = new_fee;
         response = response.add_attribute("curator_fee", new_fee.to_string());
     }
@@ -451,6 +458,70 @@ mod tests {
 
         let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
         assert!(matches!(err, ContractError::CuratorFeeExceedsMax));
+    }
+
+    #[test]
+    fn test_update_curator_fee_exceeds_total_fee_cap() {
+        let mut deps = mock_dependencies();
+        setup_mutable_market(&mut deps);
+
+        let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
+        params.protocol_fee = Decimal::percent(80);
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let env = mock_env();
+        let curator = MockApi::default().addr_make("curator");
+        let info = message_info(&curator, &[]);
+
+        let updates = MarketParamsUpdate {
+            loan_to_value: None,
+            interest_rate_model: None,
+            curator_fee: Some(Decimal::percent(25)),
+            supply_cap: None,
+            borrow_cap: None,
+            enabled: None,
+        };
+
+        let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::TotalFeeExceedsMax {
+                protocol_fee: Decimal::percent(80).to_string(),
+                curator_fee: Decimal::percent(25).to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_update_curator_fee_hits_total_fee_cap() {
+        let mut deps = mock_dependencies();
+        setup_mutable_market(&mut deps);
+
+        let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
+        params.protocol_fee = Decimal::percent(75);
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let env = mock_env();
+        let curator = MockApi::default().addr_make("curator");
+        let info = message_info(&curator, &[]);
+
+        let updates = MarketParamsUpdate {
+            loan_to_value: None,
+            interest_rate_model: None,
+            curator_fee: Some(Decimal::percent(25)),
+            supply_cap: None,
+            borrow_cap: None,
+            enabled: None,
+        };
+
+        let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::TotalFeeExceedsMax {
+                protocol_fee: Decimal::percent(75).to_string(),
+                curator_fee: Decimal::percent(25).to_string(),
+            }
+        );
     }
 
     #[test]
