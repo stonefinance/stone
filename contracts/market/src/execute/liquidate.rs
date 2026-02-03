@@ -15,9 +15,8 @@ pub fn execute_liquidate(
     let config = CONFIG.load(deps.storage)?;
     let params = PARAMS.load(deps.storage)?;
 
-    if !params.enabled {
-        return Err(ContractError::MarketDisabled);
-    }
+    // NOTE: Liquidation is ALWAYS allowed regardless of market status
+    // to prevent bad debt accumulation when markets are disabled.
 
     let borrower_addr = deps.api.addr_validate(&borrower)?;
     let borrower_str = borrower_addr.as_str();
@@ -419,7 +418,8 @@ mod tests {
     }
 
     #[test]
-    fn test_liquidate_market_disabled() {
+    fn test_liquidate_works_when_disabled() {
+        // C4 Fix: Liquidation must ALWAYS work regardless of market status
         let mut deps = mock_dependencies();
         let (borrower, liquidator, _) =
             setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
@@ -431,8 +431,13 @@ mod tests {
         let env = mock_env();
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
-        let err = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap_err();
-        assert!(matches!(err, ContractError::MarketDisabled));
+        // Liquidation should succeed even when market is disabled
+        let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
+        assert!(!res.messages.is_empty());
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "liquidate"));
     }
 
     #[test]
