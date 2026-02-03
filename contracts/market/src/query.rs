@@ -22,7 +22,7 @@ pub fn config(deps: Deps) -> ContractResult<MarketConfigResponse> {
         collateral_denom: config.collateral_denom,
         debt_denom: config.debt_denom,
         protocol_fee_collector: config.protocol_fee_collector.to_string(),
-        salt: None,
+        salt: config.salt,
     })
 }
 

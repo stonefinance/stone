@@ -222,9 +222,9 @@ pub fn execute_claim_fees(
     // Safety note: Using available_liquidity() as a claim cap is safe for sequential claims
     // by different parties because:
     // 1. Each claim atomically reduces accrued fees state before transferring tokens
-    // 2. The next claimant sees the updated available_liquidity (fees claimed = liquidity removed)
+    // 2. The next claimant sees reduced accrued_fees (the fee debt is already decreased)
     // 3. Total claims can never exceed initial available_liquidity because the sum of
-    //    individual claim caps equals the total available at the time of each claim
+    //    fee reductions equals the total claimed, preserving the invariant
     let available_liquidity = state.available_liquidity();
 
     // Calculate how much can actually be claimed
@@ -791,7 +791,9 @@ mod tests {
         state.total_debt_scaled = Uint128::new(10000); // 100% utilization
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
-        let env = mock_env();
+        let mut env = mock_env();
+        // Set time to match state creation time (1000) to prevent interest accrual
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(1000);
         let collector = MockApi::default().addr_make("collector");
         let info = message_info(&collector, &[]);
 
