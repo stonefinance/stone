@@ -54,7 +54,7 @@ pub fn execute_borrow(
     // Check LTV constraint
     check_borrow_allowed(deps.as_ref(), user, amount)?;
 
-    // Calculate scaled debt amount: scaled = amount / index
+    // Calculate scaled debt amount: scaled = amount / borrow_index
     let scaled_amount = stone_types::amount_to_scaled(amount, state.borrow_index);
 
     // Update user's debt position

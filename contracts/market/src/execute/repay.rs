@@ -12,7 +12,7 @@ pub fn execute_repay(
     on_behalf_of: Option<String>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
+    let _params = PARAMS.load(deps.storage)?;
 
     // NOTE: Repay is ALWAYS allowed regardless of market status
     // so users can always reduce their debt positions.
