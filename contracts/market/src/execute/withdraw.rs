@@ -13,14 +13,13 @@ pub fn execute_withdraw(
     recipient: Option<String>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
+    let _params = PARAMS.load(deps.storage)?;
 
-    if !params.enabled {
-        return Err(ContractError::MarketDisabled);
-    }
+    // NOTE: Withdraw is ALWAYS allowed regardless of market status
+    // so users can always access their supplied funds.
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     let state = STATE.load(deps.storage)?;
 
@@ -53,7 +52,7 @@ pub fn execute_withdraw(
     }
 
     // Calculate scaled amount to remove: scaled = amount / index
-    let scaled_decrease = stone_types::amount_to_scaled(withdraw_amount, state.liquidity_index);
+    let scaled_decrease = stone_types::amount_to_scaled(withdraw_amount, state.liquidity_index)?;
 
     // Update user's supply position
     let current_scaled = SUPPLIES.may_load(deps.storage, user)?.unwrap_or_default();
@@ -94,7 +93,6 @@ pub fn execute_withdraw(
     };
 
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw")
         .add_attribute("withdrawer", info.sender)
@@ -140,6 +138,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
@@ -306,5 +305,35 @@ mod tests {
             .attributes
             .iter()
             .any(|a| a.key == "amount" && a.value == "1000"));
+    }
+
+    #[test]
+    fn test_withdraw_works_when_disabled() {
+        // C4 Fix: Withdraw must ALWAYS work regardless of market status
+        let mut deps = mock_dependencies();
+        setup_market_with_supply(&mut deps);
+
+        let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
+        params.enabled = false;
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let env = mock_env();
+        let user1 = MockApi::default().addr_make("user1");
+        let info = message_info(&user1, &[]);
+
+        // Withdraw should succeed even when market is disabled
+        let res = execute_withdraw(deps.as_mut(), env, info, Some(Uint128::new(500)), None).unwrap();
+
+        assert!(!res.messages.is_empty());
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "withdraw"));
+
+        // Check user's remaining supply
+        let supply = SUPPLIES
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
+        assert_eq!(supply, Uint128::new(500));
     }
 }

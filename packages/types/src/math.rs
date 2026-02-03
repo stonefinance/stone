@@ -1,5 +1,7 @@
 use cosmwasm_std::{Decimal, Fraction, Uint128};
 
+use crate::error::ContractError;
+
 /// Multiply Uint128 by Decimal, rounding down.
 /// scaled = amount / index => amount = scaled * index
 pub fn mul_decimal(amount: Uint128, decimal: Decimal) -> Uint128 {
@@ -14,12 +16,17 @@ pub fn mul_decimal_ceil(amount: Uint128, decimal: Decimal) -> Uint128 {
 
 /// Divide Uint128 by Decimal, rounding down.
 /// scaled = amount / index
-pub fn div_decimal(amount: Uint128, decimal: Decimal) -> Uint128 {
+pub fn div_decimal(amount: Uint128, decimal: Decimal) -> Result<Uint128, ContractError> {
+    if decimal.is_zero() {
+        return Err(ContractError::DivideByZero {});
+    }
     // amount / decimal = amount * (1 / decimal)
     // For division: scaled = amount * (denominator / numerator)
     let numerator = decimal.numerator();
     let denominator = decimal.denominator();
-    amount.multiply_ratio(denominator, numerator)
+    amount
+        .checked_multiply_ratio(denominator, numerator)
+        .map_err(|_| ContractError::MathOverflow {})
 }
 
 /// Divide Uint128 by Decimal, rounding up.
@@ -40,7 +47,7 @@ pub fn div_decimal_ceil(amount: Uint128, decimal: Decimal) -> Uint128 {
 /// Convert an amount to scaled amount using an index, rounding down.
 /// scaled = amount / index
 /// Use for supply/withdraw/repay operations (favors protocol).
-pub fn amount_to_scaled(amount: Uint128, index: Decimal) -> Uint128 {
+pub fn amount_to_scaled(amount: Uint128, index: Decimal) -> Result<Uint128, ContractError> {
     div_decimal(amount, index)
 }
 
@@ -50,7 +57,6 @@ pub fn amount_to_scaled(amount: Uint128, index: Decimal) -> Uint128 {
 pub fn amount_to_scaled_ceil(amount: Uint128, index: Decimal) -> Uint128 {
     div_decimal_ceil(amount, index)
 }
-
 /// Convert a scaled amount back to actual amount using an index, rounding down.
 /// amount = scaled * index
 /// Use for supply/withdraw calculations (favors protocol).
@@ -100,7 +106,21 @@ mod tests {
     fn test_div_decimal() {
         let amount = Uint128::new(1100);
         let index = Decimal::from_ratio(11u128, 10u128); // 1.1
-        assert_eq!(div_decimal(amount, index), Uint128::new(1000));
+        assert_eq!(div_decimal(amount, index).unwrap(), Uint128::new(1000));
+    }
+
+    #[test]
+    fn test_div_decimal_zero() {
+        let amount = Uint128::new(1000);
+        let decimal = Decimal::zero();
+        assert_eq!(div_decimal(amount, decimal), Err(ContractError::DivideByZero {}));
+    }
+
+    #[test]
+    fn test_amount_to_scaled_zero() {
+        let amount = Uint128::new(1000);
+        let index = Decimal::zero();
+        assert_eq!(amount_to_scaled(amount, index), Err(ContractError::DivideByZero {}));
     }
 
     #[test]
@@ -138,12 +158,12 @@ mod tests {
         // Supply 1000 with index 1.0 => scaled = 1000
         let amount = Uint128::new(1000);
         let index = Decimal::one();
-        assert_eq!(amount_to_scaled(amount, index), Uint128::new(1000));
+        assert_eq!(amount_to_scaled(amount, index).unwrap(), Uint128::new(1000));
 
         // Supply 1100 with index 1.1 => scaled = 1000
         let amount = Uint128::new(1100);
         let index = Decimal::from_ratio(11u128, 10u128);
-        assert_eq!(amount_to_scaled(amount, index), Uint128::new(1000));
+        assert_eq!(amount_to_scaled(amount, index).unwrap(), Uint128::new(1000));
     }
 
     #[test]
@@ -209,7 +229,7 @@ mod tests {
     fn test_round_trip() {
         let original = Uint128::new(12345);
         let index = Decimal::from_ratio(123u128, 100u128); // 1.23
-        let scaled = amount_to_scaled(original, index);
+        let scaled = amount_to_scaled(original, index).unwrap();
         let recovered = scaled_to_amount(scaled, index);
         // Should be close (may lose precision due to rounding)
         assert!(recovered <= original);

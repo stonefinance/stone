@@ -44,8 +44,8 @@ pub fn execute_supply(
         return Err(ContractError::ZeroAmount);
     }
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Check supply cap
     let state = STATE.load(deps.storage)?;
@@ -61,7 +61,7 @@ pub fn execute_supply(
     }
 
     // Calculate scaled amount: scaled = amount / index
-    let scaled_amount = stone_types::amount_to_scaled(amount, state.liquidity_index);
+    let scaled_amount = stone_types::amount_to_scaled(amount, state.liquidity_index)?;
 
     // Determine recipient
     let recipient_addr = match recipient {
@@ -90,7 +90,6 @@ pub fn execute_supply(
     let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
 
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_attribute("action", "supply")
         .add_attribute("supplier", info.sender)
         .add_attribute("recipient", recipient_addr)
@@ -135,6 +134,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
