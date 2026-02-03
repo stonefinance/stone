@@ -248,7 +248,8 @@ pub fn create_market(
 
     // Store the salt for the reply handler to properly compute market_id
     // This ensures the market ID computed at creation matches the one in reply
-    PENDING_MARKET_SALTS.save(deps.storage, INSTANTIATE_REPLY_ID, &salt)?;
+    // Note: This assumes only one pending instantiation at a time (see state.rs comment)
+    PENDING_MARKET_SALTS.save(deps.storage, &salt)?;
 
     Ok(Response::new()
         .add_messages(messages)
@@ -374,9 +375,9 @@ pub fn handle_instantiate_reply(
     // Retrieve the salt that was used during market creation
     // This is critical for computing the correct market_id that was checked for collision
     let salt = PENDING_MARKET_SALTS
-        .may_load(deps.storage, INSTANTIATE_REPLY_ID)?
+        .may_load(deps.storage)?
         .ok_or_else(|| {
-            cosmwasm_std::StdError::generic_err("salt not found for reply_id - internal error")
+            cosmwasm_std::StdError::generic_err("no pending market salt - internal error")
         })?;
 
     // Compute the market ID using the SAME salt that was used during creation
@@ -412,7 +413,7 @@ pub fn handle_instantiate_reply(
     MARKETS_BY_DEBT.save(deps.storage, (&market_config.debt_denom, &market_id), &())?;
 
     // Clean up the pending salt - we've successfully registered the market
-    PENDING_MARKET_SALTS.remove(deps.storage, INSTANTIATE_REPLY_ID);
+    PENDING_MARKET_SALTS.remove(deps.storage);
 
     Ok(Response::new()
         .add_attribute("action", "market_instantiated")
