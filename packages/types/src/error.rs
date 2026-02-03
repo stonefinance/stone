@@ -122,4 +122,7 @@ pub enum ContractError {
 
     #[error("Divide by zero")]
     DivideByZero,
+
+    #[error("Math overflow")]
+    MathOverflow,
 }
