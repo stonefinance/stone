@@ -110,7 +110,7 @@ pub fn execute_withdraw_collateral(
     };
 
     // Check if withdrawal is allowed (LTV check)
-    check_withdrawal_allowed(deps.as_ref(), user, withdraw_amount)?;
+    check_withdrawal_allowed(deps.as_ref(), &env, user, withdraw_amount)?;
 
     // Update user's collateral position
     let new_collateral = current_collateral - withdraw_amount;

@@ -92,6 +92,16 @@ pub enum ContractError {
 
     #[error("Oracle query failed for {denom}: {reason}")]
     OracleError { denom: String, reason: String },
+
+    #[error("Oracle price is stale for {denom}: age={age_seconds}s, max={max_staleness}s")]
+    OraclePriceStale {
+        denom: String,
+        age_seconds: u64,
+        max_staleness: u64,
+    },
+
+    #[error("Oracle price is zero for {denom}")]
+    OracleZeroPrice { denom: String },
 }
 
 pub type ContractResult<T> = Result<T, ContractError>;

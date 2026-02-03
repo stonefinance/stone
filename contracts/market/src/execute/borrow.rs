@@ -52,7 +52,7 @@ pub fn execute_borrow(
     }
 
     // Check LTV constraint
-    check_borrow_allowed(deps.as_ref(), user, amount)?;
+    check_borrow_allowed(deps.as_ref(), &env, user, amount)?;
 
     // Calculate scaled debt amount: scaled = amount / index
     let scaled_amount = stone_types::amount_to_scaled(amount, state.borrow_index);
@@ -167,6 +167,7 @@ mod tests {
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Setup oracle mock: $10 per ATOM, $1 per USDC
+        // Use updated_at = 0 so it's fresh when env.block.time = 0
         let oracle_str = oracle_addr.to_string();
         deps.querier.update_wasm(move |query| match query {
             WasmQuery::Smart { contract_addr, msg } if contract_addr == &oracle_str => {
@@ -181,7 +182,7 @@ mod tests {
                         let response = PriceResponse {
                             denom,
                             price,
-                            updated_at: 1000,
+                            updated_at: 0,
                         };
                         QuerierResult::Ok(ContractResult::Ok(to_json_binary(&response).unwrap()))
                     }
@@ -191,6 +192,12 @@ mod tests {
                 kind: "unknown".to_string(),
             }),
         });
+    }
+
+    fn mock_env_at_time(time: u64) -> Env {
+        let mut env = mock_env();
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(time);
+        env
     }
 
     #[test]
@@ -204,7 +211,7 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&user1, &[]);
 
         // Borrow 5000 USDC (within 80% LTV = $8000 max)
@@ -232,7 +239,7 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&user1, &[]);
 
         // Try to borrow 9000 USDC (exceeds 80% LTV = $8000 max)
@@ -245,7 +252,7 @@ mod tests {
         let mut deps = mock_dependencies();
         setup_market_with_oracle(&mut deps);
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let user1 = MockApi::default().addr_make("user1");
         let info = message_info(&user1, &[]);
 
@@ -265,7 +272,7 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(100000))
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&user1, &[]);
 
         // Try to borrow more than available liquidity (10000)
@@ -288,7 +295,7 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&user1, &[]);
 
         let err = execute_borrow(deps.as_mut(), env, info, Uint128::new(5000), None).unwrap_err();
@@ -300,7 +307,7 @@ mod tests {
         let mut deps = mock_dependencies();
         setup_market_with_oracle(&mut deps);
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let user1 = MockApi::default().addr_make("user1");
         let info = message_info(&user1, &[]);
 
@@ -320,7 +327,7 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&user1, &[]);
 
         let res = execute_borrow(
@@ -348,7 +355,7 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
 
         // First borrow
         let info = message_info(&user1, &[]);
