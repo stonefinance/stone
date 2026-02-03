@@ -125,7 +125,7 @@ pub fn execute_liquidate(
     let state = STATE.load(deps.storage)?;
 
     // Update borrower's debt (scaled)
-    let scaled_debt_decrease = stone_types::amount_to_scaled(final_debt_repaid, state.borrow_index);
+    let scaled_debt_decrease = stone_types::amount_to_scaled(final_debt_repaid, state.borrow_index)?;
     let current_debt_scaled = DEBTS
         .may_load(deps.storage, borrower_str)?
         .unwrap_or_default();

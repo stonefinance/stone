@@ -65,7 +65,7 @@ pub fn execute_repay(
     let state = STATE.load(deps.storage)?;
 
     // Calculate scaled debt decrease
-    let scaled_decrease = stone_types::amount_to_scaled(repay_amount, state.borrow_index);
+    let scaled_decrease = stone_types::amount_to_scaled(repay_amount, state.borrow_index)?;
 
     // Update borrower's debt position
     let current_scaled = DEBTS.may_load(deps.storage, &borrower)?.unwrap_or_default();

@@ -52,7 +52,7 @@ pub fn execute_withdraw(
     }
 
     // Calculate scaled amount to remove: scaled = amount / index
-    let scaled_decrease = stone_types::amount_to_scaled(withdraw_amount, state.liquidity_index);
+    let scaled_decrease = stone_types::amount_to_scaled(withdraw_amount, state.liquidity_index)?;
 
     // Update user's supply position
     let current_scaled = SUPPLIES.may_load(deps.storage, user)?.unwrap_or_default();

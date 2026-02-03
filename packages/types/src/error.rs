@@ -119,4 +119,10 @@ pub enum ContractError {
 
     #[error("Invalid interest rate model parameters")]
     InvalidInterestRateModel,
+
+    #[error("Divide by zero")]
+    DivideByZero,
+
+    #[error("Math overflow")]
+    MathOverflow,
 }
