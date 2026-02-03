@@ -3,13 +3,50 @@ use cosmwasm_std::{
 };
 
 use stone_types::{
-    MarketConfig, MarketExecuteMsg, MarketInstantiateMsg, MarketParams, MarketQueryMsg, MarketState,
+    CreateMarketParams, MarketConfig, MarketExecuteMsg, MarketInstantiateMsg, MarketParams,
+    MarketQueryMsg, MarketState,
 };
 
 use crate::error::ContractError;
 use crate::execute;
 use crate::query;
 use crate::state::{CONFIG, CONTRACT_NAME, CONTRACT_VERSION, PARAMS, STATE};
+
+fn validate_market_params(params: &CreateMarketParams) -> Result<(), ContractError> {
+    use stone_types::ContractError as TypesError;
+
+    if params.loan_to_value >= params.liquidation_threshold {
+        return Err(TypesError::InvalidLtv.into());
+    }
+
+    if params.liquidation_threshold >= cosmwasm_std::Decimal::one() {
+        return Err(TypesError::InvalidLiquidationThreshold.into());
+    }
+
+    let min_bonus = cosmwasm_std::Decimal::percent(3);
+    let max_bonus = cosmwasm_std::Decimal::percent(15);
+    if params.liquidation_bonus < min_bonus || params.liquidation_bonus > max_bonus {
+        return Err(TypesError::InvalidLiquidationBonus {
+            min: "3%".to_string(),
+            max: "15%".to_string(),
+        }
+        .into());
+    }
+
+    if params.protocol_fee + params.curator_fee >= cosmwasm_std::Decimal::one() {
+        return Err(TypesError::InvalidFees.into());
+    }
+
+    if params.curator_fee > cosmwasm_std::Decimal::percent(25) {
+        return Err(TypesError::CuratorFeeExceedsMax.into());
+    }
+
+    if !params.interest_rate_model.validate() {
+        return Err(TypesError::InvalidInterestRateModel.into());
+    }
+
+    Ok(())
+}
 
 #[entry_point]
 pub fn instantiate(
@@ -19,6 +56,8 @@ pub fn instantiate(
     msg: MarketInstantiateMsg,
 ) -> Result<Response, ContractError> {
     cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    validate_market_params(&msg.params)?;
 
     let config = MarketConfig {
         factory: info.sender.clone(), // Factory is the one instantiating
@@ -128,8 +167,8 @@ mod tests {
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
     use cosmwasm_std::{from_json, Decimal};
     use stone_types::{
-        CreateMarketParams, InterestRateModel, MarketConfigResponse, OracleConfigUnchecked,
-        OracleType,
+        ContractError as TypesError, CreateMarketParams, InterestRateModel,
+        MarketConfigResponse, OracleConfigUnchecked, OracleType,
     };
 
     fn test_addrs() -> (
@@ -202,6 +241,60 @@ mod tests {
         // Verify state
         let state = STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(state.borrow_index, Decimal::one());
+    }
+
+    #[test]
+    fn test_instantiate_rejects_invalid_ltv() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (factory, ..) = test_addrs();
+        let info = message_info(&factory, &[]);
+
+        let mut msg = default_instantiate_msg();
+        msg.params.loan_to_value = Decimal::percent(90);
+        msg.params.liquidation_threshold = Decimal::percent(85);
+
+        let err = instantiate(deps.as_mut(), env, info, msg).unwrap_err();
+        assert!(matches!(err, ContractError::Types(TypesError::InvalidLtv)));
+    }
+
+    #[test]
+    fn test_instantiate_rejects_invalid_liquidation_bonus() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (factory, ..) = test_addrs();
+        let info = message_info(&factory, &[]);
+
+        let mut msg = default_instantiate_msg();
+        msg.params.liquidation_bonus = Decimal::percent(1);
+
+        let err = instantiate(deps.as_mut(), env, info, msg).unwrap_err();
+        assert!(matches!(
+            err,
+            ContractError::Types(TypesError::InvalidLiquidationBonus { .. })
+        ));
+    }
+
+    #[test]
+    fn test_instantiate_rejects_invalid_interest_rate_model() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (factory, ..) = test_addrs();
+        let info = message_info(&factory, &[]);
+
+        let mut msg = default_instantiate_msg();
+        msg.params.interest_rate_model = InterestRateModel::Linear {
+            optimal_utilization: Decimal::percent(120),
+            base_rate: Decimal::zero(),
+            slope_1: Decimal::percent(4),
+            slope_2: Decimal::percent(300),
+        };
+
+        let err = instantiate(deps.as_mut(), env, info, msg).unwrap_err();
+        assert!(matches!(
+            err,
+            ContractError::Types(TypesError::InvalidInterestRateModel)
+        ));
     }
 
     #[test]
