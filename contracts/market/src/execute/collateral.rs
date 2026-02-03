@@ -123,15 +123,15 @@ pub fn execute_withdraw_collateral(
     state.total_collateral = state.total_collateral.saturating_sub(withdraw_amount);
     STATE.save(deps.storage, &state)?;
 
-    // Determine recipient
+    // Determine and validate recipient
     let recipient_addr = match recipient {
-        Some(addr) => addr,
-        None => info.sender.to_string(),
+        Some(addr) => deps.api.addr_validate(&addr)?,
+        None => info.sender.clone(),
     };
 
     // Create transfer message
     let transfer_msg = BankMsg::Send {
-        to_address: recipient_addr.clone(),
+        to_address: recipient_addr.to_string(),
         amount: vec![Coin {
             denom: config.collateral_denom,
             amount: withdraw_amount,
@@ -142,7 +142,7 @@ pub fn execute_withdraw_collateral(
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw_collateral")
         .add_attribute("user", info.sender)
-        .add_attribute("recipient", recipient_addr)
+        .add_attribute("recipient", recipient_addr.as_str())
         .add_attribute("amount", withdraw_amount))
 }
 
@@ -418,5 +418,39 @@ mod tests {
             .load(deps.as_ref().storage, user1.as_str())
             .unwrap();
         assert_eq!(remaining, Uint128::new(500));
+    }
+
+    #[test]
+    fn test_withdraw_collateral_with_invalid_recipient() {
+        // I-6 Fix: Invalid recipient address should be rejected
+        let mut deps = mock_dependencies();
+        setup_market(&mut deps);
+
+        let api = MockApi::default();
+        let user1 = api.addr_make("user1");
+
+        // Add collateral
+        COLLATERAL
+            .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
+            .unwrap();
+        let mut state = STATE.load(deps.as_ref().storage).unwrap();
+        state.total_collateral = Uint128::new(1000);
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        let env = mock_env();
+        let info = message_info(&user1, &[]);
+
+        // Try to withdraw collateral with invalid recipient address
+        let err = execute_withdraw_collateral(
+            deps.as_mut(),
+            env,
+            info,
+            Some(Uint128::new(500)),
+            Some("invalid_address".to_string()),
+        )
+        .unwrap_err();
+
+        // Should fail with address validation error
+        assert!(matches!(err, ContractError::Std(_)));
     }
 }

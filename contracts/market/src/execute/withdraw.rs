@@ -77,15 +77,15 @@ pub fn execute_withdraw(
     // Calculate current rates based on post-transaction state
     let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
 
-    // Determine recipient
+    // Determine and validate recipient
     let recipient_addr = match recipient {
-        Some(addr) => addr,
-        None => info.sender.to_string(),
+        Some(addr) => deps.api.addr_validate(&addr)?,
+        None => info.sender.clone(),
     };
 
     // Create transfer message
     let transfer_msg = BankMsg::Send {
-        to_address: recipient_addr.clone(),
+        to_address: recipient_addr.to_string(),
         amount: vec![Coin {
             denom: config.debt_denom,
             amount: withdraw_amount,
@@ -96,7 +96,7 @@ pub fn execute_withdraw(
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw")
         .add_attribute("withdrawer", info.sender)
-        .add_attribute("recipient", recipient_addr)
+        .add_attribute("recipient", recipient_addr.as_str())
         .add_attribute("amount", withdraw_amount)
         .add_attribute("scaled_decrease", scaled_decrease)
         .add_attribute("borrow_index", state.borrow_index.to_string())
@@ -336,5 +336,29 @@ mod tests {
             .load(deps.as_ref().storage, user1.as_str())
             .unwrap();
         assert_eq!(supply, Uint128::new(500));
+    }
+
+    #[test]
+    fn test_withdraw_with_invalid_recipient() {
+        // I-6 Fix: Invalid recipient address should be rejected
+        let mut deps = mock_dependencies();
+        setup_market_with_supply(&mut deps);
+
+        let env = mock_env();
+        let user1 = MockApi::default().addr_make("user1");
+        let info = message_info(&user1, &[]);
+
+        // Try to withdraw with invalid recipient address
+        let err = execute_withdraw(
+            deps.as_mut(),
+            env,
+            info,
+            Some(Uint128::new(500)),
+            Some("invalid_address".to_string()),
+        )
+        .unwrap_err();
+
+        // Should fail with address validation error
+        assert!(matches!(err, ContractError::Std(_)));
     }
 }
