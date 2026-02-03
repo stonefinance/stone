@@ -26,9 +26,18 @@ pub fn query_price(
             reason: e.to_string(),
         })?;
 
+    // Validate timestamp is not in the future (clock skew check)
+    let current_time = env.block.time.seconds();
+    if response.updated_at > current_time {
+        return Err(ContractError::OraclePriceFuture {
+            denom: denom.to_string(),
+            updated_at: response.updated_at,
+            current: current_time,
+        });
+    }
+
     // Validate staleness
     let max_staleness = oracle_config.oracle_type.max_staleness_secs();
-    let current_time = env.block.time.seconds();
     let age_seconds = current_time.saturating_sub(response.updated_at);
 
     if age_seconds > max_staleness {
@@ -243,6 +252,9 @@ mod tests {
         InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType,
     };
 
+    // Base timestamp for tests (~Nov 2023)
+    const BASE_TIMESTAMP: u64 = 1_700_000_000;
+
     fn setup_with_oracle(
         deps: &mut cosmwasm_std::OwnedDeps<
             cosmwasm_std::MemoryStorage,
@@ -251,6 +263,19 @@ mod tests {
         >,
         collateral_price: Decimal,
         debt_price: Decimal,
+    ) {
+        setup_with_oracle_at_time(deps, collateral_price, debt_price, BASE_TIMESTAMP);
+    }
+
+    fn setup_with_oracle_at_time(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            MockQuerier,
+        >,
+        collateral_price: Decimal,
+        debt_price: Decimal,
+        oracle_updated_at: u64,
     ) {
         // Setup config
         let config = MarketConfig {
@@ -293,10 +318,10 @@ mod tests {
             .save(deps.as_mut().storage, &state)
             .unwrap();
 
-        // Setup oracle mock - uses updated_at = 0 which should be fresh
-        // since mock_env() starts at time 0
+        // Setup oracle mock with configurable updated_at timestamp
         let collateral_price_copy = collateral_price;
         let debt_price_copy = debt_price;
+        let oracle_timestamp = oracle_updated_at;
 
         deps.querier.update_wasm(move |query| match query {
             WasmQuery::Smart { contract_addr, msg } if contract_addr == "oracle" => {
@@ -308,11 +333,10 @@ mod tests {
                         } else {
                             debt_price_copy
                         };
-                        // Use updated_at = 0, which is fresh for mock_env() with time 0
                         let response = PriceResponse {
                             denom,
                             price,
-                            updated_at: 0,
+                            updated_at: oracle_timestamp,
                         };
                         QuerierResult::Ok(ContractResult::Ok(to_json_binary(&response).unwrap()))
                     }
@@ -344,7 +368,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let hf = calculate_health_factor(deps.as_ref(), &env, "user1").unwrap();
         assert!(hf.is_none());
     }
@@ -366,7 +390,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let hf = calculate_health_factor(deps.as_ref(), &env, "user1")
             .unwrap()
             .unwrap();
@@ -392,7 +416,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let hf = calculate_health_factor(deps.as_ref(), &env, "user1")
             .unwrap()
             .unwrap();
@@ -415,7 +439,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let max = calculate_max_borrow(deps.as_ref(), &env, "user1").unwrap();
         // Max borrow = 10000 * 0.80 = 8000
         assert_eq!(max, Uint128::new(8000));
@@ -438,7 +462,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(3000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let max = calculate_max_borrow(deps.as_ref(), &env, "user1").unwrap();
         // Max borrow = 8000 - 3000 = 5000
         assert_eq!(max, Uint128::new(5000));
@@ -457,7 +481,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         // Borrow 8000 should be allowed (exactly at LTV)
         assert!(check_borrow_allowed(deps.as_ref(), &env, "user1", Uint128::new(8000)).is_ok());
 
@@ -478,7 +502,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         // Any withdrawal should be allowed with no debt
         assert!(check_withdrawal_allowed(deps.as_ref(), &env, "user1", Uint128::new(1000)).is_ok());
     }
@@ -500,7 +524,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(4000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         // Need at least 500 collateral to cover 4000 debt at 80% LTV
         // 500 * 10 * 0.8 = 4000
         // Withdrawing 500 should be allowed
@@ -527,7 +551,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let liq_price = calculate_liquidation_price(deps.as_ref(), &env, "user1")
             .unwrap()
             .unwrap();
@@ -557,8 +581,8 @@ mod tests {
             .unwrap();
 
         // Price is stale when current time > updated_at + max_staleness (300s)
-        // updated_at is 0, so at time 301 the price should be rejected
-        let env = mock_env_at_time(301);
+        // updated_at is BASE_TIMESTAMP, so at BASE_TIMESTAMP + 301 the price should be rejected
+        let env = mock_env_at_time(BASE_TIMESTAMP + 301);
         let result = calculate_health_factor(deps.as_ref(), &env, "user1");
 
         assert!(
@@ -593,8 +617,8 @@ mod tests {
             .unwrap();
 
         // Price is fresh when current time <= updated_at + max_staleness (300s)
-        // updated_at is 0, so at time 300 the price should be accepted
-        let env = mock_env_at_time(300);
+        // updated_at is BASE_TIMESTAMP, so at BASE_TIMESTAMP + 300 the price should be accepted
+        let env = mock_env_at_time(BASE_TIMESTAMP + 300);
         let result = calculate_health_factor(deps.as_ref(), &env, "user1");
 
         assert!(
@@ -622,7 +646,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let result = calculate_health_factor(deps.as_ref(), &env, "user1");
 
         assert!(
@@ -649,7 +673,7 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
             .unwrap();
 
-        let env = mock_env_at_time(0);
+        let env = mock_env_at_time(BASE_TIMESTAMP);
         let result = calculate_health_factor(deps.as_ref(), &env, "user1");
 
         assert!(
@@ -658,6 +682,43 @@ mod tests {
                 Err(ContractError::OracleZeroPrice { denom }) if denom == "uusdc"
             ),
             "Expected OracleZeroPrice error for debt, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_future_price_rejection() {
+        // Setup oracle with a future timestamp (clock skew)
+        let mut deps = mock_dependencies();
+        setup_with_oracle_at_time(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+            BASE_TIMESTAMP + 100, // Oracle timestamp is in the future
+        );
+
+        // User has collateral and debt
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
+            .unwrap();
+        crate::state::DEBTS
+            .save(deps.as_mut().storage, "user1", &Uint128::new(5000))
+            .unwrap();
+
+        // Current time is BASE_TIMESTAMP, but oracle says price was updated at BASE_TIMESTAMP + 100
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let result = calculate_health_factor(deps.as_ref(), &env, "user1");
+
+        assert!(
+            matches!(
+                &result,
+                Err(ContractError::OraclePriceFuture {
+                    denom,
+                    updated_at,
+                    current
+                }) if denom == "uatom" && *updated_at == BASE_TIMESTAMP + 100 && *current == BASE_TIMESTAMP
+            ),
+            "Expected OraclePriceFuture error, got {:?}",
             result
         );
     }
