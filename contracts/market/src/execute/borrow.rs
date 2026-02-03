@@ -55,7 +55,7 @@ pub fn execute_borrow(
     check_borrow_allowed(deps.as_ref(), user, amount)?;
 
     // Calculate scaled debt amount: scaled = amount / index
-    let scaled_amount = stone_types::amount_to_scaled(amount, state.borrow_index);
+    let scaled_amount = stone_types::amount_to_scaled(amount, state.borrow_index)?;
 
     // Update user's debt position
     let current_scaled = DEBTS.may_load(deps.storage, user)?.unwrap_or_default();

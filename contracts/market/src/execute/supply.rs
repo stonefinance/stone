@@ -61,7 +61,7 @@ pub fn execute_supply(
     }
 
     // Calculate scaled amount: scaled = amount / index
-    let scaled_amount = stone_types::amount_to_scaled(amount, state.liquidity_index);
+    let scaled_amount = stone_types::amount_to_scaled(amount, state.liquidity_index)?;
 
     // Determine recipient
     let recipient_addr = match recipient {
