@@ -11,7 +11,7 @@ use stone_types::{
 use crate::error::ContractError;
 use crate::state::{
     CONFIG, MARKETS, MARKETS_BY_ADDRESS, MARKETS_BY_COLLATERAL, MARKETS_BY_CURATOR,
-    MARKETS_BY_DEBT, MARKET_COUNT, PENDING_OWNER,
+    MARKETS_BY_DEBT, MARKET_COUNT, PENDING_MARKET_SALTS, PENDING_OWNER,
 };
 
 /// Reply ID for market instantiation
@@ -246,6 +246,10 @@ pub fn create_market(
     let count = MARKET_COUNT.may_load(deps.storage)?.unwrap_or(0);
     MARKET_COUNT.save(deps.storage, &(count + 1))?;
 
+    // Store the salt for the reply handler to properly compute market_id
+    // This ensures the market ID computed at creation matches the one in reply
+    PENDING_MARKET_SALTS.save(deps.storage, INSTANTIATE_REPLY_ID, &salt)?;
+
     Ok(Response::new()
         .add_messages(messages)
         .add_submessage(SubMsg::reply_on_success(
@@ -367,12 +371,21 @@ pub fn handle_instantiate_reply(
         .querier
         .query_wasm_smart(&market_address, &stone_types::MarketQueryMsg::Config {})?;
 
-    // Compute the market ID
+    // Retrieve the salt that was used during market creation
+    // This is critical for computing the correct market_id that was checked for collision
+    let salt = PENDING_MARKET_SALTS
+        .may_load(deps.storage, INSTANTIATE_REPLY_ID)?
+        .ok_or_else(|| {
+            cosmwasm_std::StdError::generic_err("salt not found for reply_id - internal error")
+        })?;
+
+    // Compute the market ID using the SAME salt that was used during creation
+    // This ensures the market ID matches what was checked for collision in create_market
     let market_id = compute_market_id(
         &market_config.collateral_denom,
         &market_config.debt_denom,
         &market_config.curator,
-        None, // We don't have salt here, but that's OK for now
+        salt,
     );
 
     let curator_addr = deps.api.addr_validate(&market_config.curator)?;
@@ -397,6 +410,9 @@ pub fn handle_instantiate_reply(
         &(),
     )?;
     MARKETS_BY_DEBT.save(deps.storage, (&market_config.debt_denom, &market_id), &())?;
+
+    // Clean up the pending salt - we've successfully registered the market
+    PENDING_MARKET_SALTS.remove(deps.storage, INSTANTIATE_REPLY_ID);
 
     Ok(Response::new()
         .add_attribute("action", "market_instantiated")

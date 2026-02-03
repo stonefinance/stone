@@ -13,6 +13,10 @@ pub const CONFIG: Item<FactoryConfig> = Item::new("config");
 /// Pending owner for two-step ownership transfer
 pub const PENDING_OWNER: Item<Addr> = Item::new("pending_owner");
 
+/// Pending market salts indexed by reply ID for tracking market instantiation
+/// Stores the salt used during market creation to properly compute market ID in reply handler
+pub const PENDING_MARKET_SALTS: Map<u64, Option<u64>> = Map::new("pending_market_salts");
+
 /// Markets indexed by market_id
 pub const MARKETS: Map<&str, MarketRecord> = Map::new("markets");
 

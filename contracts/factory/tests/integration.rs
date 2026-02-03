@@ -304,3 +304,165 @@ fn create_market_rejects_duplicates() {
         "{err_chain:?}"
     );
 }
+
+/// Test that salt is properly handled in market creation and registration.
+/// This verifies the fix for security issue I-3 (Factory Reply Salt Mismatch).
+#[test]
+fn create_market_with_salt_registers_correct_address() {
+    let mut env = setup_env();
+
+    // Create first market with no salt
+    let create_msg_1 = FactoryExecuteMsg::CreateMarket {
+        collateral_denom: COLLATERAL_DENOM.to_string(),
+        debt_denom: DEBT_DENOM.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: env.oracle_addr.to_string(),
+            oracle_type: OracleType::Generic {
+                expected_code_id: None,
+                max_staleness_secs: 300,
+            },
+        },
+        params: Box::new(default_market_params()),
+        salt: None, // Same as salt: Some(0)
+    };
+
+    env.app
+        .execute_contract(
+            env.curator.clone(),
+            env.factory_addr.clone(),
+            &create_msg_1,
+            &[coin(1_000, "uosmo")],
+        )
+        .unwrap();
+
+    // Create second market with same pair but different salt
+    let create_msg_2 = FactoryExecuteMsg::CreateMarket {
+        collateral_denom: COLLATERAL_DENOM.to_string(),
+        debt_denom: DEBT_DENOM.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: env.oracle_addr.to_string(),
+            oracle_type: OracleType::Generic {
+                expected_code_id: None,
+                max_staleness_secs: 300,
+            },
+        },
+        params: Box::new(default_market_params()),
+        salt: Some(42), // Different salt = different market_id
+    };
+
+    env.app
+        .execute_contract(
+            env.curator.clone(),
+            env.factory_addr.clone(),
+            &create_msg_2,
+            &[coin(1_000, "uosmo")],
+        )
+        .unwrap();
+
+    // Verify both markets exist
+    let count: MarketCountResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(env.factory_addr.clone(), &FactoryQueryMsg::MarketCount {})
+        .unwrap();
+    assert_eq!(count.count, 2, "Expected 2 markets with different salts");
+
+    // Query markets and verify they have different IDs and addresses
+    let markets: MarketsResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(
+            env.factory_addr.clone(),
+            &FactoryQueryMsg::Markets {
+                start_after: None,
+                limit: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(markets.markets.len(), 2);
+
+    // The two markets should have different IDs
+    let market_1_id = &markets.markets[0].market_id;
+    let market_2_id = &markets.markets[1].market_id;
+    assert_ne!(
+        market_1_id, market_2_id,
+        "Markets with different salts should have different IDs"
+    );
+
+    // The two markets should have different addresses
+    let market_1_addr = &markets.markets[0].address;
+    let market_2_addr = &markets.markets[1].address;
+    assert_ne!(
+        market_1_addr, market_2_addr,
+        "Markets with different salts should have different addresses"
+    );
+
+    // Verify we can look up each market by its ID
+    let market_1: stone_types::MarketResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(
+            env.factory_addr.clone(),
+            &FactoryQueryMsg::Market {
+                market_id: market_1_id.clone(),
+            },
+        )
+        .unwrap();
+    assert_eq!(market_1.address, *market_1_addr);
+
+    let market_2: stone_types::MarketResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(
+            env.factory_addr.clone(),
+            &FactoryQueryMsg::Market {
+                market_id: market_2_id.clone(),
+            },
+        )
+        .unwrap();
+    assert_eq!(market_2.address, *market_2_addr);
+
+    // Verify we can look up each market by its address
+    let by_addr_1: stone_types::MarketResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(
+            env.factory_addr.clone(),
+            &FactoryQueryMsg::MarketByAddress {
+                address: market_1_addr.clone(),
+            },
+        )
+        .unwrap();
+    assert_eq!(by_addr_1.market_id, *market_1_id);
+
+    let by_addr_2: stone_types::MarketResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(
+            env.factory_addr.clone(),
+            &FactoryQueryMsg::MarketByAddress {
+                address: market_2_addr.clone(),
+            },
+        )
+        .unwrap();
+    assert_eq!(by_addr_2.market_id, *market_2_id);
+
+    // Verify the market configs match what we expect
+    let config_1: MarketConfigResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(Addr::unchecked(market_1_addr), &MarketQueryMsg::Config {})
+        .unwrap();
+    assert_eq!(config_1.curator, env.curator.to_string());
+    assert_eq!(config_1.collateral_denom, COLLATERAL_DENOM);
+    assert_eq!(config_1.debt_denom, DEBT_DENOM);
+
+    let config_2: MarketConfigResponse = env
+        .app
+        .wrap()
+        .query_wasm_smart(Addr::unchecked(market_2_addr), &MarketQueryMsg::Config {})
+        .unwrap();
+    assert_eq!(config_2.curator, env.curator.to_string());
+    assert_eq!(config_2.collateral_denom, COLLATERAL_DENOM);
+    assert_eq!(config_2.debt_denom, DEBT_DENOM);
+}
