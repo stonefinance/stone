@@ -35,6 +35,9 @@ pub struct MarketParams {
     pub liquidation_protocol_fee: Decimal,
     /// Maximum portion of debt that can be liquidated at once (e.g., 0.5 = 50%)
     pub close_factor: Decimal,
+    /// Debt threshold below which full liquidation is allowed regardless of close factor.
+    /// Prevents dust positions from becoming unliquidatable due to close factor rules.
+    pub dust_debt_threshold: Uint128,
     /// Interest rate model parameters
     pub interest_rate_model: InterestRateModel,
     /// Protocol fee on interest (e.g., 0.10 = 10%)
@@ -136,6 +139,9 @@ pub struct CreateMarketParams {
     pub liquidation_bonus: Decimal,
     pub liquidation_protocol_fee: Decimal,
     pub close_factor: Decimal,
+    /// Debt threshold below which full liquidation is allowed regardless of close factor.
+    /// Prevents dust positions from becoming unliquidatable due to close factor rules.
+    pub dust_debt_threshold: Uint128,
     pub interest_rate_model: InterestRateModel,
     pub protocol_fee: Decimal,
     pub curator_fee: Decimal,
@@ -288,6 +294,8 @@ pub struct MarketParamsResponse {
     pub liquidation_bonus: Decimal,
     pub liquidation_protocol_fee: Decimal,
     pub close_factor: Decimal,
+    /// Debt threshold below which full liquidation is allowed regardless of close factor.
+    pub dust_debt_threshold: Uint128,
     pub interest_rate_model: InterestRateModel,
     pub protocol_fee: Decimal,
     pub curator_fee: Decimal,

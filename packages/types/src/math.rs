@@ -142,14 +142,14 @@ mod tests {
         // 1 / 1.1 = 0.909... -> ceil = 1
         let amount = Uint128::new(1);
         let index = Decimal::from_ratio(11u128, 10u128);
-        assert_eq!(div_decimal(amount, index), Uint128::new(0)); // floor
+        assert_eq!(div_decimal(amount, index).unwrap(), Uint128::new(0)); // floor
         assert_eq!(div_decimal_ceil(amount, index), Uint128::new(1)); // ceil
 
         // Edge case: amount = 100, index = 3 (not divisible)
         // 100 / 3 = 33.33... -> ceil = 34
         let amount = Uint128::new(100);
         let index = Decimal::from_ratio(3u128, 1u128);
-        assert_eq!(div_decimal(amount, index), Uint128::new(33));
+        assert_eq!(div_decimal(amount, index).unwrap(), Uint128::new(33));
         assert_eq!(div_decimal_ceil(amount, index), Uint128::new(34));
     }
 
@@ -189,7 +189,7 @@ mod tests {
         // ceil: ceil(0.66...) = 1 (they owe at least 1 share)
         let amount = Uint128::new(1);
         let index = Decimal::from_ratio(15u128, 10u128); // 1.5
-        let floor_scaled = amount_to_scaled(amount, index);
+        let floor_scaled = amount_to_scaled(amount, index).unwrap();
         let ceil_scaled = amount_to_scaled_ceil(amount, index);
         assert_eq!(floor_scaled, Uint128::new(0)); // Dangerous with floor!
         assert_eq!(ceil_scaled, Uint128::new(1)); // Safe with ceil
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(scaled_from_borrow, Uint128::new(910));
 
         // Repay same amount: calculate shares to remove with floor
-        let scaled_for_repay = amount_to_scaled(borrow_amount, index);
+        let scaled_for_repay = amount_to_scaled(borrow_amount, index).unwrap();
         assert_eq!(scaled_for_repay, Uint128::new(909));
 
         // User borrowed 1000, but must repay to remove 910 shares
