@@ -27,6 +27,7 @@ pub fn instantiate(
         collateral_denom: msg.collateral_denom,
         debt_denom: msg.debt_denom,
         protocol_fee_collector: deps.api.addr_validate(&msg.protocol_fee_collector)?,
+        salt: None,
     };
 
     let params = MarketParams {
@@ -92,6 +93,7 @@ pub fn execute(
             execute::execute_update_params(deps, env, info, updates)
         }
         MarketExecuteMsg::AccrueInterest {} => execute::execute_accrue_interest(deps, env),
+        MarketExecuteMsg::ClaimFees {} => execute::execute_claim_fees(deps, env, info),
     }
 }
 
@@ -114,6 +116,7 @@ pub fn query(deps: Deps, env: Env, msg: MarketQueryMsg) -> Result<Binary, Contra
         MarketQueryMsg::IsLiquidatable { user } => {
             to_json_binary(&query::query_is_liquidatable(deps, env, user)?)?
         }
+        MarketQueryMsg::AccruedFees {} => to_json_binary(&query::accrued_fees(deps)?)?,
     };
 
     Ok(result)

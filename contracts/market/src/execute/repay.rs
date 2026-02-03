@@ -42,8 +42,8 @@ pub fn execute_repay(
         return Err(ContractError::ZeroAmount);
     }
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Determine whose debt to repay
     let borrower = match &on_behalf_of {
@@ -92,7 +92,6 @@ pub fn execute_repay(
 
     // Build response
     let mut response = Response::new()
-        .add_messages(fee_messages)
         .add_attribute("action", "repay")
         .add_attribute("repayer", &info.sender)
         .add_attribute("borrower", &borrower)
@@ -154,6 +153,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 

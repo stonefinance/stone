@@ -85,7 +85,7 @@ pub fn execute_withdraw_collateral(
     // so users can always access their collateral (subject to LTV constraints).
 
     // Apply accumulated interest (needed for accurate debt calculation)
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     let user = info.sender.as_str();
 
@@ -139,7 +139,6 @@ pub fn execute_withdraw_collateral(
     };
 
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw_collateral")
         .add_attribute("user", info.sender)
@@ -177,6 +176,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
