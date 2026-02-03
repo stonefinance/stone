@@ -181,7 +181,8 @@ pub fn user_debt(deps: Deps, user: String) -> ContractResult<UserBalanceResponse
     let scaled = crate::state::DEBTS
         .may_load(deps.storage, user_addr.as_str())?
         .unwrap_or_default();
-    let amount = stone_types::scaled_to_amount(scaled, state.borrow_index);
+    // Use ceiling to ensure displayed debt is never understated (C-1 fix)
+    let amount = stone_types::scaled_to_amount_ceil(scaled, state.borrow_index);
 
     let debt_price = query_price(
         deps,

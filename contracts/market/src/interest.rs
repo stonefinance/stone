@@ -134,13 +134,14 @@ pub fn get_user_supply(storage: &dyn Storage, user: &str) -> Result<Uint128, Con
     Ok(stone_types::scaled_to_amount(scaled, state.liquidity_index))
 }
 
-/// Get current user debt amount (unscaled).
+/// Get current user debt amount (unscaled), rounding UP.
+/// Use ceiling to ensure displayed debt is never understated (C-1 fix).
 pub fn get_user_debt(storage: &dyn Storage, user: &str) -> Result<Uint128, ContractError> {
     let state = STATE.load(storage)?;
     let scaled = crate::state::DEBTS
         .may_load(storage, user)?
         .unwrap_or_default();
-    Ok(stone_types::scaled_to_amount(scaled, state.borrow_index))
+    Ok(stone_types::scaled_to_amount_ceil(scaled, state.borrow_index))
 }
 
 /// Get user collateral amount (not scaled, stored as-is).
