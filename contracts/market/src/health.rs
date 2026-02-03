@@ -302,6 +302,7 @@ mod tests {
             liquidation_bonus: Decimal::percent(5),
             liquidation_protocol_fee: Decimal::percent(2),
             close_factor: Decimal::percent(50),
+            dust_debt_threshold: Uint128::new(100),
             interest_rate_model: InterestRateModel::default(),
             protocol_fee: Decimal::percent(10),
             curator_fee: Decimal::percent(5),

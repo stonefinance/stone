@@ -52,6 +52,18 @@ fn validate_market_params(params: &CreateMarketParams) -> Result<(), ContractErr
         return Err(TypesError::CuratorFeeExceedsMax.into());
     }
 
+    // Dust debt threshold must have a reasonable cap.
+    // Setting it to Uint128::MAX would disable the close factor entirely.
+    // 10_000_000 micro-units (e.g. 10 USDC) is a sensible maximum for dust.
+    let max_dust_threshold = cosmwasm_std::Uint128::new(10_000_000);
+    if params.dust_debt_threshold > max_dust_threshold {
+        return Err(TypesError::DustDebtThresholdTooHigh {
+            value: params.dust_debt_threshold.to_string(),
+            max: max_dust_threshold.to_string(),
+        }
+        .into());
+    }
+
     // Validate interest rate model
     if !params.interest_rate_model.validate() {
         return Err(TypesError::InvalidInterestRateModel.into());
@@ -492,6 +504,27 @@ mod tests {
         let mut params = valid_params();
         params.curator_fee = Decimal::percent(30); // > 25%
         assert!(validate_market_params(&params).is_err());
+    }
+
+    #[test]
+    fn test_validate_market_params_dust_threshold_too_high() {
+        let mut params = valid_params();
+        params.dust_debt_threshold = Uint128::new(10_000_001); // > 10_000_000
+        assert!(validate_market_params(&params).is_err());
+    }
+
+    #[test]
+    fn test_validate_market_params_dust_threshold_at_max() {
+        let mut params = valid_params();
+        params.dust_debt_threshold = Uint128::new(10_000_000); // exactly at max
+        assert!(validate_market_params(&params).is_ok());
+    }
+
+    #[test]
+    fn test_validate_market_params_dust_threshold_zero() {
+        let mut params = valid_params();
+        params.dust_debt_threshold = Uint128::zero(); // disables feature, valid
+        assert!(validate_market_params(&params).is_ok());
     }
 
     #[test]

@@ -159,6 +159,8 @@ pub struct MarketParamsUpdate {
     pub interest_rate_model: Option<InterestRateModel>,
     /// New curator fee (0-25%)
     pub curator_fee: Option<Decimal>,
+    /// New dust debt threshold (max 10_000_000 micro-units)
+    pub dust_debt_threshold: Option<Uint128>,
     /// New supply cap
     pub supply_cap: Option<Option<Uint128>>,
     /// New borrow cap

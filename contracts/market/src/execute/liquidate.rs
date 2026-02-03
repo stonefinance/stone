@@ -606,12 +606,12 @@ mod tests {
             .map(|a| a.value.parse::<u128>().unwrap())
             .expect("debt_repaid attribute should exist");
         
-        // Due to collateral capping, full liquidation may not be possible if
-        // collateral is insufficient to cover debt + bonus + fee
-        // debt_value = 60, collateral_needed = 60, bonus = 3, fee = 1.2, total = 64.2
-        // With only 50 collateral, it's capped
-        // So we can't fully liquidate 60 debt with only 50 collateral
-        assert!(debt_attr <= 60, "Debt repaid should not exceed what was sent");
+        // Collateral capping kicks in because:
+        // collateral_needed = 60, bonus = floor(60*5%) = 3, fee = floor(60*2%) = 1, total = 64
+        // With only 50 collateral, it's capped: scale = 50/64
+        // scaled_collateral = floor(60 * 50/64) = floor(46.875) = 46
+        // scaled_debt = 46 (same numeraire, $1 = $1)
+        assert_eq!(debt_attr, 46u128, "Dust position should liquidate as much as collateral allows");
     }
 
     #[test]
@@ -728,10 +728,11 @@ mod tests {
             .map(|a| a.value.parse::<u128>().unwrap())
             .expect("debt_repaid attribute should exist");
 
-        // With 100 collateral, debt_value = 100, collateral_needed = 100, bonus = 5, fee = 2, total = 107
-        // We only have 100 collateral, so it's capped
-        // Scale = 100/107, debt_repaid = 100 * 100/107 = 93
-        assert!(debt_attr > 90, "Position at dust threshold should be mostly liquidatable");
+        // collateral_needed = 100, bonus = 5, fee = 2, total = 107
+        // Capped at 100 collateral: scale = 100/107
+        // scaled_collateral = floor(100 * 100/107) = floor(93.457) = 93
+        // scaled_debt = 93
+        assert_eq!(debt_attr, 93u128, "Position at dust threshold should liquidate up to collateral cap");
     }
 
     #[test]
@@ -765,8 +766,9 @@ mod tests {
             .map(|a| a.value.parse::<u128>().unwrap())
             .expect("debt_repaid attribute should exist");
 
-        // 50% of 60 = 30 (capped by close factor)
-        // But also capped by collateral, so actual might be less
-        assert!(debt_attr <= 30u128, "Zero dust threshold should apply close factor");
+        // close_factor applies: max_liquidatable = floor(60 * 50%) = 30
+        // collateral_needed = 30, bonus = floor(30*5%)=1, fee = floor(30*2%)=0, total = 31
+        // 31 < 50 collateral, so not capped
+        assert_eq!(debt_attr, 30u128, "Zero dust threshold should apply close factor");
     }
 }
