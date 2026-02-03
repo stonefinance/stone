@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal, Deps};
+use cosmwasm_std::{Decimal, Deps, Env};
 
 use crate::error::ContractResult;
 use crate::health::{
@@ -63,7 +63,11 @@ pub fn state(deps: Deps) -> ContractResult<MarketStateResponse> {
     })
 }
 
-pub fn user_position(deps: Deps, user: String) -> ContractResult<UserPositionResponse> {
+pub fn user_position(
+    deps: Deps,
+    env: Env,
+    user: String,
+) -> ContractResult<UserPositionResponse> {
     let config = CONFIG.load(deps.storage)?;
 
     let user_addr = deps.api.addr_validate(&user)?;
@@ -77,19 +81,10 @@ pub fn user_position(deps: Deps, user: String) -> ContractResult<UserPositionRes
     let debt_amount = get_user_debt(deps.storage, user_str)
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
 
-    // Get prices (handle errors gracefully)
-    let collateral_price = query_price(
-        deps,
-        config.oracle_config.address.as_str(),
-        &config.collateral_denom,
-    )
-    .unwrap_or(Decimal::zero());
-    let debt_price = query_price(
-        deps,
-        config.oracle_config.address.as_str(),
-        &config.debt_denom,
-    )
-    .unwrap_or(Decimal::zero());
+    // Get prices (propagate oracle errors for consistency with health_factor query)
+    let collateral_price =
+        query_price(deps, &env, &config.oracle_config, &config.collateral_denom)?;
+    let debt_price = query_price(deps, &env, &config.oracle_config, &config.debt_denom)?;
 
     // Calculate values
     let collateral_value = Decimal::from_ratio(collateral_amount, 1u128) * collateral_price;
@@ -97,16 +92,16 @@ pub fn user_position(deps: Deps, user: String) -> ContractResult<UserPositionRes
     let debt_value = Decimal::from_ratio(debt_amount, 1u128) * debt_price;
 
     // Calculate health factor
-    let health_factor = calculate_health_factor(deps, user_str)
+    let health_factor = calculate_health_factor(deps, &env, user_str)
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
 
     // Calculate max borrow
-    let max_borrow = calculate_max_borrow(deps, user_str)
+    let max_borrow = calculate_max_borrow(deps, &env, user_str)
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
     let max_borrow_value = Decimal::from_ratio(max_borrow, 1u128) * debt_price;
 
     // Calculate liquidation price
-    let liquidation_price = calculate_liquidation_price(deps, user_str)
+    let liquidation_price = calculate_liquidation_price(deps, &env, user_str)
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
 
     Ok(UserPositionResponse {
@@ -122,7 +117,7 @@ pub fn user_position(deps: Deps, user: String) -> ContractResult<UserPositionRes
     })
 }
 
-pub fn user_supply(deps: Deps, user: String) -> ContractResult<UserBalanceResponse> {
+pub fn user_supply(deps: Deps, env: Env, user: String) -> ContractResult<UserBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
 
@@ -133,12 +128,8 @@ pub fn user_supply(deps: Deps, user: String) -> ContractResult<UserBalanceRespon
         .unwrap_or_default();
     let amount = stone_types::scaled_to_amount(scaled, state.liquidity_index);
 
-    let debt_price = query_price(
-        deps,
-        config.oracle_config.address.as_str(),
-        &config.debt_denom,
-    )
-    .unwrap_or(Decimal::zero());
+    let debt_price = query_price(deps, &env, &config.oracle_config, &config.debt_denom)
+        .unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * debt_price;
 
     Ok(UserBalanceResponse {
@@ -148,7 +139,7 @@ pub fn user_supply(deps: Deps, user: String) -> ContractResult<UserBalanceRespon
     })
 }
 
-pub fn user_collateral(deps: Deps, user: String) -> ContractResult<UserBalanceResponse> {
+pub fn user_collateral(deps: Deps, env: Env, user: String) -> ContractResult<UserBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
 
     let user_addr = deps.api.addr_validate(&user)?;
@@ -157,12 +148,9 @@ pub fn user_collateral(deps: Deps, user: String) -> ContractResult<UserBalanceRe
         .may_load(deps.storage, user_addr.as_str())?
         .unwrap_or_default();
 
-    let collateral_price = query_price(
-        deps,
-        config.oracle_config.address.as_str(),
-        &config.collateral_denom,
-    )
-    .unwrap_or(Decimal::zero());
+    let collateral_price =
+        query_price(deps, &env, &config.oracle_config, &config.collateral_denom)
+            .unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * collateral_price;
 
     Ok(UserBalanceResponse {
@@ -172,7 +160,7 @@ pub fn user_collateral(deps: Deps, user: String) -> ContractResult<UserBalanceRe
     })
 }
 
-pub fn user_debt(deps: Deps, user: String) -> ContractResult<UserBalanceResponse> {
+pub fn user_debt(deps: Deps, env: Env, user: String) -> ContractResult<UserBalanceResponse> {
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
 
@@ -183,12 +171,8 @@ pub fn user_debt(deps: Deps, user: String) -> ContractResult<UserBalanceResponse
         .unwrap_or_default();
     let amount = stone_types::scaled_to_amount(scaled, state.borrow_index);
 
-    let debt_price = query_price(
-        deps,
-        config.oracle_config.address.as_str(),
-        &config.debt_denom,
-    )
-    .unwrap_or(Decimal::zero());
+    let debt_price = query_price(deps, &env, &config.oracle_config, &config.debt_denom)
+        .unwrap_or(Decimal::zero());
     let value = Decimal::from_ratio(amount, 1u128) * debt_price;
 
     Ok(UserBalanceResponse {
@@ -198,13 +182,17 @@ pub fn user_debt(deps: Deps, user: String) -> ContractResult<UserBalanceResponse
     })
 }
 
-pub fn query_is_liquidatable(deps: Deps, user: String) -> ContractResult<IsLiquidatableResponse> {
+pub fn query_is_liquidatable(
+    deps: Deps,
+    env: Env,
+    user: String,
+) -> ContractResult<IsLiquidatableResponse> {
     let user_addr = deps.api.addr_validate(&user)?;
 
-    let liquidatable = is_liquidatable(deps, user_addr.as_str())
+    let liquidatable = is_liquidatable(deps, &env, user_addr.as_str())
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
 
-    let health_factor = calculate_health_factor(deps, user_addr.as_str())
+    let health_factor = calculate_health_factor(deps, &env, user_addr.as_str())
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
 
     let shortfall = match health_factor {
@@ -222,26 +210,38 @@ pub fn query_is_liquidatable(deps: Deps, user: String) -> ContractResult<IsLiqui
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, MockApi};
-    use cosmwasm_std::Uint128;
+    use cosmwasm_std::testing::{mock_dependencies, mock_env, MockApi, MockQuerier};
+    use cosmwasm_std::{from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery};
+    use cosmwasm_std::{Timestamp, Uint128};
     use stone_types::{
         InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType,
+        OracleQueryMsg, PriceResponse,
     };
+
+    // Base timestamp for tests (~Nov 2023)
+    const BASE_TIMESTAMP: u64 = 1_700_000_000;
+
+    fn mock_env_at_time(time: u64) -> Env {
+        let mut env = mock_env();
+        env.block.time = Timestamp::from_seconds(time);
+        env
+    }
 
     fn setup_market(
         deps: &mut cosmwasm_std::OwnedDeps<
             cosmwasm_std::MemoryStorage,
             cosmwasm_std::testing::MockApi,
-            cosmwasm_std::testing::MockQuerier,
+            MockQuerier,
         >,
     ) -> cosmwasm_std::Addr {
         let api = MockApi::default();
         let curator = api.addr_make("curator");
+        let oracle_addr = api.addr_make("oracle");
         let config = MarketConfig {
             factory: api.addr_make("factory"),
             curator: curator.clone(),
             oracle_config: OracleConfig {
-                address: api.addr_make("oracle"),
+                address: oracle_addr.clone(),
                 oracle_type: OracleType::Generic {
                     expected_code_id: None,
                     max_staleness_secs: 300,
@@ -275,6 +275,32 @@ mod tests {
         state.total_debt_scaled = Uint128::new(5000);
         state.total_collateral = Uint128::new(2000);
         STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Setup oracle mock with realistic timestamp
+        let oracle_str = oracle_addr.to_string();
+        deps.querier.update_wasm(move |query| match query {
+            WasmQuery::Smart { contract_addr, msg } if *contract_addr == oracle_str => {
+                let query_msg: OracleQueryMsg = from_json(msg).unwrap();
+                match query_msg {
+                    OracleQueryMsg::Price { denom } => {
+                        let price = if denom == "uatom" {
+                            Decimal::from_ratio(10u128, 1u128) // $10 per collateral
+                        } else {
+                            Decimal::one() // $1 per debt
+                        };
+                        let response = PriceResponse {
+                            denom,
+                            price,
+                            updated_at: BASE_TIMESTAMP,
+                        };
+                        QuerierResult::Ok(ContractResult::Ok(to_json_binary(&response).unwrap()))
+                    }
+                }
+            }
+            _ => QuerierResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
+                kind: "unknown".to_string(),
+            }),
+        });
 
         curator
     }
@@ -325,7 +351,8 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
             .unwrap();
 
-        let result = user_supply(deps.as_ref(), user1.to_string()).unwrap();
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let result = user_supply(deps.as_ref(), env, user1.to_string()).unwrap();
         assert_eq!(result.scaled, Uint128::new(1000));
         assert_eq!(result.amount, Uint128::new(1000)); // index = 1
     }
@@ -342,7 +369,8 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(500))
             .unwrap();
 
-        let result = user_collateral(deps.as_ref(), user1.to_string()).unwrap();
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let result = user_collateral(deps.as_ref(), env, user1.to_string()).unwrap();
         assert_eq!(result.amount, Uint128::new(500));
     }
 
@@ -358,7 +386,8 @@ mod tests {
             .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(200))
             .unwrap();
 
-        let result = user_debt(deps.as_ref(), user1.to_string()).unwrap();
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let result = user_debt(deps.as_ref(), env, user1.to_string()).unwrap();
         assert_eq!(result.scaled, Uint128::new(200));
         assert_eq!(result.amount, Uint128::new(200)); // index = 1
     }

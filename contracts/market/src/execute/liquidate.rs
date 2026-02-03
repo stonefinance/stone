@@ -37,7 +37,7 @@ pub fn execute_liquidate(
     let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Check position is liquidatable
-    let health_factor = calculate_health_factor(deps.as_ref(), borrower_str)?;
+    let health_factor = calculate_health_factor(deps.as_ref(), &env, borrower_str)?;
     match health_factor {
         None => {
             return Err(ContractError::NotLiquidatable {
@@ -63,12 +63,14 @@ pub fn execute_liquidate(
     // Get prices
     let collateral_price = query_price(
         deps.as_ref(),
-        config.oracle_config.address.as_str(),
+        &env,
+        &config.oracle_config,
         &config.collateral_denom,
     )?;
     let debt_price = query_price(
         deps.as_ref(),
-        config.oracle_config.address.as_str(),
+        &env,
+        &config.oracle_config,
         &config.debt_denom,
     )?;
 
@@ -294,6 +296,7 @@ mod tests {
             .unwrap();
 
         // Setup oracle mock with variable collateral price
+        // Use updated_at = 0 so it's fresh when env.block.time = 0
         let oracle_addr = oracle.to_string();
         deps.querier.update_wasm(move |query| match query {
             WasmQuery::Smart { contract_addr, msg } if contract_addr == &oracle_addr => {
@@ -308,7 +311,7 @@ mod tests {
                         let response = PriceResponse {
                             denom,
                             price,
-                            updated_at: 1000,
+                            updated_at: 0,
                         };
                         QuerierResult::Ok(ContractResult::Ok(to_json_binary(&response).unwrap()))
                     }
@@ -322,6 +325,12 @@ mod tests {
         (borrower, liquidator, oracle)
     }
 
+    fn mock_env_at_time(time: u64) -> Env {
+        let mut env = mock_env();
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(time);
+        env
+    }
+
     #[test]
     fn test_liquidate_success() {
         let mut deps = mock_dependencies();
@@ -329,7 +338,7 @@ mod tests {
         let (borrower, liquidator, _) =
             setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &coins(2500, "uusdc")); // 50% of debt
 
         let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
@@ -355,7 +364,7 @@ mod tests {
         let (borrower, liquidator, _) =
             setup_liquidatable_position(&mut deps, Decimal::from_ratio(10u128, 1u128));
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         let err = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap_err();
@@ -368,7 +377,7 @@ mod tests {
         let (borrower, liquidator, _) =
             setup_liquidatable_position(&mut deps, Decimal::from_ratio(5u128, 1u128));
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &[]);
 
         let err = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap_err();
@@ -385,7 +394,7 @@ mod tests {
             .load(deps.as_ref().storage, borrower.as_str())
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
@@ -406,7 +415,7 @@ mod tests {
             .load(deps.as_ref().storage, borrower.as_str())
             .unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
@@ -428,7 +437,7 @@ mod tests {
         params.enabled = false;
         PARAMS.save(deps.as_mut().storage, &params).unwrap();
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         // Liquidation should succeed even when market is disabled
@@ -449,7 +458,7 @@ mod tests {
         // Remove borrower's debt
         DEBTS.remove(deps.as_mut().storage, borrower.as_str());
 
-        let env = mock_env();
+        let env = mock_env_at_time(0);
         let info = message_info(&liquidator, &coins(2500, "uusdc"));
 
         let err = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap_err();

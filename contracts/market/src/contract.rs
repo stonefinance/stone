@@ -96,21 +96,23 @@ pub fn execute(
 }
 
 #[entry_point]
-pub fn query(deps: Deps, _env: Env, msg: MarketQueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, env: Env, msg: MarketQueryMsg) -> Result<Binary, ContractError> {
     let result = match msg {
         MarketQueryMsg::Config {} => to_json_binary(&query::config(deps)?)?,
         MarketQueryMsg::Params {} => to_json_binary(&query::params(deps)?)?,
         MarketQueryMsg::State {} => to_json_binary(&query::state(deps)?)?,
         MarketQueryMsg::UserPosition { user } => {
-            to_json_binary(&query::user_position(deps, user)?)?
+            to_json_binary(&query::user_position(deps, env, user)?)?
         }
-        MarketQueryMsg::UserSupply { user } => to_json_binary(&query::user_supply(deps, user)?)?,
+        MarketQueryMsg::UserSupply { user } => {
+            to_json_binary(&query::user_supply(deps, env, user)?)?
+        }
         MarketQueryMsg::UserCollateral { user } => {
-            to_json_binary(&query::user_collateral(deps, user)?)?
+            to_json_binary(&query::user_collateral(deps, env, user)?)?
         }
-        MarketQueryMsg::UserDebt { user } => to_json_binary(&query::user_debt(deps, user)?)?,
+        MarketQueryMsg::UserDebt { user } => to_json_binary(&query::user_debt(deps, env, user)?)?,
         MarketQueryMsg::IsLiquidatable { user } => {
-            to_json_binary(&query::query_is_liquidatable(deps, user)?)?
+            to_json_binary(&query::query_is_liquidatable(deps, env, user)?)?
         }
     };
 
