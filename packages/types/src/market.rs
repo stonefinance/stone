@@ -212,6 +212,11 @@ pub enum MarketExecuteMsg {
 
     /// Accrue interest (can be called by anyone)
     AccrueInterest {},
+
+    /// Claim accrued protocol and/or curator fees.
+    /// Only callable by protocol fee collector or curator.
+    /// Claims are limited by available liquidity (fees must be backed by actual tokens).
+    ClaimFees {},
 }
 
 /// Query messages for market contract.
@@ -249,6 +254,10 @@ pub enum MarketQueryMsg {
     /// Check if a position is liquidatable
     #[returns(IsLiquidatableResponse)]
     IsLiquidatable { user: String },
+
+    /// Get accrued protocol and curator fees (not yet claimed)
+    #[returns(AccruedFeesResponse)]
+    AccruedFees {},
 }
 
 // ============================================================================
@@ -327,6 +336,14 @@ pub struct IsLiquidatableResponse {
     pub is_liquidatable: bool,
     pub health_factor: Option<Decimal>,
     pub shortfall: Decimal,
+}
+
+#[cw_serde]
+pub struct AccruedFeesResponse {
+    /// Protocol fees accrued but not yet claimed (in debt token)
+    pub accrued_protocol_fees: Uint128,
+    /// Curator fees accrued but not yet claimed (in debt token)
+    pub accrued_curator_fees: Uint128,
 }
 
 #[cfg(test)]

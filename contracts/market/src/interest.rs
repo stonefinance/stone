@@ -1,21 +1,21 @@
-use cosmwasm_std::{BankMsg, Coin, Decimal, Storage, Uint128};
+use cosmwasm_std::{Decimal, Storage, Uint128};
 
 use crate::error::ContractError;
-use crate::state::{CONFIG, PARAMS, STATE};
+use crate::state::{ACCRUED_CURATOR_FEES, ACCRUED_PROTOCOL_FEES, PARAMS, STATE};
 
 /// Seconds per year for interest calculations
 pub const SECONDS_PER_YEAR: u64 = 31_536_000;
 
 /// Apply accumulated interest to the market state.
-/// This updates borrow_index, liquidity_index, and distributes fees.
-/// Returns bank messages for fee transfers (if any).
+/// This updates borrow_index, liquidity_index, and accrues fees.
+/// Fees are stored as claimable balances rather than being sent immediately,
+/// since interest is virtual (index-based) and tokens don't exist until borrowers repay.
 pub fn apply_accumulated_interest(
     storage: &mut dyn Storage,
     current_time: u64,
-) -> Result<Vec<BankMsg>, ContractError> {
+) -> Result<(), ContractError> {
     let mut state = STATE.load(storage)?;
     let params = PARAMS.load(storage)?;
-    let config = CONFIG.load(storage)?;
 
     let time_elapsed = current_time.saturating_sub(state.last_update);
 
@@ -40,7 +40,7 @@ pub fn apply_accumulated_interest(
         state.borrow_rate = borrow_rate;
         state.liquidity_rate = liquidity_rate;
         STATE.save(storage, &state)?;
-        return Ok(vec![]);
+        return Ok(());
     }
 
     // If no debt, update timestamp and rates
@@ -49,7 +49,7 @@ pub fn apply_accumulated_interest(
         state.borrow_rate = borrow_rate;
         state.liquidity_rate = liquidity_rate;
         STATE.save(storage, &state)?;
-        return Ok(vec![]);
+        return Ok(());
     }
 
     // Calculate borrow index increase
@@ -97,32 +97,21 @@ pub fn apply_accumulated_interest(
 
     STATE.save(storage, &state)?;
 
-    // Create fee transfer messages
-    let mut messages = vec![];
-
-    // Protocol fee
+    // Accrue fees to claimable balances (instead of sending immediately)
+    // This fixes C-2: Fees are virtual (index-based) and tokens don't exist until borrowers repay
     if !protocol_fee_amount.is_zero() {
-        messages.push(BankMsg::Send {
-            to_address: config.protocol_fee_collector.to_string(),
-            amount: vec![Coin {
-                denom: config.debt_denom.clone(),
-                amount: protocol_fee_amount,
-            }],
-        });
+        let current = ACCRUED_PROTOCOL_FEES.may_load(storage)?.unwrap_or_default();
+        let new = current.checked_add(protocol_fee_amount)?;
+        ACCRUED_PROTOCOL_FEES.save(storage, &new)?;
     }
 
-    // Curator fee
     if !curator_fee_amount.is_zero() {
-        messages.push(BankMsg::Send {
-            to_address: config.curator.to_string(),
-            amount: vec![Coin {
-                denom: config.debt_denom,
-                amount: curator_fee_amount,
-            }],
-        });
+        let current = ACCRUED_CURATOR_FEES.may_load(storage)?.unwrap_or_default();
+        let new = current.checked_add(curator_fee_amount)?;
+        ACCRUED_CURATOR_FEES.save(storage, &new)?;
     }
 
-    Ok(messages)
+    Ok(())
 }
 
 /// Get current user supply amount (unscaled).
@@ -182,6 +171,7 @@ pub fn calculate_current_rates(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::{ACCRUED_CURATOR_FEES, ACCRUED_PROTOCOL_FEES, CONFIG, STATE};
     use cosmwasm_std::testing::mock_dependencies;
     use cosmwasm_std::Addr;
     use stone_types::{
@@ -235,6 +225,14 @@ mod tests {
 
         let state = MarketState::new(1000);
         STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Initialize accrued fees to zero
+        ACCRUED_PROTOCOL_FEES
+            .save(deps.as_mut().storage, &Uint128::zero())
+            .unwrap();
+        ACCRUED_CURATOR_FEES
+            .save(deps.as_mut().storage, &Uint128::zero())
+            .unwrap();
     }
 
     #[test]
@@ -242,11 +240,22 @@ mod tests {
         let mut deps = mock_dependencies();
         setup_market(&mut deps);
 
-        let messages = apply_accumulated_interest(deps.as_mut().storage, 1000).unwrap();
-        assert!(messages.is_empty());
+        apply_accumulated_interest(deps.as_mut().storage, 1000).unwrap();
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(state.borrow_index, Decimal::one());
+
+        // No fees should be accrued
+        let protocol_fees = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        let curator_fees = ACCRUED_CURATOR_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert!(protocol_fees.is_zero());
+        assert!(curator_fees.is_zero());
     }
 
     #[test]
@@ -259,12 +268,23 @@ mod tests {
         state.total_supply_scaled = Uint128::new(10000);
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
-        let messages = apply_accumulated_interest(deps.as_mut().storage, 2000).unwrap();
-        assert!(messages.is_empty());
+        apply_accumulated_interest(deps.as_mut().storage, 2000).unwrap();
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(state.borrow_index, Decimal::one());
         assert_eq!(state.last_update, 2000);
+
+        // No fees should be accrued without debt
+        let protocol_fees = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        let curator_fees = ACCRUED_CURATOR_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert!(protocol_fees.is_zero());
+        assert!(curator_fees.is_zero());
     }
 
     #[test]
@@ -279,8 +299,7 @@ mod tests {
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
         // Advance one year
-        let _messages =
-            apply_accumulated_interest(deps.as_mut().storage, 1000 + SECONDS_PER_YEAR).unwrap();
+        apply_accumulated_interest(deps.as_mut().storage, 1000 + SECONDS_PER_YEAR).unwrap();
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
 
@@ -288,6 +307,64 @@ mod tests {
         // After 1 year, borrow_index should be ~1.025
         assert!(state.borrow_index > Decimal::one());
         assert!(state.borrow_index < Decimal::from_ratio(103u128, 100u128));
+
+        // Fees should be accrued (protocol: 10%, curator: 5%)
+        let protocol_fees = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        let curator_fees = ACCRUED_CURATOR_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+
+        // Interest earned = 5000 * 0.025 = 125
+        // Protocol fee = 125 * 0.10 = 12.5
+        // Curator fee = 125 * 0.05 = 6.25
+        assert!(!protocol_fees.is_zero());
+        assert!(!curator_fees.is_zero());
+    }
+
+    #[test]
+    fn test_fee_accrual_at_100_percent_utilization() {
+        // This test verifies the fix for M-3: Market Freeze at 100% Utilization
+        // Previously, at 100% utilization with zero available liquidity,
+        // apply_accumulated_interest would try to send fees via BankMsg::Send
+        // which would fail because the contract has no tokens (all supplied are borrowed).
+        // Now fees are accrued to state and can be claimed when tokens are available.
+        let mut deps = mock_dependencies();
+        setup_market(&mut deps);
+
+        // Set up 100% utilization: 10000 supply, 10000 debt
+        let mut state = STATE.load(deps.as_ref().storage).unwrap();
+        state.total_supply_scaled = Uint128::new(10000);
+        state.total_debt_scaled = Uint128::new(10000);
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // At 100% utilization, available_liquidity = 0
+        let state = STATE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(state.available_liquidity(), Uint128::zero());
+
+        // Advance one year - this should NOT fail even at 100% utilization
+        apply_accumulated_interest(deps.as_mut().storage, 1000 + SECONDS_PER_YEAR).unwrap();
+
+        // Verify interest was accrued
+        let state = STATE.load(deps.as_ref().storage).unwrap();
+        assert!(state.borrow_index > Decimal::one());
+
+        // Verify fees were accrued to state, not sent
+        let protocol_fees = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        let curator_fees = ACCRUED_CURATOR_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+
+        // Fees should be accrued (virtual, not sent)
+        assert!(!protocol_fees.is_zero());
+        assert!(!curator_fees.is_zero());
     }
 
     #[test]

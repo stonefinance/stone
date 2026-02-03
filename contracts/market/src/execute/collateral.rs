@@ -87,7 +87,7 @@ pub fn execute_withdraw_collateral(
     }
 
     // Apply accumulated interest (needed for accurate debt calculation)
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     let user = info.sender.as_str();
 
@@ -141,7 +141,6 @@ pub fn execute_withdraw_collateral(
     };
 
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw_collateral")
         .add_attribute("user", info.sender)

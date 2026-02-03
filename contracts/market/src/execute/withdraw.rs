@@ -19,8 +19,8 @@ pub fn execute_withdraw(
         return Err(ContractError::MarketDisabled);
     }
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     let state = STATE.load(deps.storage)?;
 
@@ -94,7 +94,6 @@ pub fn execute_withdraw(
     };
 
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_message(transfer_msg)
         .add_attribute("action", "withdraw")
         .add_attribute("withdrawer", info.sender)

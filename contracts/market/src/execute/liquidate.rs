@@ -34,8 +34,8 @@ pub fn execute_liquidate(
         return Err(ContractError::ZeroAmount);
     }
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Check position is liquidatable
     let health_factor = calculate_health_factor(deps.as_ref(), borrower_str)?;
@@ -159,8 +159,8 @@ pub fn execute_liquidate(
     // Calculate current rates based on post-transaction state
     let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
 
-    // Build messages
-    let mut messages = fee_messages;
+    // Build messages (no fee messages, fees are accrued to state)
+    let mut messages = vec![];
 
     // Transfer collateral to liquidator
     if !liquidator_collateral.is_zero() {

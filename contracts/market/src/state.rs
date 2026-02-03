@@ -1,3 +1,4 @@
+use cosmwasm_std::Uint128;
 use cw_storage_plus::{Item, Map};
 use stone_types::{MarketConfig, MarketParams, MarketState};
 
@@ -18,15 +19,25 @@ pub const STATE: Item<MarketState> = Item::new("state");
 
 /// User supply positions (scaled amounts)
 /// Key: user address
-pub const SUPPLIES: Map<&str, cosmwasm_std::Uint128> = Map::new("supplies");
+pub const SUPPLIES: Map<&str, Uint128> = Map::new("supplies");
 
 /// User collateral positions (unscaled amounts)
 /// Key: user address
-pub const COLLATERAL: Map<&str, cosmwasm_std::Uint128> = Map::new("collateral");
+pub const COLLATERAL: Map<&str, Uint128> = Map::new("collateral");
 
 /// User debt positions (scaled amounts)
 /// Key: user address
-pub const DEBTS: Map<&str, cosmwasm_std::Uint128> = Map::new("debts");
+pub const DEBTS: Map<&str, Uint128> = Map::new("debts");
+
+/// Accrued protocol fees (claimable by protocol fee collector)
+/// These are accumulated from interest accrual but not yet claimed.
+/// Fees are virtual until borrowers repay and tokens are available.
+pub const ACCRUED_PROTOCOL_FEES: Item<Uint128> = Item::new("accrued_protocol_fees");
+
+/// Accrued curator fees (claimable by curator)
+/// These are accumulated from interest accrual but not yet claimed.
+/// Fees are virtual until borrowers repay and tokens are available.
+pub const ACCRUED_CURATOR_FEES: Item<Uint128> = Item::new("accrued_curator_fees");
 
 #[cfg(test)]
 mod tests {

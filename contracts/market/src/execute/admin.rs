@@ -1,7 +1,7 @@
-use cosmwasm_std::{Decimal, DepsMut, Env, MessageInfo, Response};
+use cosmwasm_std::{BankMsg, Coin, Decimal, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
-use crate::state::{CONFIG, PARAMS};
+use crate::state::{ACCRUED_CURATOR_FEES, ACCRUED_PROTOCOL_FEES, CONFIG, PARAMS, STATE};
 use stone_types::MarketParamsUpdate;
 
 /// 7 days in seconds (LTV update cooldown)
@@ -160,20 +160,140 @@ pub fn execute_update_params(
 
 /// Accrue interest without performing any other action.
 pub fn execute_accrue_interest(deps: DepsMut, env: Env) -> Result<Response, ContractError> {
-    let fee_messages =
-        crate::interest::apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    crate::interest::apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Load updated state to emit in events
     let state = crate::state::STATE.load(deps.storage)?;
 
+    // Load accrued fees
+    let accrued_protocol = ACCRUED_PROTOCOL_FEES
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+    let accrued_curator = ACCRUED_CURATOR_FEES
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_attribute("action", "accrue_interest")
         .add_attribute("borrow_index", state.borrow_index.to_string())
         .add_attribute("liquidity_index", state.liquidity_index.to_string())
         .add_attribute("borrow_rate", state.borrow_rate.to_string())
         .add_attribute("liquidity_rate", state.liquidity_rate.to_string())
-        .add_attribute("last_update", state.last_update.to_string()))
+        .add_attribute("last_update", state.last_update.to_string())
+        .add_attribute("accrued_protocol_fees", accrued_protocol)
+        .add_attribute("accrued_curator_fees", accrued_curator))
+}
+
+/// Claim accrued protocol and/or curator fees.
+/// Only callable by protocol fee collector or curator.
+/// Claims are limited by available liquidity (fees must be backed by actual tokens).
+pub fn execute_claim_fees(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let state = STATE.load(deps.storage)?;
+
+    // Determine which fees the caller can claim
+    let is_protocol_collector = info.sender == config.protocol_fee_collector;
+    let is_curator = info.sender == config.curator;
+
+    if !is_protocol_collector && !is_curator {
+        return Err(ContractError::Unauthorized);
+    }
+
+    // Get current accrued fees
+    let accrued_protocol = ACCRUED_PROTOCOL_FEES
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+    let accrued_curator = ACCRUED_CURATOR_FEES
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+
+    // Calculate available liquidity (tokens not borrowed)
+    // This is the amount that can actually be withdrawn
+    let available_liquidity = state.available_liquidity();
+
+    // Total accrued fees (for sanity check, not directly used)
+    let _total_accrued = accrued_protocol.checked_add(accrued_curator)?;
+
+    // Calculate how much can actually be claimed
+    // We need to ensure there's enough liquidity for all supplier withdrawals
+    // So we can't claim more than available_liquidity
+    let claimable_protocol = if is_protocol_collector {
+        accrued_protocol.min(available_liquidity)
+    } else {
+        Uint128::zero()
+    };
+
+    let claimable_curator = if is_curator {
+        // Curator gets what's left after protocol claims (if both are the same caller, they get both)
+        let remaining_liquidity = available_liquidity.saturating_sub(claimable_protocol);
+        accrued_curator.min(remaining_liquidity)
+    } else {
+        Uint128::zero()
+    };
+
+    if claimable_protocol.is_zero() && claimable_curator.is_zero() {
+        return Err(ContractError::Std(cosmwasm_std::StdError::generic_err(
+            "No fees available to claim (insufficient liquidity)",
+        )));
+    }
+
+    // Update accrued fees state
+    if !claimable_protocol.is_zero() {
+        let new_accrued = accrued_protocol.saturating_sub(claimable_protocol);
+        if new_accrued.is_zero() {
+            ACCRUED_PROTOCOL_FEES.remove(deps.storage);
+        } else {
+            ACCRUED_PROTOCOL_FEES.save(deps.storage, &new_accrued)?;
+        }
+    }
+
+    if !claimable_curator.is_zero() {
+        let new_accrued = accrued_curator.saturating_sub(claimable_curator);
+        if new_accrued.is_zero() {
+            ACCRUED_CURATOR_FEES.remove(deps.storage);
+        } else {
+            ACCRUED_CURATOR_FEES.save(deps.storage, &new_accrued)?;
+        }
+    }
+
+    // Build transfer messages
+    let mut messages = vec![];
+
+    if !claimable_protocol.is_zero() {
+        messages.push(BankMsg::Send {
+            to_address: config.protocol_fee_collector.to_string(),
+            amount: vec![Coin {
+                denom: config.debt_denom.clone(),
+                amount: claimable_protocol,
+            }],
+        });
+    }
+
+    if !claimable_curator.is_zero() {
+        messages.push(BankMsg::Send {
+            to_address: config.curator.to_string(),
+            amount: vec![Coin {
+                denom: config.debt_denom,
+                amount: claimable_curator,
+            }],
+        });
+    }
+
+    let total_claimed = claimable_protocol.checked_add(claimable_curator)?;
+
+    Ok(Response::new()
+        .add_messages(messages)
+        .add_attribute("action", "claim_fees")
+        .add_attribute("caller", info.sender)
+        .add_attribute("protocol_claimed", claimable_protocol)
+        .add_attribute("curator_claimed", claimable_curator)
+        .add_attribute("total_claimed", total_claimed)
+        .add_attribute("accrued_protocol_remaining", accrued_protocol.saturating_sub(claimable_protocol))
+        .add_attribute("accrued_curator_remaining", accrued_curator.saturating_sub(claimable_curator)))
 }
 
 #[cfg(test)]
@@ -463,5 +583,248 @@ mod tests {
         let params = PARAMS.load(deps.as_ref().storage).unwrap();
         assert_eq!(params.supply_cap, Some(Uint128::new(1000000)));
         assert_eq!(params.borrow_cap, Some(Uint128::new(500000)));
+    }
+
+    // ============================================================================
+    // Claim Fees Tests
+    // ============================================================================
+
+    fn setup_market_with_fees(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        protocol_fees: Uint128,
+        curator_fees: Uint128,
+    ) {
+        let api = MockApi::default();
+        let config = MarketConfig {
+            factory: api.addr_make("factory"),
+            curator: api.addr_make("curator"),
+            oracle_config: OracleConfig {
+                address: api.addr_make("oracle"),
+                oracle_type: OracleType::Generic {
+                    expected_code_id: None,
+                    max_staleness_secs: 300,
+                },
+            },
+            collateral_denom: "uatom".to_string(),
+            debt_denom: "uusdc".to_string(),
+            protocol_fee_collector: api.addr_make("collector"),
+        };
+        CONFIG.save(deps.as_mut().storage, &config).unwrap();
+
+        let params = MarketParams {
+            loan_to_value: Decimal::percent(80),
+            liquidation_threshold: Decimal::percent(85),
+            liquidation_bonus: Decimal::percent(5),
+            liquidation_protocol_fee: Decimal::percent(2),
+            close_factor: Decimal::percent(50),
+            interest_rate_model: InterestRateModel::default(),
+            protocol_fee: Decimal::percent(10),
+            curator_fee: Decimal::percent(5),
+            supply_cap: None,
+            borrow_cap: None,
+            enabled: true,
+            is_mutable: false,
+            ltv_last_update: 0,
+        };
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        // Set up state with some supply (liquidity) available
+        // 10000 supply, 5000 debt = 5000 available liquidity
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(10000);
+        state.total_debt_scaled = Uint128::new(5000);
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Set accrued fees
+        if !protocol_fees.is_zero() {
+            ACCRUED_PROTOCOL_FEES
+                .save(deps.as_mut().storage, &protocol_fees)
+                .unwrap();
+        }
+        if !curator_fees.is_zero() {
+            ACCRUED_CURATOR_FEES
+                .save(deps.as_mut().storage, &curator_fees)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_claim_fees_by_protocol_collector() {
+        let mut deps = mock_dependencies();
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        let env = mock_env();
+        let collector = MockApi::default().addr_make("collector");
+        let info = message_info(&collector, &[]);
+
+        let res = execute_claim_fees(deps.as_mut(), env, info).unwrap();
+
+        // Should have a BankMsg::Send for protocol fees
+        assert!(!res.messages.is_empty());
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "protocol_claimed" && a.value == "1000"));
+
+        // Protocol fees should be cleared
+        let remaining = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert!(remaining.is_zero());
+
+        // Curator fees should remain
+        let curator_remaining = ACCRUED_CURATOR_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert_eq!(curator_remaining, Uint128::new(500));
+    }
+
+    #[test]
+    fn test_claim_fees_by_curator() {
+        let mut deps = mock_dependencies();
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        let env = mock_env();
+        let curator = MockApi::default().addr_make("curator");
+        let info = message_info(&curator, &[]);
+
+        let res = execute_claim_fees(deps.as_mut(), env, info).unwrap();
+
+        // Should have a BankMsg::Send for curator fees
+        assert!(!res.messages.is_empty());
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "curator_claimed" && a.value == "500"));
+
+        // Curator fees should be cleared
+        let remaining = ACCRUED_CURATOR_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert!(remaining.is_zero());
+
+        // Protocol fees should remain
+        let protocol_remaining = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert_eq!(protocol_remaining, Uint128::new(1000));
+    }
+
+    #[test]
+    fn test_claim_fees_unauthorized() {
+        let mut deps = mock_dependencies();
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        let env = mock_env();
+        let unauthorized = MockApi::default().addr_make("unauthorized");
+        let info = message_info(&unauthorized, &[]);
+
+        let err = execute_claim_fees(deps.as_mut(), env, info).unwrap_err();
+        assert!(matches!(err, ContractError::Unauthorized));
+    }
+
+    #[test]
+    fn test_claim_fees_insufficient_liquidity() {
+        let mut deps = mock_dependencies();
+        // Set up with 5000 available liquidity (10000 supply - 5000 debt)
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        // Now let's set up a scenario where available liquidity is less than fees
+        // This requires more debt than supply, which is unusual but let's test with partial claim
+        let mut state = STATE.load(deps.as_ref().storage).unwrap();
+        state.total_debt_scaled = Uint128::new(9500); // Only 500 available
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        let env = mock_env();
+        let collector = MockApi::default().addr_make("collector");
+        let info = message_info(&collector, &[]);
+
+        // Protocol collector can only claim up to available liquidity
+        let res = execute_claim_fees(deps.as_mut(), env, info).unwrap();
+
+        // Should claim min(protocol_fees, available) = min(1000, 500) = 500
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "protocol_claimed" && a.value == "500"));
+
+        // Remaining protocol fees
+        let remaining = ACCRUED_PROTOCOL_FEES
+            .may_load(deps.as_ref().storage)
+            .unwrap()
+            .unwrap_or_default();
+        assert_eq!(remaining, Uint128::new(500)); // 1000 - 500 = 500 remaining
+    }
+
+    #[test]
+    fn test_claim_fees_zero_liquidity() {
+        let mut deps = mock_dependencies();
+        // Set up with 0 available liquidity (100% utilization)
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        let mut state = STATE.load(deps.as_ref().storage).unwrap();
+        state.total_debt_scaled = Uint128::new(10000); // 100% utilization
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        let env = mock_env();
+        let collector = MockApi::default().addr_make("collector");
+        let info = message_info(&collector, &[]);
+
+        // Should fail because no liquidity available
+        let err = execute_claim_fees(deps.as_mut(), env, info).unwrap_err();
+        assert!(matches!(err, ContractError::Std(_)));
+    }
+
+    #[test]
+    fn test_claim_fees_partial_remaining() {
+        let mut deps = mock_dependencies();
+        // Set up with fees but limited liquidity
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        let env = mock_env();
+        let collector = MockApi::default().addr_make("collector");
+        let info = message_info(&collector, &[]);
+
+        let res = execute_claim_fees(deps.as_mut(), env, info).unwrap();
+
+        // Check that remaining fees are reported correctly
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "accrued_protocol_remaining" && a.value == "0"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "accrued_curator_remaining" && a.value == "500"));
+    }
+
+    #[test]
+    fn test_accrue_interest_emits_accrued_fees() {
+        let mut deps = mock_dependencies();
+        setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
+
+        // Set time to the same as state creation to prevent interest accrual
+        let mut env = mock_env();
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(1000); // Same as state.created_at
+
+        let res = execute_accrue_interest(deps.as_mut(), env).unwrap();
+
+        // Should emit accrued fees in attributes (fees unchanged since no time elapsed)
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "accrued_protocol_fees" && a.value == "1000"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "accrued_curator_fees" && a.value == "500"));
     }
 }

@@ -24,8 +24,8 @@ pub fn execute_borrow(
         return Err(ContractError::ZeroAmount);
     }
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     let state = STATE.load(deps.storage)?;
     let user = info.sender.as_str();
@@ -91,7 +91,6 @@ pub fn execute_borrow(
     let (borrow_rate, liquidity_rate) = crate::interest::calculate_current_rates(deps.storage)?;
 
     Ok(Response::new()
-        .add_messages(fee_messages)
         .add_message(transfer_msg)
         .add_attribute("action", "borrow")
         .add_attribute("borrower", info.sender)

@@ -219,6 +219,20 @@ pub fn query_is_liquidatable(deps: Deps, user: String) -> ContractResult<IsLiqui
     })
 }
 
+pub fn accrued_fees(deps: Deps) -> ContractResult<stone_types::AccruedFeesResponse> {
+    let accrued_protocol = crate::state::ACCRUED_PROTOCOL_FEES
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+    let accrued_curator = crate::state::ACCRUED_CURATOR_FEES
+        .may_load(deps.storage)?
+        .unwrap_or_default();
+
+    Ok(stone_types::AccruedFeesResponse {
+        accrued_protocol_fees: accrued_protocol,
+        accrued_curator_fees: accrued_curator,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

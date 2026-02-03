@@ -92,6 +92,7 @@ pub fn execute(
             execute::execute_update_params(deps, env, info, updates)
         }
         MarketExecuteMsg::AccrueInterest {} => execute::execute_accrue_interest(deps, env),
+        MarketExecuteMsg::ClaimFees {} => execute::execute_claim_fees(deps, env, info),
     }
 }
 
@@ -112,6 +113,7 @@ pub fn query(deps: Deps, _env: Env, msg: MarketQueryMsg) -> Result<Binary, Contr
         MarketQueryMsg::IsLiquidatable { user } => {
             to_json_binary(&query::query_is_liquidatable(deps, user)?)?
         }
+        MarketQueryMsg::AccruedFees {} => to_json_binary(&query::accrued_fees(deps)?)?,
     };
 
     Ok(result)
