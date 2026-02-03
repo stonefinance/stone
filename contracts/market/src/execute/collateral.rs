@@ -80,11 +80,9 @@ pub fn execute_withdraw_collateral(
     recipient: Option<String>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
 
-    if !params.enabled {
-        return Err(ContractError::MarketDisabled);
-    }
+    // NOTE: Withdraw collateral is ALWAYS allowed regardless of market status
+    // so users can always access their collateral (subject to LTV constraints).
 
     // Apply accumulated interest (needed for accurate debt calculation)
     let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
@@ -358,5 +356,66 @@ mod tests {
             .load(deps.as_ref().storage, user1.as_str())
             .unwrap();
         assert_eq!(collateral, Uint128::new(1500));
+    }
+
+    #[test]
+    fn test_supply_collateral_blocked_when_disabled() {
+        // C4 Fix: Supply collateral must be blocked when market is disabled
+        let mut deps = mock_dependencies();
+        setup_market(&mut deps);
+
+        let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
+        params.enabled = false;
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let api = MockApi::default();
+        let user1 = api.addr_make("user1");
+        let env = mock_env();
+        let info = message_info(&user1, &coins(1000, "uatom"));
+
+        // Supply collateral should fail when market is disabled
+        let err = execute_supply_collateral(deps.as_mut(), env, info, None).unwrap_err();
+        assert!(matches!(err, ContractError::MarketDisabled));
+    }
+
+    #[test]
+    fn test_withdraw_collateral_works_when_disabled() {
+        // C4 Fix: Withdraw collateral must ALWAYS work regardless of market status
+        let mut deps = mock_dependencies();
+        setup_market(&mut deps);
+
+        let api = MockApi::default();
+        let user1 = api.addr_make("user1");
+
+        // Add collateral
+        COLLATERAL
+            .save(deps.as_mut().storage, user1.as_str(), &Uint128::new(1000))
+            .unwrap();
+        let mut state = STATE.load(deps.as_ref().storage).unwrap();
+        state.total_collateral = Uint128::new(1000);
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
+        params.enabled = false;
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let env = mock_env();
+        let info = message_info(&user1, &[]);
+
+        // Withdraw collateral should succeed even when market is disabled
+        let res =
+            execute_withdraw_collateral(deps.as_mut(), env, info, Some(Uint128::new(500)), None)
+                .unwrap();
+
+        assert!(!res.messages.is_empty());
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "withdraw_collateral"));
+
+        let remaining = COLLATERAL
+            .load(deps.as_ref().storage, user1.as_str())
+            .unwrap();
+        assert_eq!(remaining, Uint128::new(500));
     }
 }
