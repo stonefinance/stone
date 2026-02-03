@@ -12,11 +12,10 @@ pub fn execute_repay(
     on_behalf_of: Option<String>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
+    let _params = PARAMS.load(deps.storage)?;
 
-    if !params.enabled {
-        return Err(ContractError::MarketDisabled);
-    }
+    // NOTE: Repay is ALWAYS allowed regardless of market status
+    // so users can always reduce their debt positions.
 
     // Check for wrong denom first
     if info.funds.len() > 1 || (info.funds.len() == 1 && info.funds[0].denom != config.debt_denom) {
@@ -43,8 +42,8 @@ pub fn execute_repay(
         return Err(ContractError::ZeroAmount);
     }
 
-    // Apply accumulated interest
-    let fee_messages = apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+    // Apply accumulated interest (fees are accrued to state, not sent immediately)
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
 
     // Determine whose debt to repay
     let borrower = match &on_behalf_of {
@@ -93,7 +92,6 @@ pub fn execute_repay(
 
     // Build response
     let mut response = Response::new()
-        .add_messages(fee_messages)
         .add_attribute("action", "repay")
         .add_attribute("repayer", &info.sender)
         .add_attribute("borrower", &borrower)
@@ -155,6 +153,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
@@ -327,5 +326,30 @@ mod tests {
 
         let state = STATE.load(deps.as_ref().storage).unwrap();
         assert_eq!(state.total_debt_scaled, Uint128::new(3000));
+    }
+
+    #[test]
+    fn test_repay_works_when_disabled() {
+        // C4 Fix: Repay must ALWAYS work regardless of market status
+        let mut deps = mock_dependencies();
+        let user1 = setup_market_with_debt(&mut deps);
+
+        let mut params = PARAMS.load(deps.as_ref().storage).unwrap();
+        params.enabled = false;
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let env = mock_env();
+        let info = message_info(&user1, &coins(2000, "uusdc"));
+
+        // Repay should succeed even when market is disabled
+        let res = execute_repay(deps.as_mut(), env, info, None).unwrap();
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "repay"));
+
+        // Check debt was reduced
+        let debt = DEBTS.load(deps.as_ref().storage, user1.as_str()).unwrap();
+        assert_eq!(debt, Uint128::new(3000));
     }
 }

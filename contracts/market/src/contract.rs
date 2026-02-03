@@ -27,6 +27,7 @@ pub fn instantiate(
         collateral_denom: msg.collateral_denom,
         debt_denom: msg.debt_denom,
         protocol_fee_collector: deps.api.addr_validate(&msg.protocol_fee_collector)?,
+        salt: None,
     };
 
     let params = MarketParams {
@@ -92,26 +93,30 @@ pub fn execute(
             execute::execute_update_params(deps, env, info, updates)
         }
         MarketExecuteMsg::AccrueInterest {} => execute::execute_accrue_interest(deps, env),
+        MarketExecuteMsg::ClaimFees {} => execute::execute_claim_fees(deps, env, info),
     }
 }
 
 #[entry_point]
-pub fn query(deps: Deps, _env: Env, msg: MarketQueryMsg) -> Result<Binary, ContractError> {
+pub fn query(deps: Deps, env: Env, msg: MarketQueryMsg) -> Result<Binary, ContractError> {
     let result = match msg {
         MarketQueryMsg::Config {} => to_json_binary(&query::config(deps)?)?,
         MarketQueryMsg::Params {} => to_json_binary(&query::params(deps)?)?,
         MarketQueryMsg::State {} => to_json_binary(&query::state(deps)?)?,
         MarketQueryMsg::UserPosition { user } => {
-            to_json_binary(&query::user_position(deps, user)?)?
+            to_json_binary(&query::user_position(deps, env, user)?)?
         }
-        MarketQueryMsg::UserSupply { user } => to_json_binary(&query::user_supply(deps, user)?)?,
+        MarketQueryMsg::UserSupply { user } => {
+            to_json_binary(&query::user_supply(deps, env, user)?)?
+        }
         MarketQueryMsg::UserCollateral { user } => {
-            to_json_binary(&query::user_collateral(deps, user)?)?
+            to_json_binary(&query::user_collateral(deps, env, user)?)?
         }
-        MarketQueryMsg::UserDebt { user } => to_json_binary(&query::user_debt(deps, user)?)?,
+        MarketQueryMsg::UserDebt { user } => to_json_binary(&query::user_debt(deps, env, user)?)?,
         MarketQueryMsg::IsLiquidatable { user } => {
-            to_json_binary(&query::query_is_liquidatable(deps, user)?)?
+            to_json_binary(&query::query_is_liquidatable(deps, env, user)?)?
         }
+        MarketQueryMsg::AccruedFees {} => to_json_binary(&query::accrued_fees(deps)?)?,
     };
 
     Ok(result)
