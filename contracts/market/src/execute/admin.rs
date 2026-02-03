@@ -460,7 +460,13 @@ mod tests {
         };
 
         let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
-        assert!(matches!(err, ContractError::TotalFeeExceedsMax { .. }));
+        assert_eq!(
+            err,
+            ContractError::TotalFeeExceedsMax {
+                protocol_fee: Decimal::percent(80).to_string(),
+                curator_fee: Decimal::percent(25).to_string(),
+            }
+        );
     }
 
     #[test]
@@ -486,7 +492,13 @@ mod tests {
         };
 
         let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
-        assert!(matches!(err, ContractError::TotalFeeExceedsMax { .. }));
+        assert_eq!(
+            err,
+            ContractError::TotalFeeExceedsMax {
+                protocol_fee: Decimal::percent(75).to_string(),
+                curator_fee: Decimal::percent(25).to_string(),
+            }
+        );
     }
 
     #[test]
