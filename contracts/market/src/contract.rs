@@ -36,6 +36,7 @@ pub fn instantiate(
         liquidation_bonus: msg.params.liquidation_bonus,
         liquidation_protocol_fee: msg.params.liquidation_protocol_fee,
         close_factor: msg.params.close_factor,
+        dust_debt_threshold: msg.params.dust_debt_threshold,
         interest_rate_model: msg.params.interest_rate_model,
         protocol_fee: msg.params.protocol_fee,
         curator_fee: msg.params.curator_fee,
@@ -126,7 +127,7 @@ pub fn query(deps: Deps, env: Env, msg: MarketQueryMsg) -> Result<Binary, Contra
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
-    use cosmwasm_std::{from_json, Decimal};
+    use cosmwasm_std::{from_json, Decimal, Uint128};
     use stone_types::{
         CreateMarketParams, InterestRateModel, MarketConfigResponse, OracleConfigUnchecked,
         OracleType,
@@ -167,6 +168,7 @@ mod tests {
                 liquidation_bonus: Decimal::percent(5),
                 liquidation_protocol_fee: Decimal::percent(2),
                 close_factor: Decimal::percent(50),
+                dust_debt_threshold: Uint128::new(100),
                 interest_rate_model: InterestRateModel::default(),
                 protocol_fee: Decimal::percent(10),
                 curator_fee: Decimal::percent(5),

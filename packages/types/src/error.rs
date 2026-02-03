@@ -117,6 +117,9 @@ pub enum ContractError {
     #[error("Wrong denom sent: expected {expected}, got {got}")]
     WrongDenom { expected: String, got: String },
 
+    #[error("Dust debt threshold too high: {value} exceeds maximum of {max}")]
+    DustDebtThresholdTooHigh { value: String, max: String },
+
     #[error("Invalid interest rate model parameters")]
     InvalidInterestRateModel,
 

@@ -95,6 +95,21 @@ pub fn execute_update_params(
         response = response.add_attribute("curator_fee", new_fee.to_string());
     }
 
+    // Update dust debt threshold (always allowed, capped at 10_000_000)
+    if let Some(new_threshold) = updates.dust_debt_threshold {
+        let max_dust_threshold = Uint128::new(10_000_000);
+        if new_threshold > max_dust_threshold {
+            return Err(ContractError::Types(
+                stone_types::ContractError::DustDebtThresholdTooHigh {
+                    value: new_threshold.to_string(),
+                    max: max_dust_threshold.to_string(),
+                },
+            ));
+        }
+        params.dust_debt_threshold = new_threshold;
+        response = response.add_attribute("dust_debt_threshold", new_threshold.to_string());
+    }
+
     // Update supply cap (always allowed)
     if let Some(new_cap) = updates.supply_cap {
         params.supply_cap = new_cap;
@@ -137,6 +152,10 @@ pub fn execute_update_params(
             params.liquidation_protocol_fee.to_string(),
         )
         .add_attribute("final_close_factor", params.close_factor.to_string())
+        .add_attribute(
+            "final_dust_debt_threshold",
+            params.dust_debt_threshold.to_string(),
+        )
         .add_attribute("final_protocol_fee", params.protocol_fee.to_string())
         .add_attribute("final_curator_fee", params.curator_fee.to_string())
         .add_attribute(
@@ -346,6 +365,7 @@ mod tests {
             liquidation_bonus: Decimal::percent(5),
             liquidation_protocol_fee: Decimal::percent(2),
             close_factor: Decimal::percent(50),
+            dust_debt_threshold: Uint128::new(100),
             interest_rate_model: InterestRateModel::default(),
             protocol_fee: Decimal::percent(10),
             curator_fee: Decimal::percent(5),
@@ -373,6 +393,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: Some(Decimal::percent(10)),
             supply_cap: None,
             borrow_cap: None,
@@ -395,6 +416,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: Some(Decimal::percent(20)),
             supply_cap: None,
             borrow_cap: None,
@@ -420,6 +442,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: Some(Decimal::percent(30)), // > 25%
             supply_cap: None,
             borrow_cap: None,
@@ -448,6 +471,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: Some(Decimal::percent(75)), // 80% -> 75% = 5% change
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: None,
             supply_cap: None,
             borrow_cap: None,
@@ -479,6 +503,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: Some(Decimal::percent(75)),
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: None,
             supply_cap: None,
             borrow_cap: None,
@@ -508,6 +533,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: Some(Decimal::percent(75)),
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: None,
             supply_cap: None,
             borrow_cap: None,
@@ -536,6 +562,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: Some(Decimal::percent(70)), // 80% -> 70% = 10% change > 5%
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: None,
             supply_cap: None,
             borrow_cap: None,
@@ -558,6 +585,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: None,
             supply_cap: None,
             borrow_cap: None,
@@ -582,6 +610,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: None,
             supply_cap: Some(Some(Uint128::new(1000000))),
             borrow_cap: Some(Some(Uint128::new(500000))),
@@ -593,6 +622,62 @@ mod tests {
         let params = PARAMS.load(deps.as_ref().storage).unwrap();
         assert_eq!(params.supply_cap, Some(Uint128::new(1000000)));
         assert_eq!(params.borrow_cap, Some(Uint128::new(500000)));
+    }
+
+    #[test]
+    fn test_update_dust_debt_threshold() {
+        let mut deps = mock_dependencies();
+        setup_mutable_market(&mut deps);
+
+        let env = mock_env();
+        let curator = MockApi::default().addr_make("curator");
+        let info = message_info(&curator, &[]);
+
+        let updates = MarketParamsUpdate {
+            loan_to_value: None,
+            interest_rate_model: None,
+            dust_debt_threshold: Some(Uint128::new(5_000_000)),
+            curator_fee: None,
+            supply_cap: None,
+            borrow_cap: None,
+            enabled: None,
+        };
+
+        let res = execute_update_params(deps.as_mut(), env, info, updates).unwrap();
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "dust_debt_threshold" && a.value == "5000000"));
+
+        let params = PARAMS.load(deps.as_ref().storage).unwrap();
+        assert_eq!(params.dust_debt_threshold, Uint128::new(5_000_000));
+    }
+
+    #[test]
+    fn test_update_dust_debt_threshold_exceeds_max() {
+        let mut deps = mock_dependencies();
+        setup_mutable_market(&mut deps);
+
+        let env = mock_env();
+        let curator = MockApi::default().addr_make("curator");
+        let info = message_info(&curator, &[]);
+
+        let updates = MarketParamsUpdate {
+            loan_to_value: None,
+            interest_rate_model: None,
+            dust_debt_threshold: Some(Uint128::new(10_000_001)), // > 10M max
+            curator_fee: None,
+            supply_cap: None,
+            borrow_cap: None,
+            enabled: None,
+        };
+
+        let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
+        assert!(
+            matches!(err, ContractError::Types(stone_types::ContractError::DustDebtThresholdTooHigh { .. })),
+            "Expected DustDebtThresholdTooHigh error, got {:?}",
+            err
+        );
     }
 
     // ============================================================================
@@ -632,6 +717,7 @@ mod tests {
             liquidation_bonus: Decimal::percent(5),
             liquidation_protocol_fee: Decimal::percent(2),
             close_factor: Decimal::percent(50),
+            dust_debt_threshold: Uint128::new(100),
             interest_rate_model: InterestRateModel::default(),
             protocol_fee: Decimal::percent(10),
             curator_fee: Decimal::percent(5),

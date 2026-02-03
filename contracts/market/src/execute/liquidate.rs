@@ -57,7 +57,13 @@ pub fn execute_liquidate(
     let borrower_collateral = get_user_collateral(deps.storage, borrower_str)?;
 
     // Calculate max liquidatable debt (close_factor)
-    let max_liquidatable = borrower_debt.checked_mul_floor(params.close_factor)?;
+    // For dust positions (debt <= dust_debt_threshold), allow full liquidation
+    // regardless of close factor to prevent unliquidatable dust positions.
+    let max_liquidatable = if borrower_debt <= params.dust_debt_threshold {
+        borrower_debt // Full liquidation allowed for dust positions
+    } else {
+        borrower_debt.checked_mul_floor(params.close_factor)?
+    };
     let actual_debt_repaid = debt_to_repay.min(max_liquidatable).min(borrower_debt);
 
     // Get prices
@@ -264,6 +270,7 @@ mod tests {
             liquidation_bonus: Decimal::percent(5),
             liquidation_protocol_fee: Decimal::percent(2),
             close_factor: Decimal::percent(50),
+            dust_debt_threshold: Uint128::new(100),
             interest_rate_model: InterestRateModel::default(),
             protocol_fee: Decimal::percent(10),
             curator_fee: Decimal::percent(5),
@@ -464,5 +471,304 @@ mod tests {
 
         let err = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap_err();
         assert!(matches!(err, ContractError::NotLiquidatable { .. }));
+    }
+
+    // ============================================================================
+    // Dust Liquidation Tests (Issue #57)
+    // ============================================================================
+
+    fn setup_dust_position(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            MockQuerier,
+        >,
+        dust_debt_threshold: Uint128,
+    ) -> (cosmwasm_std::Addr, cosmwasm_std::Addr) {
+        let api = MockApi::default();
+        let borrower = api.addr_make("borrower");
+        let liquidator = api.addr_make("liquidator");
+        let oracle = api.addr_make("oracle");
+
+        let config = CONFIG.load(deps.as_ref().storage).unwrap_or_else(|_| {
+            let config = MarketConfig {
+                factory: api.addr_make("factory"),
+                curator: api.addr_make("curator"),
+                oracle_config: OracleConfig {
+                    address: oracle.clone(),
+                    oracle_type: OracleType::Generic {
+                        expected_code_id: None,
+                        max_staleness_secs: 300,
+                    },
+                },
+                collateral_denom: "uatom".to_string(),
+                debt_denom: "uusdc".to_string(),
+                protocol_fee_collector: api.addr_make("collector"),
+                salt: None,
+            };
+            CONFIG.save(deps.as_mut().storage, &config).unwrap();
+            config
+        });
+
+        // Set dust threshold
+        let params = MarketParams {
+            loan_to_value: Decimal::percent(80),
+            liquidation_threshold: Decimal::percent(85),
+            liquidation_bonus: Decimal::percent(5),
+            liquidation_protocol_fee: Decimal::percent(2),
+            close_factor: Decimal::percent(50), // 50% close factor
+            dust_debt_threshold,
+            interest_rate_model: InterestRateModel::default(),
+            protocol_fee: Decimal::percent(10),
+            curator_fee: Decimal::percent(5),
+            supply_cap: None,
+            borrow_cap: None,
+            enabled: true,
+            is_mutable: false,
+            ltv_last_update: 0,
+        };
+        PARAMS.save(deps.as_mut().storage, &params).unwrap();
+
+        let mut state = MarketState::new(1000);
+        state.total_collateral = Uint128::new(1000);
+        state.total_debt_scaled = Uint128::new(5000);
+        STATE.save(deps.as_mut().storage, &state).unwrap();
+
+        // Setup oracle mock - price $1
+        let oracle_addr = config.oracle_config.address.to_string();
+        deps.querier.update_wasm(move |query| match query {
+            WasmQuery::Smart { contract_addr, msg } if contract_addr == &oracle_addr => {
+                let query_msg: OracleQueryMsg = from_json(msg).unwrap();
+                match query_msg {
+                    OracleQueryMsg::Price { denom } => {
+                        let price = if denom == "uatom" {
+                            Decimal::from_ratio(1u128, 1u128) // $1 per collateral
+                        } else {
+                            Decimal::one()
+                        };
+                        let response = PriceResponse {
+                            denom,
+                            price,
+                            updated_at: 0,
+                        };
+                        QuerierResult::Ok(ContractResult::Ok(to_json_binary(&response).unwrap()))
+                    }
+                }
+            }
+            _ => QuerierResult::Err(cosmwasm_std::SystemError::UnsupportedRequest {
+                kind: "unknown".to_string(),
+            }),
+        });
+
+        (borrower, liquidator)
+    }
+
+    #[test]
+    fn test_dust_position_full_liquidation() {
+        // Issue #57: Dust positions should be fully liquidatable regardless of close factor
+        let mut deps = mock_dependencies();
+
+        // Dust threshold = 100
+        let dust_threshold = Uint128::new(100);
+        let (borrower, liquidator) = setup_dust_position(&mut deps, dust_threshold);
+
+        // Set up liquidatable dust position:
+        // collateral = 60, debt = 50 (below dust threshold of 100)
+        // HF = (60 * 1 * 0.85) / 50 = 1.02 > 1, not liquidatable!
+        // Need HF < 1: debt > collateral * 0.85
+        // For debt = 50, need collateral < 50/0.85 = 58.8
+        // Let's use: collateral = 50, debt = 60
+        // HF = (50 * 0.85) / 60 = 0.71 < 1, liquidatable
+        COLLATERAL
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(50))
+            .unwrap();
+        DEBTS
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(60))
+            .unwrap();
+
+        let env = mock_env_at_time(0);
+        // Try to liquidate full debt (60), which is more than 50% close factor would allow
+        let info = message_info(&liquidator, &coins(60, "uusdc"));
+
+        let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
+
+        // Should fully liquidate the dust position
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "liquidate"));
+
+        // Check the debt_repaid attribute
+        let debt_attr = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "debt_repaid")
+            .map(|a| a.value.parse::<u128>().unwrap())
+            .expect("debt_repaid attribute should exist");
+        
+        // Collateral capping kicks in because:
+        // collateral_needed = 60, bonus = floor(60*5%) = 3, fee = floor(60*2%) = 1, total = 64
+        // With only 50 collateral, it's capped: scale = 50/64
+        // scaled_collateral = floor(60 * 50/64) = floor(46.875) = 46
+        // scaled_debt = 46 (same numeraire, $1 = $1)
+        assert_eq!(debt_attr, 46u128, "Dust position should liquidate as much as collateral allows");
+    }
+
+    #[test]
+    fn test_dust_position_partial_payment() {
+        // Issue #57: Even with partial payment, dust positions should respect min(debt, payment)
+        let mut deps = mock_dependencies();
+
+        let dust_threshold = Uint128::new(100);
+        let (borrower, liquidator) = setup_dust_position(&mut deps, dust_threshold);
+
+        // Set up liquidatable dust position: collateral = 50, debt = 60
+        // HF = (50 * 0.85) / 60 = 0.71 < 1, liquidatable
+        COLLATERAL
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(50))
+            .unwrap();
+        DEBTS
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(60))
+            .unwrap();
+
+        let env = mock_env_at_time(0);
+        // Send only 30 to repay (partial payment)
+        let info = message_info(&liquidator, &coins(30, "uusdc"));
+
+        let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
+
+        // Should process 30 of the debt (limited by payment, not close factor)
+        let debt_attr = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "debt_repaid")
+            .map(|a| a.value.parse::<u128>().unwrap())
+            .expect("debt_repaid attribute should exist");
+        assert_eq!(debt_attr, 30u128, "Should repay the exact amount sent");
+    }
+
+    #[test]
+    fn test_non_dust_position_respects_close_factor() {
+        // Issue #57: Normal positions should still respect close factor
+        let mut deps = mock_dependencies();
+
+        // Dust threshold = 100, debt = 500 (above threshold)
+        let dust_threshold = Uint128::new(100);
+        let (borrower, liquidator) = setup_dust_position(&mut deps, dust_threshold);
+
+        // Set up liquidatable position: collateral = 500, debt = 600
+        // HF = (500 * 0.85) / 600 = 0.71 < 1, liquidatable
+        // Debt > dust_threshold so close factor applies
+        COLLATERAL
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(500))
+            .unwrap();
+        DEBTS
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(600))
+            .unwrap();
+
+        let env = mock_env_at_time(0);
+        // Try to liquidate full debt (600)
+        let info = message_info(&liquidator, &coins(600, "uusdc"));
+
+        let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
+
+        // Should only liquidate 50% (close factor) = 300
+        let debt_attr = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "debt_repaid")
+            .map(|a| a.value.parse::<u128>().unwrap())
+            .expect("debt_repaid attribute should exist");
+
+        // With 50% close factor, max liquidatable is 300
+        assert_eq!(debt_attr, 300u128, "Should respect close factor for non-dust positions");
+
+        // Debt should not be fully cleared
+        let remaining_debt = DEBTS
+            .load(deps.as_ref().storage, borrower.as_str())
+            .unwrap();
+        assert!(
+            remaining_debt > Uint128::zero(),
+            "Non-dust position should still have remaining debt"
+        );
+    }
+
+    #[test]
+    fn test_dust_threshold_exact_boundary() {
+        // Issue #57: Position with debt exactly at threshold should be treated as dust
+        let mut deps = mock_dependencies();
+
+        // Dust threshold = 100, debt = 100 (exactly at threshold)
+        let dust_threshold = Uint128::new(100);
+        let (borrower, liquidator) = setup_dust_position(&mut deps, dust_threshold);
+
+        // Set up position with exactly 100 debt and sufficient collateral
+        // collateral = 120, debt = 100 (at threshold, liquidatable)
+        // HF = (120 * 0.85) / 100 = 1.02 > 1, not liquidatable!
+        // Need collateral < 100/0.85 = 117.6
+        // Use: collateral = 100, debt = 100
+        // HF = (100 * 0.85) / 100 = 0.85 < 1, liquidatable
+        COLLATERAL
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(100))
+            .unwrap();
+        DEBTS
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(100))
+            .unwrap();
+
+        let env = mock_env_at_time(0);
+        let info = message_info(&liquidator, &coins(100, "uusdc"));
+
+        let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
+
+        // Position at exact threshold should be fully liquidatable
+        let debt_attr = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "debt_repaid")
+            .map(|a| a.value.parse::<u128>().unwrap())
+            .expect("debt_repaid attribute should exist");
+
+        // collateral_needed = 100, bonus = 5, fee = 2, total = 107
+        // Capped at 100 collateral: scale = 100/107
+        // scaled_collateral = floor(100 * 100/107) = floor(93.457) = 93
+        // scaled_debt = 93
+        assert_eq!(debt_attr, 93u128, "Position at dust threshold should liquidate up to collateral cap");
+    }
+
+    #[test]
+    fn test_zero_dust_threshold_disables_feature() {
+        // Issue #57: Zero dust threshold means no special dust handling
+        let mut deps = mock_dependencies();
+
+        // Dust threshold = 0, disables the dust feature
+        let dust_threshold = Uint128::zero();
+        let (borrower, liquidator) = setup_dust_position(&mut deps, dust_threshold);
+
+        // Set up liquidatable dust position: collateral = 50, debt = 60
+        // HF = (50 * 0.85) / 60 = 0.71 < 1, liquidatable
+        COLLATERAL
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(50))
+            .unwrap();
+        DEBTS
+            .save(deps.as_mut().storage, borrower.as_str(), &Uint128::new(60))
+            .unwrap();
+
+        let env = mock_env_at_time(0);
+        let info = message_info(&liquidator, &coins(60, "uusdc"));
+
+        let res = execute_liquidate(deps.as_mut(), env, info, borrower.to_string()).unwrap();
+
+        // With zero threshold, 60 > 0, so close factor applies
+        let debt_attr = res
+            .attributes
+            .iter()
+            .find(|a| a.key == "debt_repaid")
+            .map(|a| a.value.parse::<u128>().unwrap())
+            .expect("debt_repaid attribute should exist");
+
+        // close_factor applies: max_liquidatable = floor(60 * 50%) = 30
+        // collateral_needed = 30, bonus = floor(30*5%)=1, fee = floor(30*2%)=0, total = 31
+        // 31 < 50 collateral, so not capped
+        assert_eq!(debt_attr, 30u128, "Zero dust threshold should apply close factor");
     }
 }
