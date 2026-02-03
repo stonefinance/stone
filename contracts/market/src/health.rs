@@ -1,32 +1,10 @@
-use cosmwasm_std::{Decimal, Decimal256, Deps, Env, Uint128, Uint256};
-use std::str::FromStr;
+use cosmwasm_std::{Decimal, Deps, Env, Uint128};
 
 use crate::error::ContractError;
 use crate::interest::{get_user_collateral, get_user_debt};
+use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256, uint256_to_uint128};
 use crate::state::{CONFIG, PARAMS};
 use stone_types::{OracleConfig, OracleQueryMsg, PriceResponse};
-
-/// Convert Uint128 to Decimal256 safely for intermediate calculations.
-/// This prevents overflow when dealing with large token amounts.
-fn u128_to_decimal256(amount: Uint128) -> Decimal256 {
-    Decimal256::from_ratio(Uint256::from(amount), Uint256::one())
-}
-
-/// Convert Decimal to Decimal256 for intermediate calculations.
-fn decimal_to_decimal256(decimal: Decimal) -> Decimal256 {
-    Decimal256::from_str(&decimal.to_string()).expect("Decimal should convert to Decimal256")
-}
-
-/// Convert Decimal256 back to Decimal for final results.
-/// Returns an error if the value is too large to fit in a Decimal.
-fn decimal256_to_decimal(value: Decimal256) -> Result<Decimal, ContractError> {
-    // Convert to string and parse back to Decimal
-    // This handles the conversion safely by checking bounds
-    let string_repr = value.to_string();
-    Decimal::from_str(&string_repr).map_err(|_| ContractError::MathOverflow {
-        reason: "Decimal256 value too large for Decimal".to_string(),
-    })
-}
 
 /// Query price from oracle for a denom.
 /// Validates that the price is not stale and not zero.
@@ -161,20 +139,12 @@ pub fn calculate_max_borrow(
     // remaining_borrow = remaining_value / debt_price
     let max_borrow = remaining_borrow_value.checked_div(decimal_to_decimal256(debt_price))?;
 
-    // Convert Decimal256 to Uint128 (truncate)
-    // Check if max_borrow fits in Uint128
+    // Convert Decimal256 to Uint128 (truncate), capping at Uint128::MAX
     let max_borrow_u256 = max_borrow.to_uint_floor();
-    let max_uint128 = Uint256::from(Uint128::MAX);
-    if max_borrow_u256 > max_uint128 {
-        return Ok(Uint128::MAX);
+    match uint256_to_uint128(max_borrow_u256) {
+        Ok(value) => Ok(value),
+        Err(_) => Ok(Uint128::MAX), // Cap at Uint128::MAX if too large
     }
-    // Try to convert Uint256 to Uint128
-    // Since we checked it's <= MAX, we can safely convert
-    let max_borrow_bytes = max_borrow_u256.to_be_bytes();
-    // Uint256 is 32 bytes, we need to extract the lower 16 bytes for u128
-    let mut u128_bytes = [0u8; 16];
-    u128_bytes.copy_from_slice(&max_borrow_bytes[16..32]);
-    Ok(Uint128::new(u128::from_be_bytes(u128_bytes)))
 }
 
 /// Check if a borrow would exceed LTV.
@@ -357,7 +327,6 @@ mod tests {
             liquidation_bonus: Decimal::percent(5),
             liquidation_protocol_fee: Decimal::percent(2),
             close_factor: Decimal::percent(50),
-            dust_debt_threshold: Uint128::new(100),
             interest_rate_model: InterestRateModel::default(),
             protocol_fee: Decimal::percent(10),
             curator_fee: Decimal::percent(5),
@@ -452,7 +421,7 @@ mod tests {
             .unwrap()
             .unwrap();
         // HF = (10000 * 0.85) / 5000 = 1.7
-        assert!(hf > Decimal::one());
+        assert_eq!(hf, Decimal::from_ratio(17u128, 10u128));
         assert!(!is_liquidatable(deps.as_ref(), &env, "user1").unwrap());
     }
 
@@ -478,7 +447,7 @@ mod tests {
             .unwrap()
             .unwrap();
         // HF = (5000 * 0.85) / 5000 = 0.85
-        assert!(hf < Decimal::one());
+        assert_eq!(hf, Decimal::percent(85));
         assert!(is_liquidatable(deps.as_ref(), &env, "user1").unwrap());
     }
 
@@ -507,7 +476,7 @@ mod tests {
             .unwrap()
             .unwrap();
         // HF = (large * 10 * 0.85) / (large/2 * 1) = (large * 8.5) / (large/2) = 17
-        assert!(hf > Decimal::one());
+        assert_eq!(hf, Decimal::from_ratio(17u128, 1u128));
         assert!(!is_liquidatable(deps.as_ref(), &env, "user1").unwrap());
     }
 
@@ -573,8 +542,9 @@ mod tests {
         // This should not overflow with Decimal256
         let max = calculate_max_borrow(deps.as_ref(), &env, "user1").unwrap();
         // Max borrow = large_collateral * 10 * 0.80 = large_collateral * 8
-        // Should be approximately (u128::MAX / 10) * 8, but capped at Uint128::MAX
-        assert!(max > Uint128::zero());
+        // (u128::MAX / 10) * 8 fits comfortably in Uint128
+        let expected = large_collateral.checked_mul(Uint128::new(8)).unwrap();
+        assert_eq!(max, expected);
     }
 
     #[test]
@@ -712,9 +682,8 @@ mod tests {
 
         // Liquidation when: collateral_value * 0.85 = debt_value
         // price * 1000 * 0.85 = 5000
-        // price = 5000 / 850 ≈ 5.88
-        assert!(liq_price > Decimal::from_ratio(5u128, 1u128));
-        assert!(liq_price < Decimal::from_ratio(6u128, 1u128));
+        // price = 5000 / 850 = 100/17 ≈ 5.882352941...
+        assert_eq!(liq_price, Decimal::from_ratio(5000u128, 850u128));
     }
 
     #[test]
@@ -743,8 +712,10 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Price should be reasonable even with large amounts
-        assert!(liq_price > Decimal::zero());
+        // LP = (large_debt * $1) / (large_collateral * 0.85)
+        //    = (large_collateral/10 * 1) / (large_collateral * 0.85)
+        //    = 1 / 8.5 = 2/17 ≈ 0.117647...
+        assert_eq!(liq_price, Decimal::from_ratio(2u128, 17u128));
     }
 
     #[test]

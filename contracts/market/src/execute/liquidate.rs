@@ -1,8 +1,9 @@
-use cosmwasm_std::{BankMsg, Coin, Decimal, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{BankMsg, Coin, Decimal, DepsMut, Env, MessageInfo, Response};
 
 use crate::error::ContractError;
 use crate::health::{calculate_health_factor, query_price};
 use crate::interest::{apply_accumulated_interest, get_user_collateral, get_user_debt};
+use crate::math256::{decimal_to_decimal256, u128_to_decimal256, uint256_to_uint128};
 use crate::state::{COLLATERAL, CONFIG, DEBTS, PARAMS, STATE};
 
 /// Liquidate an unhealthy position.
@@ -74,14 +75,16 @@ pub fn execute_liquidate(
         &config.debt_denom,
     )?;
 
-    // Calculate collateral to seize
+    // Calculate collateral to seize using Decimal256 to prevent overflow
     // debt_value = actual_debt_repaid * debt_price
     // collateral_needed = debt_value / collateral_price
     // collateral_with_bonus = collateral_needed * (1 + liquidation_bonus)
     // protocol_fee = collateral_needed * liquidation_protocol_fee
-    let debt_value = Decimal::from_ratio(actual_debt_repaid, 1u128).checked_mul(debt_price)?;
-    let collateral_needed_value = debt_value.checked_div(collateral_price)?;
-    let collateral_needed = Uint128::new(collateral_needed_value.to_uint_floor().u128());
+    let debt_value_256 = u128_to_decimal256(actual_debt_repaid)
+        .checked_mul(decimal_to_decimal256(debt_price))?;
+    let collateral_needed_value_256 = debt_value_256
+        .checked_div(decimal_to_decimal256(collateral_price))?;
+    let collateral_needed = uint256_to_uint128(collateral_needed_value_256.to_uint_floor())?;
 
     let bonus_amount = collateral_needed.checked_mul_floor(params.liquidation_bonus)?;
     let protocol_fee_amount =
@@ -103,14 +106,14 @@ pub fn execute_liquidate(
             let scale = Decimal::from_ratio(total_collateral_seized, uncapped_total);
             let scaled_collateral = collateral_needed.checked_mul_floor(scale)?;
             let scaled_protocol = protocol_fee_amount.checked_mul_floor(scale)?;
-            let scaled_debt_value =
-                Decimal::from_ratio(scaled_collateral, 1u128).checked_mul(collateral_price)?;
-            let scaled_debt = Uint128::new(
-                scaled_debt_value
-                    .checked_div(debt_price)?
-                    .to_uint_floor()
-                    .u128(),
-            );
+            // Use Decimal256 for the back-conversion to prevent overflow
+            let scaled_debt_value_256 = u128_to_decimal256(scaled_collateral)
+                .checked_mul(decimal_to_decimal256(collateral_price))?;
+            let scaled_debt = uint256_to_uint128(
+                scaled_debt_value_256
+                    .checked_div(decimal_to_decimal256(debt_price))?
+                    .to_uint_floor(),
+            )?;
             (total_collateral_seized, scaled_protocol, scaled_debt)
         } else {
             (
@@ -222,7 +225,7 @@ mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi, MockQuerier};
     use cosmwasm_std::{
-        coins, from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery,
+        coins, from_json, to_json_binary, ContractResult, QuerierResult, Uint128, WasmQuery,
     };
     use stone_types::{
         InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg,
