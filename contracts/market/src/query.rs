@@ -5,6 +5,7 @@ use crate::health::{
     calculate_health_factor, calculate_liquidation_price, calculate_max_borrow, is_liquidatable,
     query_price,
 };
+use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256};
 use crate::interest::{get_user_collateral, get_user_debt, get_user_supply};
 use crate::state::{CONFIG, PARAMS, STATE};
 use stone_types::{
@@ -88,10 +89,16 @@ pub fn user_position(
         query_price(deps, &env, &config.oracle_config, &config.collateral_denom)?;
     let debt_price = query_price(deps, &env, &config.oracle_config, &config.debt_denom)?;
 
-    // Calculate values
-    let collateral_value = Decimal::from_ratio(collateral_amount, 1u128) * collateral_price;
-    let supply_value = Decimal::from_ratio(supply_amount, 1u128) * debt_price;
-    let debt_value = Decimal::from_ratio(debt_amount, 1u128) * debt_price;
+    // Calculate values using Decimal256 to prevent overflow with large amounts
+    let collateral_value = decimal256_to_decimal(
+        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?,
+    )?;
+    let supply_value = decimal256_to_decimal(
+        u128_to_decimal256(supply_amount).checked_mul(decimal_to_decimal256(debt_price))?,
+    )?;
+    let debt_value = decimal256_to_decimal(
+        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?,
+    )?;
 
     // Calculate health factor
     let health_factor = calculate_health_factor(deps, &env, user_str)
@@ -100,7 +107,9 @@ pub fn user_position(
     // Calculate max borrow
     let max_borrow = calculate_max_borrow(deps, &env, user_str)
         .map_err(|e| cosmwasm_std::StdError::generic_err(e.to_string()))?;
-    let max_borrow_value = Decimal::from_ratio(max_borrow, 1u128) * debt_price;
+    let max_borrow_value = decimal256_to_decimal(
+        u128_to_decimal256(max_borrow).checked_mul(decimal_to_decimal256(debt_price))?,
+    )?;
 
     // Calculate liquidation price
     let liquidation_price = calculate_liquidation_price(deps, &env, user_str)
@@ -132,7 +141,9 @@ pub fn user_supply(deps: Deps, env: Env, user: String) -> ContractResult<UserBal
 
     let debt_price = query_price(deps, &env, &config.oracle_config, &config.debt_denom)
         .unwrap_or(Decimal::zero());
-    let value = Decimal::from_ratio(amount, 1u128) * debt_price;
+    let value = decimal256_to_decimal(
+        u128_to_decimal256(amount).checked_mul(decimal_to_decimal256(debt_price))?,
+    )?;
 
     Ok(UserBalanceResponse {
         scaled,
@@ -153,7 +164,9 @@ pub fn user_collateral(deps: Deps, env: Env, user: String) -> ContractResult<Use
     let collateral_price =
         query_price(deps, &env, &config.oracle_config, &config.collateral_denom)
             .unwrap_or(Decimal::zero());
-    let value = Decimal::from_ratio(amount, 1u128) * collateral_price;
+    let value = decimal256_to_decimal(
+        u128_to_decimal256(amount).checked_mul(decimal_to_decimal256(collateral_price))?,
+    )?;
 
     Ok(UserBalanceResponse {
         scaled: amount, // Collateral is not scaled
@@ -176,7 +189,9 @@ pub fn user_debt(deps: Deps, env: Env, user: String) -> ContractResult<UserBalan
 
     let debt_price = query_price(deps, &env, &config.oracle_config, &config.debt_denom)
         .unwrap_or(Decimal::zero());
-    let value = Decimal::from_ratio(amount, 1u128) * debt_price;
+    let value = decimal256_to_decimal(
+        u128_to_decimal256(amount).checked_mul(decimal_to_decimal256(debt_price))?,
+    )?;
 
     Ok(UserBalanceResponse {
         scaled,

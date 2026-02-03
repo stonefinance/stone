@@ -2,6 +2,7 @@ use cosmwasm_std::{Decimal, Deps, Env, Uint128};
 
 use crate::error::ContractError;
 use crate::interest::{get_user_collateral, get_user_debt};
+use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256, uint256_to_uint128};
 use crate::state::{CONFIG, PARAMS};
 use stone_types::{OracleConfig, OracleQueryMsg, PriceResponse};
 
@@ -61,6 +62,7 @@ pub fn query_price(
 /// Calculate health factor for a user.
 /// Returns None if user has no debt (always healthy).
 /// Health factor = (collateral_value * liquidation_threshold) / debt_value
+/// Uses Decimal256 internally to prevent overflow with large token amounts.
 pub fn calculate_health_factor(
     deps: Deps,
     env: &Env,
@@ -79,15 +81,18 @@ pub fn calculate_health_factor(
     let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
     let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
 
+    // Use Decimal256 for intermediate calculations to prevent overflow
     let collateral_value =
-        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
-    let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
+        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?;
+    let debt_value =
+        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
 
     let health_factor = collateral_value
-        .checked_mul(params.liquidation_threshold)?
+        .checked_mul(decimal_to_decimal256(params.liquidation_threshold))?
         .checked_div(debt_value)?;
 
-    Ok(Some(health_factor))
+    // Convert back to Decimal for the final result
+    Ok(Some(decimal256_to_decimal(health_factor)?))
 }
 
 /// Check if a position is liquidatable.
@@ -100,6 +105,7 @@ pub fn is_liquidatable(deps: Deps, env: &Env, user: &str) -> Result<bool, Contra
 
 /// Calculate the maximum amount a user can borrow based on their collateral.
 /// max_borrow_value = collateral_value * LTV - current_debt_value
+/// Uses Decimal256 internally to prevent overflow with large token amounts.
 pub fn calculate_max_borrow(
     deps: Deps,
     env: &Env,
@@ -114,11 +120,14 @@ pub fn calculate_max_borrow(
     let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
     let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
 
+    // Use Decimal256 for intermediate calculations to prevent overflow
     let collateral_value =
-        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
-    let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
+        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?;
+    let debt_value =
+        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
 
-    let max_borrow_value = collateral_value.checked_mul(params.loan_to_value)?;
+    let max_borrow_value =
+        collateral_value.checked_mul(decimal_to_decimal256(params.loan_to_value))?;
 
     if max_borrow_value <= debt_value {
         return Ok(Uint128::zero());
@@ -128,13 +137,18 @@ pub fn calculate_max_borrow(
 
     // Convert value back to debt tokens
     // remaining_borrow = remaining_value / debt_price
-    let max_borrow = remaining_borrow_value.checked_div(debt_price)?;
+    let max_borrow = remaining_borrow_value.checked_div(decimal_to_decimal256(debt_price))?;
 
-    // Convert Decimal to Uint128 (truncate)
-    Ok(Uint128::new(max_borrow.to_uint_floor().u128()))
+    // Convert Decimal256 to Uint128 (truncate), capping at Uint128::MAX
+    let max_borrow_u256 = max_borrow.to_uint_floor();
+    match uint256_to_uint128(max_borrow_u256) {
+        Ok(value) => Ok(value),
+        Err(_) => Ok(Uint128::MAX), // Cap at Uint128::MAX if too large
+    }
 }
 
 /// Check if a borrow would exceed LTV.
+/// Uses Decimal256 internally to prevent overflow with large token amounts.
 pub fn check_borrow_allowed(
     deps: Deps,
     env: &Env,
@@ -150,17 +164,20 @@ pub fn check_borrow_allowed(
     let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
     let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
 
+    // Use Decimal256 for intermediate calculations to prevent overflow
     let collateral_value =
-        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(collateral_price)?;
+        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?;
     let new_debt_total = current_debt.checked_add(borrow_amount)?;
-    let new_debt_value = Decimal::from_ratio(new_debt_total, 1u128).checked_mul(debt_price)?;
+    let new_debt_value =
+        u128_to_decimal256(new_debt_total).checked_mul(decimal_to_decimal256(debt_price))?;
 
-    let max_borrow_value = collateral_value.checked_mul(params.loan_to_value)?;
+    let max_borrow_value =
+        collateral_value.checked_mul(decimal_to_decimal256(params.loan_to_value))?;
 
     if new_debt_value > max_borrow_value {
         return Err(ContractError::ExceedsLtv {
-            max_borrow: max_borrow_value.to_string(),
-            requested: new_debt_value.to_string(),
+            max_borrow: decimal256_to_decimal(max_borrow_value)?.to_string(),
+            requested: decimal256_to_decimal(new_debt_value)?.to_string(),
         });
     }
 
@@ -168,6 +185,7 @@ pub fn check_borrow_allowed(
 }
 
 /// Check if a collateral withdrawal would make the position unhealthy.
+/// Uses Decimal256 internally to prevent overflow with large token amounts.
 pub fn check_withdrawal_allowed(
     deps: Deps,
     env: &Env,
@@ -195,19 +213,22 @@ pub fn check_withdrawal_allowed(
     let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
     let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
 
+    // Use Decimal256 for intermediate calculations to prevent overflow
     let new_collateral_value =
-        Decimal::from_ratio(new_collateral, 1u128).checked_mul(collateral_price)?;
-    let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
+        u128_to_decimal256(new_collateral).checked_mul(decimal_to_decimal256(collateral_price))?;
+    let debt_value =
+        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
 
     // Use LTV for withdrawal check (more conservative than liquidation threshold)
-    let max_debt_value = new_collateral_value.checked_mul(params.loan_to_value)?;
+    let max_debt_value =
+        new_collateral_value.checked_mul(decimal_to_decimal256(params.loan_to_value))?;
 
     if debt_value > max_debt_value {
         let health_factor = new_collateral_value
-            .checked_mul(params.liquidation_threshold)?
+            .checked_mul(decimal_to_decimal256(params.liquidation_threshold))?
             .checked_div(debt_value)?;
         return Err(ContractError::InsufficientCollateral {
-            health_factor: health_factor.to_string(),
+            health_factor: decimal256_to_decimal(health_factor)?.to_string(),
         });
     }
 
@@ -217,6 +238,7 @@ pub fn check_withdrawal_allowed(
 /// Calculate liquidation price for collateral.
 /// This is the price at which the position becomes liquidatable.
 /// liquidation_price = (debt_value / (collateral_amount * liquidation_threshold))
+/// Uses Decimal256 internally to prevent overflow with large token amounts.
 pub fn calculate_liquidation_price(
     deps: Deps,
     env: &Env,
@@ -233,14 +255,17 @@ pub fn calculate_liquidation_price(
     }
 
     let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
-    let debt_value = Decimal::from_ratio(debt_amount, 1u128).checked_mul(debt_price)?;
+
+    // Use Decimal256 for intermediate calculations to prevent overflow
+    let debt_value =
+        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
 
     // liquidation_price = debt_value / (collateral_amount * liquidation_threshold)
-    let denominator =
-        Decimal::from_ratio(collateral_amount, 1u128).checked_mul(params.liquidation_threshold)?;
+    let denominator = u128_to_decimal256(collateral_amount)
+        .checked_mul(decimal_to_decimal256(params.liquidation_threshold))?;
     let liquidation_price = debt_value.checked_div(denominator)?;
 
-    Ok(Some(liquidation_price))
+    Ok(Some(decimal256_to_decimal(liquidation_price)?))
 }
 
 #[cfg(test)]
@@ -397,7 +422,7 @@ mod tests {
             .unwrap()
             .unwrap();
         // HF = (10000 * 0.85) / 5000 = 1.7
-        assert!(hf > Decimal::one());
+        assert_eq!(hf, Decimal::from_ratio(17u128, 10u128));
         assert!(!is_liquidatable(deps.as_ref(), &env, "user1").unwrap());
     }
 
@@ -423,8 +448,37 @@ mod tests {
             .unwrap()
             .unwrap();
         // HF = (5000 * 0.85) / 5000 = 0.85
-        assert!(hf < Decimal::one());
+        assert_eq!(hf, Decimal::percent(85));
         assert!(is_liquidatable(deps.as_ref(), &env, "user1").unwrap());
+    }
+
+    #[test]
+    fn test_health_factor_with_large_amounts() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128), // $10 per collateral
+            Decimal::one(),                     // $1 per debt
+        );
+
+        // User has very large amounts that could cause overflow with Decimal
+        // Uint128::MAX is approximately 3.4e38
+        let large_amount = Uint128::new(u128::MAX / 2);
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &large_amount)
+            .unwrap();
+        crate::state::DEBTS
+            .save(deps.as_mut().storage, "user1", &(large_amount / Uint128::new(2)))
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        // This should not overflow with Decimal256
+        let hf = calculate_health_factor(deps.as_ref(), &env, "user1")
+            .unwrap()
+            .unwrap();
+        // HF = (large * 10 * 0.85) / (large/2 * 1) = (large * 8.5) / (large/2) = 17
+        assert_eq!(hf, Decimal::from_ratio(17u128, 1u128));
+        assert!(!is_liquidatable(deps.as_ref(), &env, "user1").unwrap());
     }
 
     #[test]
@@ -471,6 +525,30 @@ mod tests {
     }
 
     #[test]
+    fn test_max_borrow_with_large_amounts() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        // User has very large collateral that could cause overflow with Decimal
+        let large_collateral = Uint128::new(u128::MAX / 10);
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &large_collateral)
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        // This should not overflow with Decimal256
+        let max = calculate_max_borrow(deps.as_ref(), &env, "user1").unwrap();
+        // Max borrow = large_collateral * 10 * 0.80 = large_collateral * 8
+        // (u128::MAX / 10) * 8 fits comfortably in Uint128
+        let expected = large_collateral.checked_mul(Uint128::new(8)).unwrap();
+        assert_eq!(max, expected);
+    }
+
+    #[test]
     fn test_check_borrow_allowed() {
         let mut deps = mock_dependencies();
         setup_with_oracle(
@@ -489,6 +567,26 @@ mod tests {
 
         // Borrow 8001 should fail
         assert!(check_borrow_allowed(deps.as_ref(), &env, "user1", Uint128::new(8001)).is_err());
+    }
+
+    #[test]
+    fn test_check_borrow_allowed_with_large_amounts() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        let large_collateral = Uint128::new(u128::MAX / 10);
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &large_collateral)
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        // Should not overflow when checking borrow with large collateral
+        let result = check_borrow_allowed(deps.as_ref(), &env, "user1", Uint128::new(1000));
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -537,6 +635,31 @@ mod tests {
     }
 
     #[test]
+    fn test_check_withdrawal_with_large_amounts() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        let large_collateral = Uint128::new(u128::MAX / 10);
+        let large_debt = large_collateral / Uint128::new(20); // 5% of collateral
+        
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &large_collateral)
+            .unwrap();
+        crate::state::DEBTS
+            .save(deps.as_mut().storage, "user1", &large_debt)
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        // Should not overflow when checking withdrawal with large amounts
+        let result = check_withdrawal_allowed(deps.as_ref(), &env, "user1", Uint128::new(1000));
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_liquidation_price() {
         let mut deps = mock_dependencies();
         setup_with_oracle(
@@ -560,9 +683,40 @@ mod tests {
 
         // Liquidation when: collateral_value * 0.85 = debt_value
         // price * 1000 * 0.85 = 5000
-        // price = 5000 / 850 ≈ 5.88
-        assert!(liq_price > Decimal::from_ratio(5u128, 1u128));
-        assert!(liq_price < Decimal::from_ratio(6u128, 1u128));
+        // price = 5000 / 850 = 100/17 ≈ 5.882352941...
+        assert_eq!(liq_price, Decimal::from_ratio(5000u128, 850u128));
+    }
+
+    #[test]
+    fn test_liquidation_price_with_large_amounts() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        // Very large amounts that could overflow with Decimal
+        let large_collateral = Uint128::new(u128::MAX / 10);
+        let large_debt = large_collateral / Uint128::new(10);
+        
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &large_collateral)
+            .unwrap();
+        crate::state::DEBTS
+            .save(deps.as_mut().storage, "user1", &large_debt)
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        // This should not overflow with Decimal256
+        let liq_price = calculate_liquidation_price(deps.as_ref(), &env, "user1")
+            .unwrap()
+            .unwrap();
+
+        // LP = (large_debt * $1) / (large_collateral * 0.85)
+        //    = (large_collateral/10 * 1) / (large_collateral * 0.85)
+        //    = 1 / 8.5 = 2/17 ≈ 0.117647...
+        assert_eq!(liq_price, Decimal::from_ratio(2u128, 17u128));
     }
 
     #[test]
