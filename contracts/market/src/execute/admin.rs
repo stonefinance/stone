@@ -1,6 +1,7 @@
 use cosmwasm_std::{BankMsg, Coin, Decimal, DepsMut, Env, MessageInfo, Response, Uint128};
 
 use crate::error::ContractError;
+use crate::interest::apply_accumulated_interest;
 use crate::state::{ACCRUED_CURATOR_FEES, ACCRUED_PROTOCOL_FEES, CONFIG, PARAMS, STATE};
 use stone_types::MarketParamsUpdate;
 
@@ -189,9 +190,13 @@ pub fn execute_accrue_interest(deps: DepsMut, env: Env) -> Result<Response, Cont
 /// Claims are limited by available liquidity (fees must be backed by actual tokens).
 pub fn execute_claim_fees(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
 ) -> Result<Response, ContractError> {
+    // Apply accumulated interest first - this ensures accrued fees and available_liquidity are up-to-date.
+    // All other execute handlers call this as their first action to ensure state is current.
+    apply_accumulated_interest(deps.storage, env.block.time.seconds())?;
+
     let config = CONFIG.load(deps.storage)?;
     let state = STATE.load(deps.storage)?;
 
@@ -213,10 +218,14 @@ pub fn execute_claim_fees(
 
     // Calculate available liquidity (tokens not borrowed)
     // This is the amount that can actually be withdrawn
+    //
+    // Safety note: Using available_liquidity() as a claim cap is safe for sequential claims
+    // by different parties because:
+    // 1. Each claim atomically reduces accrued fees state before transferring tokens
+    // 2. The next claimant sees the updated available_liquidity (fees claimed = liquidity removed)
+    // 3. Total claims can never exceed initial available_liquidity because the sum of
+    //    individual claim caps equals the total available at the time of each claim
     let available_liquidity = state.available_liquidity();
-
-    // Total accrued fees (for sanity check, not directly used)
-    let _total_accrued = accrued_protocol.checked_add(accrued_curator)?;
 
     // Calculate how much can actually be claimed
     // We need to ensure there's enough liquidity for all supplier withdrawals
@@ -327,6 +336,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
@@ -612,6 +622,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
@@ -657,7 +668,9 @@ mod tests {
         let mut deps = mock_dependencies();
         setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
 
-        let env = mock_env();
+        let mut env = mock_env();
+        // Set time to match state creation time (1000) to prevent interest accrual
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(1000);
         let collector = MockApi::default().addr_make("collector");
         let info = message_info(&collector, &[]);
 
@@ -690,7 +703,9 @@ mod tests {
         let mut deps = mock_dependencies();
         setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
 
-        let env = mock_env();
+        let mut env = mock_env();
+        // Set time to match state creation time (1000) to prevent interest accrual
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(1000);
         let curator = MockApi::default().addr_make("curator");
         let info = message_info(&curator, &[]);
 
@@ -743,7 +758,9 @@ mod tests {
         state.total_debt_scaled = Uint128::new(9500); // Only 500 available
         STATE.save(deps.as_mut().storage, &state).unwrap();
 
-        let env = mock_env();
+        let mut env = mock_env();
+        // Set time to match state creation time (1000) to prevent interest accrual
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(1000);
         let collector = MockApi::default().addr_make("collector");
         let info = message_info(&collector, &[]);
 
@@ -789,7 +806,9 @@ mod tests {
         // Set up with fees but limited liquidity
         setup_market_with_fees(&mut deps, Uint128::new(1000), Uint128::new(500));
 
-        let env = mock_env();
+        let mut env = mock_env();
+        // Set time to match state creation time (1000) to prevent interest accrual
+        env.block.time = cosmwasm_std::Timestamp::from_seconds(1000);
         let collector = MockApi::default().addr_make("collector");
         let info = message_info(&collector, &[]);
 

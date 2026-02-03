@@ -27,6 +27,7 @@ pub fn instantiate(
         collateral_denom: msg.collateral_denom,
         debt_denom: msg.debt_denom,
         protocol_fee_collector: deps.api.addr_validate(&msg.protocol_fee_collector)?,
+        salt: None,
     };
 
     let params = MarketParams {

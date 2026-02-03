@@ -18,6 +18,8 @@ pub struct MarketConfig {
     pub debt_denom: String,
     /// Protocol fee collector address
     pub protocol_fee_collector: Addr,
+    /// Optional salt used when creating this market (required for correct market_id computation)
+    pub salt: Option<u64>,
 }
 
 /// Market parameters that control risk and fees.
@@ -275,6 +277,8 @@ pub struct MarketConfigResponse {
     pub collateral_denom: String,
     pub debt_denom: String,
     pub protocol_fee_collector: String,
+    /// Salt used when creating this market (required for correct market_id computation)
+    pub salt: Option<u64>,
 }
 
 #[cw_serde]

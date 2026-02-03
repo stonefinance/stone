@@ -22,6 +22,7 @@ pub fn config(deps: Deps) -> ContractResult<MarketConfigResponse> {
         collateral_denom: config.collateral_denom,
         debt_denom: config.debt_denom,
         protocol_fee_collector: config.protocol_fee_collector.to_string(),
+        salt: None,
     })
 }
 
@@ -219,6 +220,13 @@ pub fn query_is_liquidatable(deps: Deps, user: String) -> ContractResult<IsLiqui
     })
 }
 
+/// Query accrued protocol and curator fees.
+///
+/// # Note
+/// This query returns values that do NOT include un-accrued interest. In CosmWasm,
+/// queries cannot write state, so interest is not applied when querying. The returned
+/// values reflect only fees that have already been accrued to state. To get the most
+/// current values, call `AccrueInterest` execute msg first, then query.
 pub fn accrued_fees(deps: Deps) -> ContractResult<stone_types::AccruedFeesResponse> {
     let accrued_protocol = crate::state::ACCRUED_PROTOCOL_FEES
         .may_load(deps.storage)?
@@ -264,6 +272,7 @@ mod tests {
             collateral_denom: "uatom".to_string(),
             debt_denom: "uusdc".to_string(),
             protocol_fee_collector: api.addr_make("collector"),
+            salt: None,
         };
         CONFIG.save(deps.as_mut().storage, &config).unwrap();
 
