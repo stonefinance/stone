@@ -19,6 +19,10 @@ pub enum ContractError {
     #[error("Negative or zero price for denom: {denom}")]
     NegativeOrZeroPrice { denom: String },
 
+    /// Invalid price value (negative, zero, or otherwise unusable).
+    #[error("Invalid price: {reason}")]
+    InvalidPrice { reason: String },
+
     /// Confidence interval too high relative to price.
     #[error("Confidence too high for {denom}: ratio {confidence_ratio} exceeds max {max_allowed}")]
     ConfidenceTooHigh {
