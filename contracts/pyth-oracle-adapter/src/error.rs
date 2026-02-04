@@ -35,9 +35,17 @@ pub enum ContractError {
     #[error("Price is stale for denom: {denom}")]
     PriceStale { denom: String },
 
+    /// Pyth contract query failed.
+    #[error("Pyth query failed for {denom}: {reason}")]
+    PythQueryFailed { denom: String, reason: String },
+
     /// Invalid feed ID format.
     #[error("Invalid feed ID: {feed_id}")]
     InvalidFeedId { feed_id: String },
+
+    /// Duplicate denom in price feeds list.
+    #[error("Duplicate denom in price feeds: {denom}")]
+    DuplicateDenom { denom: String },
 
     /// Invalid confidence ratio value.
     #[error("Invalid confidence ratio: {value} - {reason}")]
