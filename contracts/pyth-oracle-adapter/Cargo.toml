@@ -1,0 +1,32 @@
+[package]
+name = "pyth-oracle-adapter"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pyth oracle adapter for Stone Finance lending protocol"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+cosmwasm-std.workspace = true
+cosmwasm-schema.workspace = true
+cw-storage-plus.workspace = true
+cw2.workspace = true
+hex = "0.4"
+schemars.workspace = true
+serde.workspace = true
+serde-json-wasm = "1.0"
+thiserror.workspace = true
+
+stone-types = { path = "../../packages/types" }
+
+[dev-dependencies]
+cw-multi-test.workspace = true
+stone-testing = { path = "../../packages/testing" }
+serde-json-wasm = "1.0"
