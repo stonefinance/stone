@@ -19,6 +19,10 @@ pub enum ContractError {
     #[error("Negative or zero price for denom: {denom}")]
     NegativeOrZeroPrice { denom: String },
 
+    /// Invalid price value (negative, zero, or otherwise unusable).
+    #[error("Invalid price: {reason}")]
+    InvalidPrice { reason: String },
+
     /// Confidence interval too high relative to price.
     #[error("Confidence too high for {denom}: ratio {confidence_ratio} exceeds max {max_allowed}")]
     ConfidenceTooHigh {
@@ -31,13 +35,17 @@ pub enum ContractError {
     #[error("Invalid timestamp from Pyth")]
     InvalidTimestamp,
 
-    /// Price is stale (for future use at market layer).
-    #[error("Price is stale for denom: {denom}")]
-    PriceStale { denom: String },
+    /// Pyth contract query failed.
+    #[error("Pyth query failed for {denom}: {reason}")]
+    PythQueryFailed { denom: String, reason: String },
 
     /// Invalid feed ID format.
     #[error("Invalid feed ID: {feed_id}")]
     InvalidFeedId { feed_id: String },
+
+    /// Duplicate denom in price feeds list.
+    #[error("Duplicate denom in price feeds: {denom}")]
+    DuplicateDenom { denom: String },
 
     /// Invalid confidence ratio value.
     #[error("Invalid confidence ratio: {value} - {reason}")]
@@ -62,10 +70,6 @@ pub enum ContractError {
     /// Caller is not the pending owner.
     #[error("Not the pending owner")]
     NotPendingOwner,
-
-    /// Duplicate denom in price feed list.
-    #[error("Duplicate denom: {denom}")]
-    DuplicateDenom { denom: String },
 }
 
 pub type ContractResult<T> = Result<T, ContractError>;

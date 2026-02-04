@@ -18,14 +18,14 @@ use crate::error::ContractError;
 /// - (42, 0) → $42
 ///
 /// # Errors
-/// - `ContractError::NegativeOrZeroPrice` if price <= 0
+/// - `ContractError::InvalidPrice` if price <= 0
 /// - `ContractError::ExponentOutOfRange` if |expo| > 18
 /// - `ContractError::Overflow` if the calculation overflows
 pub fn pyth_price_to_decimal(price: i64, expo: i32) -> Result<Decimal, ContractError> {
     // 1. Reject negative or zero price
     if price <= 0 {
-        return Err(ContractError::NegativeOrZeroPrice {
-            denom: "unknown".to_string(),
+        return Err(ContractError::InvalidPrice {
+            reason: format!("price must be positive, got {}", price),
         });
     }
 
@@ -164,27 +164,9 @@ pub struct Price {
 
 impl Price {
     /// Get the price as a decimal value.
-    /// Returns None if the exponent would cause overflow/underflow.
+    /// Returns None if the price is negative/zero or if the exponent would cause overflow.
     pub fn get_price_as_decimal(&self) -> Option<cosmwasm_std::Decimal> {
-        if self.expo >= 0 {
-            // Positive exponent: multiply
-            let multiplier = 10u128.checked_pow(self.expo as u32)?;
-            let price_abs = self.price.unsigned_abs() as u128;
-            let scaled = price_abs.checked_mul(multiplier)?;
-            if self.price < 0 {
-                // Note: Decimal can't represent negative values in CosmWasm
-                return None;
-            }
-            Some(cosmwasm_std::Decimal::from_ratio(scaled, 1u128))
-        } else {
-            // Negative exponent: divide
-            let divisor = 10u128.checked_pow((-self.expo) as u32)?;
-            let price_abs = self.price.unsigned_abs() as u128;
-            if self.price < 0 {
-                return None;
-            }
-            Some(cosmwasm_std::Decimal::from_ratio(price_abs, divisor))
-        }
+        pyth_price_to_decimal(self.price, self.expo).ok()
     }
 
     /// Get the confidence as a ratio of the price.
@@ -308,8 +290,50 @@ mod tests {
     }
 
     #[test]
+    fn test_confidence_ratio_boundary_exactly_max() {
+        // Test that a confidence ratio of exactly max_confidence_ratio passes through
+        // (since the code uses strict > for the error condition)
+        // price=10000, conf=100 -> ratio = 100/10000 = 0.01
+        let price = Price {
+            price: 10000,
+            conf: 100,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_confidence_ratio = Decimal::from_ratio(1u128, 100u128); // 0.01
+        
+        // Since the check is `conf_ratio > max_confidence_ratio`, 
+        // a ratio exactly equal to max should NOT trigger the error
+        assert!(!(ratio > max_confidence_ratio), 
+            "ratio {} should NOT be > max_confidence_ratio {} (they are equal)", 
+            ratio, max_confidence_ratio);
+        assert_eq!(ratio, max_confidence_ratio);
+    }
+
+    #[test]
+    fn test_confidence_ratio_boundary_just_above_max() {
+        // Test that a confidence ratio just above max_confidence_ratio would fail
+        // price=10000, conf=101 -> ratio = 101/10000 = 0.0101
+        let price = Price {
+            price: 10000,
+            conf: 101,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_confidence_ratio = Decimal::from_ratio(1u128, 100u128); // 0.01
+        
+        // Since the check is `conf_ratio > max_confidence_ratio`, 
+        // a ratio slightly above max SHOULD trigger the error
+        assert!(ratio > max_confidence_ratio, 
+            "ratio {} should be > max_confidence_ratio {}", 
+            ratio, max_confidence_ratio);
+    }
+
+    #[test]
     fn test_negative_price_handling() {
-        // Negative prices return None for get_price_as_decimal (CosmWasm Decimal can't be negative)
+        // Negative prices return None for get_price_as_decimal (delegates to pyth_price_to_decimal)
         let price = Price {
             price: -12345,
             conf: 100,
@@ -319,8 +343,7 @@ mod tests {
         let result = price.get_price_as_decimal();
         assert!(result.is_none(), "Expected None for negative price, got {:?}", result);
 
-        // Zero price returns Some(0) for get_price_as_decimal, but confidence ratio is None
-        // (avoids division by zero in confidence ratio calculation)
+        // Zero price returns None for get_price_as_decimal (delegates to pyth_price_to_decimal)
         let price = Price {
             price: 0,
             conf: 100,
@@ -328,8 +351,7 @@ mod tests {
             publish_time: 1000,
         };
         let result = price.get_price_as_decimal();
-        assert!(result.is_some(), "Expected Some(Decimal(0)) for zero price");
-        assert_eq!(result.unwrap(), cosmwasm_std::Decimal::zero());
+        assert!(result.is_none(), "Expected None for zero price");
         assert!(price.get_confidence_ratio().is_none());
     }
 
@@ -404,22 +426,24 @@ mod tests {
 
     #[test]
     fn negative_price_rejected() {
-        // (-100, -8) → NegativeOrZeroPrice error
+        // (-100, -8) → InvalidPrice error
         let result = pyth_price_to_decimal(-100, -8);
-        assert!(matches!(
-            result,
-            Err(ContractError::NegativeOrZeroPrice { .. })
-        ));
+        assert!(
+            matches!(result, Err(ContractError::InvalidPrice { .. })),
+            "Expected InvalidPrice error for negative price, got {:?}",
+            result
+        );
     }
 
     #[test]
     fn zero_price_rejected() {
-        // (0, -8) → NegativeOrZeroPrice error
+        // (0, -8) → InvalidPrice error
         let result = pyth_price_to_decimal(0, -8);
-        assert!(matches!(
-            result,
-            Err(ContractError::NegativeOrZeroPrice { .. })
-        ));
+        assert!(
+            matches!(result, Err(ContractError::InvalidPrice { .. })),
+            "Expected InvalidPrice error for zero price, got {:?}",
+            result
+        );
     }
 
     #[test]
@@ -466,5 +490,49 @@ mod tests {
         // Test large price with exponent 0
         let result = pyth_price_to_decimal(1_000_000_000_000_000i64, 0);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn positive_exponent_overflow() {
+        // Test overflow protection in from_atomics.
+        // Decimal::from_atomics(value, 0) interprets value as an integer, but Decimal
+        // has 18 decimal places internally, so it computes value * 10^18.
+        // u128::MAX is ~3.4e38, so value * 10^18 must be < 3.4e38, meaning value < 3.4e20.
+        // With expo=18, scaled = price * 10^18, so price * 10^18 must be < 3.4e20,
+        // meaning price < 340.
+
+        // price=100 with expo=18: scaled=10^20, from_atomics stores 10^38 < 3.4e38 ✓
+        let result = pyth_price_to_decimal(100, 18);
+        assert!(
+            result.is_ok(),
+            "price=100, expo=18 should succeed, got: {:?}",
+            result
+        );
+
+        // price=1000 with expo=18: scaled=10^21, from_atomics tries 10^39 > 3.4e38 → Overflow
+        let result = pyth_price_to_decimal(1000, 18);
+        assert!(
+            matches!(result, Err(ContractError::Overflow)),
+            "Expected Overflow for price=1000, expo=18 (exceeds Decimal capacity), got: {:?}",
+            result
+        );
+
+        // Verify exponent out of range is caught separately from overflow
+        let result = pyth_price_to_decimal(100, 19);
+        assert!(
+            matches!(result, Err(ContractError::ExponentOutOfRange { expo: 19 })),
+            "Expected ExponentOutOfRange for expo=19, got {:?}",
+            result
+        );
+
+        // Test at boundary: price=340, expo=18
+        // scaled = 340 * 10^18 = 3.4e20
+        // from_atomics stores 3.4e20 * 10^18 = 3.4e38 which is near u128::MAX
+        let result = pyth_price_to_decimal(340, 18);
+        assert!(
+            result.is_ok(),
+            "price=340, expo=18 should succeed at boundary, got: {:?}",
+            result
+        );
     }
 }
