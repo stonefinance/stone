@@ -27,8 +27,10 @@ impl PriceIdentifier {
         hex::encode(self.0)
     }
 
-    /// Parse from a 64-character hex string.
+    /// Parse from a 64-character hex string (with optional `0x` prefix).
     pub fn from_hex(hex_str: &str) -> Result<Self, StdError> {
+        // Strip optional 0x prefix
+        let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
         if hex_str.len() != 64 {
             return Err(StdError::generic_err(format!(
                 "Invalid PriceIdentifier hex string length: expected 64, got {}",
@@ -196,6 +198,19 @@ mod tests {
     }
 
     #[test]
+    fn test_price_identifier_from_hex_with_prefix() {
+        // Test with 0x prefix
+        let hex_str = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+        let hex_with_prefix = format!("0x{}", hex_str);
+        
+        let id_from_plain = PriceIdentifier::from_hex(hex_str).unwrap();
+        let id_from_prefixed = PriceIdentifier::from_hex(&hex_with_prefix).unwrap();
+        
+        assert_eq!(id_from_plain, id_from_prefixed);
+        assert_eq!(id_from_prefixed.to_hex(), hex_str);
+    }
+
+    #[test]
     fn test_price_identifier_invalid_hex() {
         // Too short
         let result = PriceIdentifier::from_hex("abcd");
@@ -244,6 +259,32 @@ mod tests {
         let ratio = price.get_confidence_ratio().unwrap();
         // conf / price = 100 / 10000 = 0.01 = 1%
         assert_eq!(ratio, cosmwasm_std::Decimal::from_ratio(100u128, 10000u128));
+    }
+
+    #[test]
+    fn test_negative_price_handling() {
+        // Negative prices return None for get_price_as_decimal (CosmWasm Decimal can't be negative)
+        let price = Price {
+            price: -12345,
+            conf: 100,
+            expo: -2,
+            publish_time: 1000,
+        };
+        let result = price.get_price_as_decimal();
+        assert!(result.is_none(), "Expected None for negative price, got {:?}", result);
+
+        // Zero price returns Some(0) for get_price_as_decimal, but confidence ratio is None
+        // (avoids division by zero in confidence ratio calculation)
+        let price = Price {
+            price: 0,
+            conf: 100,
+            expo: -2,
+            publish_time: 1000,
+        };
+        let result = price.get_price_as_decimal();
+        assert!(result.is_some(), "Expected Some(Decimal(0)) for zero price");
+        assert_eq!(result.unwrap(), cosmwasm_std::Decimal::zero());
+        assert!(price.get_confidence_ratio().is_none());
     }
 
     #[test]

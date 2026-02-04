@@ -8,6 +8,9 @@ pub enum ContractError {
     #[error("{0}")]
     Std(#[from] StdError),
 
+    #[error("{0}")]
+    Types(#[from] stone_types::ContractError),
+
     /// Price feed not configured for the given denom.
     #[error("Price feed not configured for denom: {denom}")]
     PriceFeedNotConfigured { denom: String },
@@ -27,6 +30,10 @@ pub enum ContractError {
     /// Invalid timestamp from Pyth.
     #[error("Invalid timestamp from Pyth")]
     InvalidTimestamp,
+
+    /// Price is stale (for future use at market layer).
+    #[error("Price is stale for denom: {denom}")]
+    PriceStale { denom: String },
 
     /// Invalid feed ID format.
     #[error("Invalid feed ID: {feed_id}")]

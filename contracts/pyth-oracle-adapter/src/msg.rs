@@ -47,7 +47,8 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    /// Query price for a denom (implements Stone's OracleQueryMsg interface).
+    /// Query price for a denom.
+    /// Implements the Stone OracleQueryMsg interface.
     #[returns(stone_types::PriceResponse)]
     Price { denom: String },
     /// Query contract configuration.

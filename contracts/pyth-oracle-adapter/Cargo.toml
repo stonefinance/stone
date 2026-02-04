@@ -18,10 +18,9 @@ cosmwasm-std.workspace = true
 cosmwasm-schema.workspace = true
 cw-storage-plus.workspace = true
 cw2.workspace = true
-hex = "0.4"
+hex.workspace = true
 schemars.workspace = true
 serde.workspace = true
-serde-json-wasm = "1.0"
 thiserror.workspace = true
 
 stone-types = { path = "../../packages/types" }
