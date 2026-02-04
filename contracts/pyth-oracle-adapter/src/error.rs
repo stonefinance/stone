@@ -39,6 +39,10 @@ pub enum ContractError {
     #[error("Invalid feed ID: {feed_id}")]
     InvalidFeedId { feed_id: String },
 
+    /// Invalid confidence ratio value.
+    #[error("Invalid confidence ratio: {value} - {reason}")]
+    InvalidConfidenceRatio { value: Decimal, reason: String },
+
     /// Exponent out of supported range.
     #[error("Exponent out of range: {expo}")]
     ExponentOutOfRange { expo: i32 },
