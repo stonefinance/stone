@@ -5,9 +5,7 @@
 //! defined in `pyth-oracle-adapter/src/pyth_types.rs`.
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
-};
+use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
 use cw_storage_plus::Map;
 
 /// Instantiate message for the mock Pyth contract.
@@ -51,20 +49,92 @@ pub enum MockPythExecuteMsg {
     },
 }
 
-/// Query message to get a price feed.
-/// Matches the Pyth contract interface.
-#[cw_serde]
-pub struct PriceFeedQuery {
-    pub price_feed: PriceFeedId,
+/// Price identifier - 32 bytes serialized as 64-character hex string.
+/// Mirrors the PriceIdentifier type from pyth_types.rs.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PriceIdentifier([u8; 32]);
+
+impl PriceIdentifier {
+    /// Parse from a 64-character hex string (with optional `0x` prefix).
+    pub fn from_hex(hex_str: &str) -> StdResult<Self> {
+        let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
+        if hex_str.len() != 64 {
+            return Err(cosmwasm_std::StdError::generic_err(format!(
+                "Invalid PriceIdentifier hex string length: expected 64, got {}",
+                hex_str.len()
+            )));
+        }
+        let bytes = hex::decode(hex_str).map_err(|e| {
+            cosmwasm_std::StdError::generic_err(format!("Invalid PriceIdentifier hex string: {}", e))
+        })?;
+        let mut array = [0u8; 32];
+        array.copy_from_slice(&bytes);
+        Ok(Self(array))
+    }
 }
 
+impl<'de> serde::Deserialize<'de> for PriceIdentifier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct PriceIdentifierVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for PriceIdentifierVisitor {
+            type Value = PriceIdentifier;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a 64-character hex string representing a 32-byte price identifier")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<PriceIdentifier, E>
+            where
+                E: serde::de::Error,
+            {
+                PriceIdentifier::from_hex(value).map_err(|e| {
+                    serde::de::Error::custom(format!(
+                        "Invalid PriceIdentifier hex string '{}': {}",
+                        value, e
+                    ))
+                })
+            }
+        }
+
+        deserializer.deserialize_str(PriceIdentifierVisitor)
+    }
+}
+
+impl serde::Serialize for PriceIdentifier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&hex::encode(self.0))
+    }
+}
+
+impl schemars::JsonSchema for PriceIdentifier {
+    fn schema_name() -> String {
+        "PriceIdentifier".to_string()
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(gen)
+    }
+}
+
+/// Query messages for the Pyth contract.
 #[cw_serde]
-pub struct PriceFeedId {
-    pub id: String,
+#[derive(cosmwasm_schema::QueryResponses)]
+pub enum PythQueryMsg {
+    /// Query a single price feed by ID.
+    #[returns(PriceFeedResponse)]
+    PriceFeed { id: PriceIdentifier },
 }
 
 /// Price data structure matching Pyth's format.
 #[cw_serde]
+#[derive(Copy)]
 pub struct Price {
     pub price: i64,
     pub conf: u64,
@@ -75,7 +145,7 @@ pub struct Price {
 /// Complete price feed data.
 #[cw_serde]
 pub struct PriceFeed {
-    pub id: String,
+    pub id: PriceIdentifier,
     pub price: Price,
     pub ema_price: Price,
 }
@@ -100,8 +170,8 @@ pub struct StoredFeed {
 /// Storage: feed_id (hex string) → stored feed data
 pub const FEEDS: Map<&str, StoredFeed> = Map::new("feeds");
 
-#[entry_point]
-pub fn instantiate(
+/// Mock Pyth contract instantiate entry point for use in tests.
+pub fn mock_pyth_instantiate(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
@@ -124,8 +194,8 @@ pub fn instantiate(
     Ok(Response::new().add_attribute("action", "instantiate_mock_pyth"))
 }
 
-#[entry_point]
-pub fn execute(
+/// Mock Pyth contract execute entry point for use in tests.
+pub fn mock_pyth_execute(
     deps: DepsMut,
     _env: Env,
     _info: MessageInfo,
@@ -153,40 +223,53 @@ pub fn execute(
     }
 }
 
-#[entry_point]
-pub fn query(deps: Deps, _env: Env, msg: Binary) -> StdResult<Binary> {
-    // Try to parse as PriceFeedQuery first
-    let query: PriceFeedQuery = cosmwasm_std::from_json(&msg)?;
-    let feed = FEEDS.load(deps.storage, &query.price_feed.id)?;
+/// Mock Pyth contract query entry point for use in tests.
+pub fn mock_pyth_query(deps: Deps, _env: Env, msg: PythQueryMsg) -> StdResult<Binary> {
+    match msg {
+        PythQueryMsg::PriceFeed { id } => {
+            let id_hex = hex::encode(id.0);
+            let feed = FEEDS.load(deps.storage, &id_hex)?;
 
-    let response = PriceFeedResponse {
-        price_feed: PriceFeed {
-            id: query.price_feed.id,
-            price: Price {
-                price: feed.price,
-                conf: feed.conf,
-                expo: feed.expo,
-                publish_time: feed.publish_time,
-            },
-            ema_price: Price {
-                price: feed.ema_price,
-                conf: feed.ema_conf,
-                expo: feed.expo,
-                publish_time: feed.publish_time,
-            },
-        },
-    };
+            let response = PriceFeedResponse {
+                price_feed: PriceFeed {
+                    id,
+                    price: Price {
+                        price: feed.price,
+                        conf: feed.conf,
+                        expo: feed.expo,
+                        publish_time: feed.publish_time,
+                    },
+                    ema_price: Price {
+                        price: feed.ema_price,
+                        conf: feed.ema_conf,
+                        expo: feed.expo,
+                        publish_time: feed.publish_time,
+                    },
+                },
+            };
 
-    to_json_binary(&response)
+            to_json_binary(&response)
+        }
+    }
 }
 
 /// Helper to create a mock Pyth contract for cw-multi-test.
-pub fn mock_pyth_contract() -> Box<dyn cw_multi_test::Contract<cosmwasm_std::Empty>> {
-    Box::new(cw_multi_test::ContractWrapper::new(
-        execute,
-        instantiate,
-        query,
-    ))
+#[allow(dead_code)]
+pub fn mock_pyth_contract() -> cw_multi_test::ContractWrapper<
+    MockPythExecuteMsg,
+    MockPythInstantiateMsg,
+    PythQueryMsg,
+    cosmwasm_std::StdError,
+    cosmwasm_std::StdError,
+    cosmwasm_std::StdError,
+> {
+    use cw_multi_test::ContractWrapper;
+
+    ContractWrapper::new(
+        mock_pyth_execute,
+        mock_pyth_instantiate,
+        mock_pyth_query,
+    )
 }
 
 #[cfg(test)]
@@ -201,6 +284,10 @@ mod tests {
 
     fn atom_feed_id() -> String {
         "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8".to_string()
+    }
+
+    fn atom_feed_id_bytes() -> [u8; 32] {
+        hex::decode(atom_feed_id()).unwrap().try_into().unwrap()
     }
 
     #[test]
@@ -223,18 +310,17 @@ mod tests {
             }],
         };
 
-        let res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let res = mock_pyth_instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
         assert!(res
             .attributes
             .iter()
             .any(|a| a.key == "action" && a.value == "instantiate_mock_pyth"));
 
-        // Query the feed using PriceFeedQuery
-        let query_msg = PriceFeedQuery {
-            price_feed: PriceFeedId { id: feed_id },
+        // Query the feed using PythQueryMsg
+        let query_msg = PythQueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
         };
-        let query_bytes = cosmwasm_std::to_json_binary(&query_msg).unwrap();
-        let res = query(deps.as_ref(), env, query_bytes).unwrap();
+        let res = mock_pyth_query(deps.as_ref(), env, query_msg).unwrap();
 
         // Verify the response structure
         let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
@@ -265,7 +351,7 @@ mod tests {
                 ema_conf: Some(900_000u64),
             }],
         };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        mock_pyth_instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Update the price
         let update_msg = MockPythExecuteMsg::UpdateFeed {
@@ -274,18 +360,17 @@ mod tests {
             conf: 1_200_000u64,
             publish_time: 1_700_000_100i64,
         };
-        let res = execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
+        let res = mock_pyth_execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
         assert!(res
             .attributes
             .iter()
             .any(|a| a.key == "action" && a.value == "update_feed"));
 
         // Query again and verify new price
-        let query_msg = PriceFeedQuery {
-            price_feed: PriceFeedId { id: feed_id },
+        let query_msg = PythQueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
         };
-        let query_bytes = cosmwasm_std::to_json_binary(&query_msg).unwrap();
-        let res = query(deps.as_ref(), env, query_bytes).unwrap();
+        let res = mock_pyth_query(deps.as_ref(), env, query_msg).unwrap();
 
         let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
         assert_eq!(response.price_feed.price.price, 1_100_000_000i64);
@@ -307,16 +392,13 @@ mod tests {
 
         // Instantiate with no feeds
         let msg = MockPythInstantiateMsg { feeds: vec![] };
-        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+        mock_pyth_instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Query non-existent feed
-        let query_msg = PriceFeedQuery {
-            price_feed: PriceFeedId {
-                id: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
-            },
+        let query_msg = PythQueryMsg::PriceFeed {
+            id: PriceIdentifier([0u8; 32]),
         };
-        let query_bytes = cosmwasm_std::to_json_binary(&query_msg).unwrap();
-        let res = query(deps.as_ref(), env, query_bytes);
+        let res = mock_pyth_query(deps.as_ref(), env, query_msg);
         assert!(res.is_err());
     }
 
@@ -324,5 +406,55 @@ mod tests {
     fn test_mock_pyth_contract_helper() {
         // Just verify the helper compiles and returns a contract
         let _contract = mock_pyth_contract();
+    }
+
+    /// Integration test that deploys the mock through cw-multi-test and queries it.
+    /// This exercises the full dispatch path and would catch query type mismatches.
+    #[test]
+    fn test_mock_pyth_through_multitest() {
+        use cw_multi_test::{App, Executor, IntoAddr};
+
+        let mut app = App::default();
+        let code_id = app.store_code(Box::new(mock_pyth_contract()));
+
+        let feed_id_hex = atom_feed_id();
+        let feed_id_bytes = atom_feed_id_bytes();
+
+        let pyth_addr = app
+            .instantiate_contract(
+                code_id,
+                "admin".into_addr(),
+                &MockPythInstantiateMsg {
+                    feeds: vec![MockPriceFeedInit {
+                        id: feed_id_hex,
+                        price: 1_052_000_000i64,
+                        conf: 1_000_000u64,
+                        expo: -8,
+                        publish_time: 1_700_000_000i64,
+                        ema_price: None,
+                        ema_conf: None,
+                    }],
+                },
+                &[],
+                "mock-pyth",
+                None,
+            )
+            .unwrap();
+
+        // Query through the app (this exercises the full dispatch path)
+        let resp: PriceFeedResponse = app
+            .wrap()
+            .query_wasm_smart(
+                pyth_addr,
+                &PythQueryMsg::PriceFeed {
+                    id: PriceIdentifier(feed_id_bytes),
+                },
+            )
+            .unwrap();
+
+        assert_eq!(resp.price_feed.price.price, 1_052_000_000i64);
+        assert_eq!(resp.price_feed.price.conf, 1_000_000u64);
+        assert_eq!(resp.price_feed.price.expo, -8);
+        assert_eq!(resp.price_feed.price.publish_time, 1_700_000_000i64);
     }
 }
