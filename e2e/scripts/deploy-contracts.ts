@@ -168,6 +168,7 @@ async function main() {
           liquidation_bonus: '0.05',      // 5%
           liquidation_protocol_fee: '0.1', // 10%
           close_factor: '0.5',            // 50%
+          dust_debt_threshold: '1000000', // 1M micro-units (1 token)
           protocol_fee: '0.1',            // 10%
           curator_fee: '0.05',            // 5%
           interest_rate_model: {
@@ -218,6 +219,7 @@ async function main() {
           liquidation_bonus: '0.08',      // 8%
           liquidation_protocol_fee: '0.1', // 10%
           close_factor: '0.5',            // 50%
+          dust_debt_threshold: '1000000', // 1M micro-units (1 token)
           protocol_fee: '0.1',            // 10%
           curator_fee: '0.05',            // 5%
           interest_rate_model: {

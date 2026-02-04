@@ -476,6 +476,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: Some(Decimal::percent(25)),
             supply_cap: None,
             borrow_cap: None,
@@ -508,6 +509,7 @@ mod tests {
         let updates = MarketParamsUpdate {
             loan_to_value: None,
             interest_rate_model: None,
+            dust_debt_threshold: None,
             curator_fee: Some(Decimal::percent(25)),
             supply_cap: None,
             borrow_cap: None,
