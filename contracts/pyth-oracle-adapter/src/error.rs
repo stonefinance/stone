@@ -62,6 +62,10 @@ pub enum ContractError {
     /// Caller is not the pending owner.
     #[error("Not the pending owner")]
     NotPendingOwner,
+
+    /// Duplicate denom in price feed list.
+    #[error("Duplicate denom: {denom}")]
+    DuplicateDenom { denom: String },
 }
 
 pub type ContractResult<T> = Result<T, ContractError>;
