@@ -43,6 +43,10 @@ pub enum ContractError {
     #[error("Exponent out of range: {expo}")]
     ExponentOutOfRange { expo: i32 },
 
+    /// Arithmetic overflow during price conversion.
+    #[error("Arithmetic overflow")]
+    Overflow,
+
     /// Unauthorized access.
     #[error("Unauthorized")]
     Unauthorized,

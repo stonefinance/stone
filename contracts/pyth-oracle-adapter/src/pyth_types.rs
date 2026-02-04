@@ -2,10 +2,56 @@
 //! These types mirror the Pyth SDK structures for querying price feeds.
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::StdError;
+use cosmwasm_std::{Decimal, StdError};
 use schemars::JsonSchema;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+
+use crate::error::ContractError;
+
+/// Convert a Pyth price and exponent to a cosmwasm_std::Decimal.
+///
+/// Pyth prices are represented as `price * 10^expo` where expo is typically negative.
+/// Examples:
+/// - (1_052_000_000, -8) → $10.52
+/// - (100, 2) → $10000
+/// - (42, 0) → $42
+///
+/// # Errors
+/// - `ContractError::NegativeOrZeroPrice` if price <= 0
+/// - `ContractError::ExponentOutOfRange` if |expo| > 18
+/// - `ContractError::Overflow` if the calculation overflows
+pub fn pyth_price_to_decimal(price: i64, expo: i32) -> Result<Decimal, ContractError> {
+    // 1. Reject negative or zero price
+    if price <= 0 {
+        return Err(ContractError::NegativeOrZeroPrice {
+            denom: "unknown".to_string(),
+        });
+    }
+
+    // 2. Reject out-of-range exponents (|expo| > 18)
+    // Decimal has 18 decimal places max, exponents beyond this overflow or lose precision
+    if expo.unsigned_abs() > 18 {
+        return Err(ContractError::ExponentOutOfRange { expo });
+    }
+
+    // 3. Convert based on exponent sign
+    let price_u128 = price as u128;
+    if expo >= 0 {
+        // price * 10^expo
+        let multiplier = 10u128
+            .checked_pow(expo as u32)
+            .ok_or(ContractError::Overflow)?;
+        let scaled = price_u128
+            .checked_mul(multiplier)
+            .ok_or(ContractError::Overflow)?;
+        Decimal::from_atomics(scaled, 0).map_err(|_| ContractError::Overflow)
+    } else {
+        // price / 10^|expo| → use Decimal::from_atomics
+        let decimal_places = (-expo) as u32;
+        Decimal::from_atomics(price_u128, decimal_places).map_err(|_| ContractError::Overflow)
+    }
+}
 
 /// Price identifier - 32 bytes serialized as 64-character hex string.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -294,5 +340,131 @@ mod tests {
         };
         let json = cosmwasm_std::to_json_string(&msg).unwrap();
         assert!(json.contains("price_feed"));
+    }
+
+    // ==========================================================================
+    // Tests for pyth_price_to_decimal function
+    // ==========================================================================
+
+    #[test]
+    fn standard_conversion() {
+        // (1_052_000_000, -8) → 10.52
+        let result = pyth_price_to_decimal(1_052_000_000, -8).unwrap();
+        let expected = Decimal::from_atomics(1052u128, 2).unwrap(); // 10.52
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn positive_exponent() {
+        // (100, 2) → 10000
+        let result = pyth_price_to_decimal(100, 2).unwrap();
+        let expected = Decimal::from_atomics(10000u128, 0).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn zero_exponent() {
+        // (42, 0) → 42
+        let result = pyth_price_to_decimal(42, 0).unwrap();
+        let expected = Decimal::from_atomics(42u128, 0).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn large_negative_expo() {
+        // (1, -18) → 0.000000000000000001
+        let result = pyth_price_to_decimal(1, -18).unwrap();
+        let expected = Decimal::from_atomics(1u128, 18).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn typical_btc_price() {
+        // (6_500_000_000_000, -8) → 65000.0
+        let result = pyth_price_to_decimal(6_500_000_000_000i64, -8).unwrap();
+        let expected = Decimal::from_atomics(65000u128, 0).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn typical_stablecoin() {
+        // (99_990_000, -8) → 0.9999
+        let result = pyth_price_to_decimal(99_990_000, -8).unwrap();
+        let expected = Decimal::from_atomics(9999u128, 4).unwrap(); // 0.9999
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn small_price() {
+        // (1, -8) → 0.00000001
+        let result = pyth_price_to_decimal(1, -8).unwrap();
+        let expected = Decimal::from_atomics(1u128, 8).unwrap();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn negative_price_rejected() {
+        // (-100, -8) → NegativeOrZeroPrice error
+        let result = pyth_price_to_decimal(-100, -8);
+        assert!(matches!(
+            result,
+            Err(ContractError::NegativeOrZeroPrice { .. })
+        ));
+    }
+
+    #[test]
+    fn zero_price_rejected() {
+        // (0, -8) → NegativeOrZeroPrice error
+        let result = pyth_price_to_decimal(0, -8);
+        assert!(matches!(
+            result,
+            Err(ContractError::NegativeOrZeroPrice { .. })
+        ));
+    }
+
+    #[test]
+    fn expo_too_large() {
+        // (100, 19) → ExponentOutOfRange error
+        let result = pyth_price_to_decimal(100, 19);
+        assert!(matches!(
+            result,
+            Err(ContractError::ExponentOutOfRange { expo: 19 })
+        ));
+    }
+
+    #[test]
+    fn expo_too_negative() {
+        // (100, -19) → ExponentOutOfRange error
+        let result = pyth_price_to_decimal(100, -19);
+        assert!(matches!(
+            result,
+            Err(ContractError::ExponentOutOfRange { expo: -19 })
+        ));
+    }
+
+    #[test]
+    fn max_safe_values() {
+        // Test with large values that still fit within Decimal (18 decimal places max)
+        // Decimal::MAX is approximately 3.4e38
+        
+        // Large value with negative exponent to keep it within bounds
+        // 1e18 with 18 decimal places = 1.0
+        let result = pyth_price_to_decimal(1_000_000_000_000_000_000i64, -18);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Decimal::one());
+
+        // Test with moderate positive exponent
+        // 1e9 * 10^9 = 1e18 which easily fits in Decimal
+        let result = pyth_price_to_decimal(1_000_000_000i64, 9);
+        assert!(result.is_ok());
+        
+        // Test with reasonably large price values using known-working patterns
+        // BTC price ~65000 with 8 decimals = 6_500_000_000_000
+        let result = pyth_price_to_decimal(6_500_000_000_000i64, -8);
+        assert!(result.is_ok());
+        
+        // Test large price with exponent 0
+        let result = pyth_price_to_decimal(1_000_000_000_000_000i64, 0);
+        assert!(result.is_ok());
     }
 }
