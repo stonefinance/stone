@@ -96,6 +96,11 @@ impl MarketState {
     }
 
     /// Calculate current utilization rate.
+    ///
+    /// Utilization is clamped to the range [0, 1] (0% to 100%). This is necessary because
+    /// interest accrual can push total_debt above total_supply over time, which would
+    /// otherwise produce utilization > 1.0. Clamping ensures rate math remains stable
+    /// and utilization values are meaningful for protocol operations.
     pub fn utilization(&self) -> Decimal {
         let total_supply = self.total_supply();
         let total_debt = self.total_debt();
@@ -103,7 +108,8 @@ impl MarketState {
         if total_supply.is_zero() {
             Decimal::zero()
         } else {
-            Decimal::from_ratio(total_debt, total_supply)
+            let raw = Decimal::from_ratio(total_debt, total_supply);
+            raw.min(Decimal::one())
         }
     }
 
@@ -452,5 +458,68 @@ mod tests {
         state.total_supply_scaled = Uint128::new(1000);
         state.total_debt_scaled = Uint128::new(1100);
         assert_eq!(state.available_liquidity(), Uint128::zero());
+    }
+
+    #[test]
+    fn test_utilization_clamped_to_one() {
+        // When debt > supply, utilization should be clamped to 1.0
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(1000);
+        state.total_debt_scaled = Uint128::new(1100); // More debt than supply
+        // Without indices: utilization would be 1100/1000 = 1.1
+        // With clamping: utilization should be 1.0
+        assert_eq!(state.utilization(), Decimal::one());
+    }
+
+    #[test]
+    fn test_utilization_clamped_with_indices() {
+        // When debt > supply due to indices, utilization should be clamped to 1.0
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(1000);
+        state.total_debt_scaled = Uint128::new(500);
+        state.liquidity_index = Decimal::one(); // 1.0
+        state.borrow_index = Decimal::from_ratio(3u128, 1u128); // 3.0
+        // Actual supply = 1000 * 1.0 = 1000
+        // Actual debt = 500 * 3.0 = 1500
+        // Raw utilization = 1500/1000 = 1.5
+        // Clamped utilization = 1.0
+        assert_eq!(state.utilization(), Decimal::one());
+    }
+
+    #[test]
+    fn test_utilization_zero_debt() {
+        // When there is supply but no debt, utilization is 0
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(1000);
+        state.total_debt_scaled = Uint128::zero();
+        assert_eq!(state.utilization(), Decimal::zero());
+    }
+
+    #[test]
+    fn test_utilization_equal_supply_debt() {
+        // When supply equals debt, utilization is exactly 1.0
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(1000);
+        state.total_debt_scaled = Uint128::new(1000);
+        assert_eq!(state.utilization(), Decimal::one());
+    }
+
+    #[test]
+    fn test_utilization_slightly_over_one() {
+        // Test border case where debt is just slightly more than supply
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(1000000);
+        state.total_debt_scaled = Uint128::new(1000001); // Just 1 unit more
+        assert_eq!(state.utilization(), Decimal::one());
+    }
+
+    #[test]
+    fn test_utilization_normal_still_works() {
+        // Verify normal utilization calculations still work correctly
+        let mut state = MarketState::new(1000);
+        state.total_supply_scaled = Uint128::new(1000);
+        state.total_debt_scaled = Uint128::new(750);
+        // 75% utilization
+        assert_eq!(state.utilization(), Decimal::percent(75));
     }
 }
