@@ -51,7 +51,7 @@ Called once when the contract is deployed.
   "price_feeds": [
     {
       "denom": "uatom",
-      "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"
+      "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
     },
     {
       "denom": "uusdc",
@@ -78,7 +78,7 @@ Add or update a price feed mapping for a denom.
 {
   "set_price_feed": {
     "denom": "uatom",
-    "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"
+    "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
   }
 }
 ```
@@ -214,7 +214,7 @@ Query price feed info for a specific denom.
 ```json
 {
   "denom": "uatom",
-  "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"
+  "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
 }
 ```
 
@@ -270,7 +270,7 @@ Price feeds are stored as mappings from denom to Pyth feed ID (32-byte identifie
 
 | Asset | Feed ID |
 |-------|---------|
-| ATOM/USD | `b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8` |
+| ATOM/USD | `b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819` |
 | USDC/USD | `eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a` |
 | USDT/USD | `2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b` |
 | BTC/USD | `e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43` |

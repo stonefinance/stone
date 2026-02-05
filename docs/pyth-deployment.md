@@ -101,7 +101,7 @@ cat > instantiate_msg.json << EOF
   "price_feeds": [
     {
       "denom": "uatom",
-      "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"
+      "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
     },
     {
       "denom": "uusdc",
@@ -198,7 +198,7 @@ cat > instantiate_msg_mainnet.json << EOF
   "price_feeds": [
     {
       "denom": "uatom",
-      "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"
+      "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
     },
     {
       "denom": "uusdc",
@@ -239,14 +239,14 @@ Always verify feed IDs before deployment using the Hermes API.
 # List all available price feeds
 curl "https://hermes.pyth.network/v2/price_feeds" | jq .
 
-# Get metadata for a specific feed
-curl "https://hermes.pyth.network/v2/price_feeds/b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8" | jq .
+# Search for ATOM feed metadata
+curl "https://hermes.pyth.network/v2/price_feeds?query=ATOM&asset_type=crypto" | jq .
 
 # Get latest price (with binary data)
-curl "https://hermes.pyth.network/v2/updates/price/latest?ids[]=b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8" | jq .
+curl "https://hermes.pyth.network/v2/updates/price/latest?ids[]=b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819" | jq .
 
 # Get latest price (parsed)
-curl "https://hermes.pyth.network/v2/updates/price/latest?ids[]=b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8&parsed=true" | jq .
+curl "https://hermes.pyth.network/v2/updates/price/latest?ids[]=b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819&parsed=true" | jq .
 ```
 
 ### Verification Script
@@ -259,14 +259,17 @@ ASSET_NAME=$2
 
 echo "Verifying feed ID for $ASSET_NAME: $FEED_ID"
 
-response=$(curl -s "https://hermes.pyth.network/v2/price_feeds/$FEED_ID")
+# Search for feeds by asset name and find matching feed ID
+response=$(curl -s "https://hermes.pyth.network/v2/price_feeds?query=$ASSET_NAME&asset_type=crypto")
 
-if echo "$response" | jq -e '.attributes' > /dev/null 2>&1; then
+# Check if the feed ID exists in the response
+if echo "$response" | jq -e ".[] | select(.id == \"$FEED_ID\")" > /dev/null 2>&1; then
+    feed_data=$(echo "$response" | jq ".[] | select(.id == \"$FEED_ID\")")
     echo "✓ Feed ID verified"
-    echo "  Asset: $(echo "$response" | jq -r '.attributes.display_symbol')"
-    echo "  Base: $(echo "$response" | jq -r '.attributes.base')"
-    echo "  Quote: $(echo "$response" | jq -r '.attributes.quote')"
-    echo "  Description: $(echo "$response" | jq -r '.attributes.description')"
+    echo "  Asset: $(echo "$feed_data" | jq -r '.attributes.display_symbol')"
+    echo "  Base: $(echo "$feed_data" | jq -r '.attributes.base')"
+    echo "  Quote: $(echo "$feed_data" | jq -r '.attributes.quote')"
+    echo "  Description: $(echo "$feed_data" | jq -r '.attributes.description')"
 else
     echo "✗ Invalid feed ID or feed not found"
     exit 1
@@ -276,7 +279,7 @@ fi
 Usage:
 ```bash
 chmod +x verify_feed.sh
-./verify_feed.sh b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8 ATOM
+./verify_feed.sh b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819 ATOM
 ```
 
 ### Known Feed IDs
@@ -285,7 +288,7 @@ chmod +x verify_feed.sh
 |-------|---------|-------------------|
 | **USDC/USD** | `eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a` | ✅ Verified |
 | **USDT/USD** | `2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b` | ✅ Verified |
-| **ATOM/USD** | `b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8` | ✅ Verified |
+| **ATOM/USD** | `b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819` | ✅ Verified |
 | **NTRN/USD** | *Verify via Hermes* | ⚠️ Check current |
 | **BTC/USD** | `e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43` | ✅ Verified |
 | **ETH/USD** | `ff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace` | ✅ Verified |
@@ -351,7 +354,7 @@ done
 ```bash
 # Query the actual Pyth contract directly for comparison
 neutrond query wasm contract-state smart $PYTH_CONTRACT \
-  '{"price_feed":{"id":"b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"}}' \
+  '{"price_feed":{"id":"b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"}}' \
   --node $NODE_URL | jq '.data.price_feed.price'
 ```
 

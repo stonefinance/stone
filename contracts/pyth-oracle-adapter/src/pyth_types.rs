@@ -97,8 +97,8 @@ pub fn pyth_price_to_decimal(price: i64, expo: i32) -> Result<Decimal, ContractE
 /// # Example
 ///
 /// ```rust,ignore
-/// let id = PriceIdentifier::from_hex("b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8")?;
-/// assert_eq!(id.to_hex(), "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8");
+/// let id = PriceIdentifier::from_hex("b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819")?;
+/// assert_eq!(id.to_hex(), "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819");
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PriceIdentifier([u8; 32]);
@@ -140,8 +140,8 @@ impl PriceIdentifier {
     /// # Example
     ///
     /// ```rust,ignore
-    /// let id = PriceIdentifier::from_hex("b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8")?;
-    /// let id = PriceIdentifier::from_hex("0xb00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8")?; // With prefix
+    /// let id = PriceIdentifier::from_hex("b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819")?;
+    /// let id = PriceIdentifier::from_hex("0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819")?; // With prefix
     /// ```
     pub fn from_hex(hex_str: &str) -> Result<Self, StdError> {
         // Strip optional 0x prefix
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn test_price_identifier_hex_roundtrip() {
         // Test with a known Pyth feed ID (e.g., ATOM/USD)
-        let hex_str = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+        let hex_str = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
         let id = PriceIdentifier::from_hex(hex_str).unwrap();
         assert_eq!(id.to_hex(), hex_str);
 
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn test_price_identifier_from_hex_with_prefix() {
         // Test with 0x prefix
-        let hex_str = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+        let hex_str = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
         let hex_with_prefix = format!("0x{}", hex_str);
         
         let id_from_plain = PriceIdentifier::from_hex(hex_str).unwrap();

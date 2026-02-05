@@ -54,7 +54,7 @@ use crate::state::{Config, CONFIG, CONTRACT_NAME, CONTRACT_VERSION, PENDING_OWNE
 ///   "pyth_contract_addr": "neutron1...",
 ///   "max_confidence_ratio": "0.01",
 ///   "price_feeds": [
-///     { "denom": "uatom", "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8" }
+///     { "denom": "uatom", "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819" }
 ///   ]
 /// }
 /// ```
@@ -620,7 +620,7 @@ mod tests {
         fn test_query_price_happy_path() {
             // ATOM at $10.52 (price=1052000000, expo=-8, conf=1000, publish_time=1700000000)
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -644,7 +644,7 @@ mod tests {
         #[test]
         fn test_query_price_feed_not_configured() {
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -665,7 +665,7 @@ mod tests {
         fn test_query_price_negative_from_pyth() {
             // Pyth returns price=-100 → NegativeOrZeroPrice
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -685,7 +685,7 @@ mod tests {
         fn test_query_price_zero_from_pyth() {
             // Pyth returns price=0 → NegativeOrZeroPrice
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -706,7 +706,7 @@ mod tests {
             // conf/price=0.05, max=0.01 → ConfidenceTooHigh
             // price=10000, conf=500 → ratio=0.05
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -727,7 +727,7 @@ mod tests {
             // conf/price=0.005, max=0.01 → success
             // price=10000, conf=50 → ratio=0.005
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -748,7 +748,7 @@ mod tests {
         fn test_query_price_zero_confidence() {
             // conf=0 → always passes
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -768,7 +768,7 @@ mod tests {
         fn test_query_price_negative_timestamp() {
             // publish_time=-1 → InvalidTimestamp
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -818,7 +818,7 @@ mod tests {
 
     /// Returns a valid Pyth feed ID for use in tests.
     fn valid_feed_id() -> String {
-        "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8".to_string()
+        "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string()
     }
 
     #[test]

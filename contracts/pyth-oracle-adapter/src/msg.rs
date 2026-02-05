@@ -17,7 +17,7 @@ use cosmwasm_std::Decimal;
 /// ```json
 /// {
 ///   "denom": "uatom",
-///   "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8"
+///   "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
 /// }
 /// ```
 #[cw_serde]
@@ -50,7 +50,7 @@ pub struct PriceFeedConfig {
 ///   "pyth_contract_addr": "neutron1...",
 ///   "max_confidence_ratio": "0.01",
 ///   "price_feeds": [
-///     { "denom": "uatom", "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8" }
+///     { "denom": "uatom", "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819" }
 ///   ]
 /// }
 /// ```
