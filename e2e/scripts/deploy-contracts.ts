@@ -7,6 +7,10 @@ const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'http://localhost:26657';
 const CHAIN_ID = process.env.CHAIN_ID || 'stone-local-1';
 const DEPLOYER_MNEMONIC = process.env.DEPLOYER_MNEMONIC ||
   'satisfy adjust timber high purchase tuition stool faith fine install that you unaware feed domain license impose boss human eager hat rent enjoy dawn';
+const ORACLE_TYPE = (process.env.ORACLE_TYPE || 'mock').toLowerCase(); // 'mock' or 'pyth'
+
+// Pyth configuration file path (optional)
+const PYTH_CONFIG_PATH = process.env.PYTH_CONFIG_PATH;
 
 interface DeploymentResult {
   factoryAddress: string;
@@ -14,6 +18,9 @@ interface DeploymentResult {
   marketCodeId: number;
   oracleAddress: string;
   oracleCodeId: number;
+  pythAdapterAddress?: string;
+  pythAdapterCodeId?: number;
+  pythContractAddress?: string;
   testMarkets: TestMarket[];
 }
 
@@ -23,6 +30,42 @@ interface TestMarket {
   collateralDenom: string;
   debtDenom: string;
 }
+
+interface PythPriceFeedConfig {
+  denom: string;
+  feedId: string;
+}
+
+interface PythDeploymentConfig {
+  chainId: string;
+  pythContractAddress: string;
+  priceFeeds: PythPriceFeedConfig[];
+}
+
+// Default Pyth feed IDs for common assets
+// Source: Pyth Network price feed IDs (https://pyth.network/price-feed-ids)
+const DEFAULT_PYTH_FEEDS: PythPriceFeedConfig[] = [
+  {
+    denom: 'uatom',
+    feedId: 'b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819', // ATOM/USD
+  },
+  {
+    denom: 'uosmo',
+    feedId: '5867f5683c757393a0670ef0f701490950fe93fdb006d181c8265a831ac0c5c6', // OSMO/USD
+  },
+  {
+    denom: 'uusdc',
+    feedId: 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a', // USDC/USD
+  },
+  {
+    denom: 'uusdt',
+    feedId: '2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b', // USDT/USD
+  },
+  {
+    denom: 'ustone',
+    feedId: 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a', // Use USDC feed as STONE stablecoin reference
+  },
+];
 
 async function waitForChain(maxRetries = 30, delayMs = 2000): Promise<void> {
   console.log('Waiting for chain to be ready...');
@@ -45,10 +88,185 @@ async function waitForChain(maxRetries = 30, delayMs = 2000): Promise<void> {
   throw new Error('Chain did not become ready in time');
 }
 
+function loadPythConfig(): PythDeploymentConfig | null {
+  // If a config path is provided, try to load it
+  if (PYTH_CONFIG_PATH && fs.existsSync(PYTH_CONFIG_PATH)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(PYTH_CONFIG_PATH, 'utf-8'));
+      console.log(`Loaded Pyth config from ${PYTH_CONFIG_PATH}`);
+      return config;
+    } catch (error) {
+      console.warn(`Failed to load Pyth config from ${PYTH_CONFIG_PATH}:`, error);
+    }
+  }
+
+  // Try to load config based on chain ID
+  const configPaths = [
+    `/app/deploy/${CHAIN_ID}.json`,
+    `./deploy/${CHAIN_ID}.json`,
+  ];
+
+  for (const configPath of configPaths) {
+    if (fs.existsSync(configPath)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        console.log(`Loaded Pyth config from ${configPath}`);
+        return config;
+      } catch {
+        // Continue to next path
+      }
+    }
+  }
+
+  return null;
+}
+
+async function deployMockOracle(
+  client: SigningCosmWasmClient,
+  account: { address: string }
+): Promise<{ oracleAddress: string; oracleCodeId: number }> {
+  console.log('Deploying mock oracle...');
+
+  // Read mock oracle WASM
+  const oracleWasm = fs.readFileSync('/artifacts/mock_oracle.wasm');
+
+  // Upload mock oracle
+  console.log('Uploading mock oracle contract...');
+  const oracleUpload = await client.upload(account.address, oracleWasm, 'auto');
+  console.log(`Mock oracle code ID: ${oracleUpload.codeId}`);
+
+  // Instantiate mock oracle
+  console.log('Instantiating mock oracle...');
+  const oracleResult = await client.instantiate(
+    account.address,
+    oracleUpload.codeId,
+    {
+      prices: [
+        { denom: 'uatom', price: '10' },    // $10
+        { denom: 'uosmo', price: '1' },     // $1
+        { denom: 'ustone', price: '1' },    // $1
+        { denom: 'uusdc', price: '1' },     // $1
+        { denom: 'uusdt', price: '1' },     // $1
+      ],
+    },
+    'Mock Oracle',
+    'auto'
+  );
+
+  console.log(`Mock oracle address: ${oracleResult.contractAddress}`);
+
+  return {
+    oracleAddress: oracleResult.contractAddress,
+    oracleCodeId: oracleUpload.codeId,
+  };
+}
+
+async function deployPythAdapter(
+  client: SigningCosmWasmClient,
+  account: { address: string }
+): Promise<{
+  oracleAddress: string;
+  oracleCodeId: number;
+  pythAdapterAddress: string;
+  pythAdapterCodeId: number;
+  pythContractAddress: string;
+}> {
+  console.log('Deploying Pyth oracle adapter...');
+
+  // Load Pyth configuration
+  const config = loadPythConfig();
+  if (!config) {
+    throw new Error(
+      `No Pyth configuration found for chain ${CHAIN_ID}. ` +
+      `Please provide a config file via PYTH_CONFIG_PATH or create deploy/${CHAIN_ID}.json`
+    );
+  }
+
+  const pythContractAddress = config.pythContractAddress;
+  const priceFeeds = config.priceFeeds || DEFAULT_PYTH_FEEDS;
+
+  console.log(`Using Pyth contract: ${pythContractAddress}`);
+  console.log(`Price feeds: ${priceFeeds.length} configured`);
+
+  // Read WASM files
+  const pythAdapterWasm = fs.readFileSync('/artifacts/pyth_oracle_adapter.wasm');
+
+  // Upload Pyth adapter
+  console.log('Uploading Pyth oracle adapter contract...');
+  const adapterUpload = await client.upload(account.address, pythAdapterWasm, 'auto');
+  console.log(`Pyth adapter code ID: ${adapterUpload.codeId}`);
+
+  // Prepare price feeds for instantiation
+  const priceFeedsConfig = priceFeeds.map(feed => ({
+    denom: feed.denom,
+    feed_id: feed.feedId,
+  }));
+
+  // Instantiate Pyth adapter
+  console.log('Instantiating Pyth oracle adapter...');
+  const adapterResult = await client.instantiate(
+    account.address,
+    adapterUpload.codeId,
+    {
+      owner: account.address,
+      pyth_contract_addr: pythContractAddress,
+      max_confidence_ratio: '0.01', // 1% max confidence ratio
+      price_feeds: priceFeedsConfig,
+    },
+    'Pyth Oracle Adapter',
+    'auto'
+  );
+
+  console.log(`Pyth adapter address: ${adapterResult.contractAddress}`);
+
+  return {
+    oracleAddress: adapterResult.contractAddress, // Use adapter as oracle
+    oracleCodeId: adapterUpload.codeId,
+    pythAdapterAddress: adapterResult.contractAddress,
+    pythAdapterCodeId: adapterUpload.codeId,
+    pythContractAddress,
+  };
+}
+
+function buildOracleConfig(
+  oracleType: 'mock' | 'pyth',
+  oracleAddress: string,
+  oracleCodeId: number
+): { address: string; oracle_type: Record<string, unknown> } {
+  if (oracleType === 'pyth') {
+    return {
+      address: oracleAddress,
+      oracle_type: {
+        pyth: {
+          expected_code_id: oracleCodeId,
+          max_staleness_secs: 60, // 1 minute for Pyth
+          max_confidence_ratio: '0.01', // 1%
+        },
+      },
+    };
+  }
+
+  // Default: mock/generic oracle
+  return {
+    address: oracleAddress,
+    oracle_type: {
+      generic: {
+        expected_code_id: oracleCodeId > 0 ? oracleCodeId : null,
+        max_staleness_secs: 300, // 5 minutes
+      },
+    },
+  };
+}
+
 async function main() {
   console.log('Starting contract deployment...');
   console.log(`RPC Endpoint: ${RPC_ENDPOINT}`);
   console.log(`Chain ID: ${CHAIN_ID}`);
+  console.log(`Oracle Type: ${ORACLE_TYPE}`);
+
+  if (ORACLE_TYPE !== 'mock' && ORACLE_TYPE !== 'pyth') {
+    throw new Error(`Invalid ORACLE_TYPE: ${ORACLE_TYPE}. Must be 'mock' or 'pyth'`);
+  }
 
   // Wait for chain to be ready
   await waitForChain();
@@ -76,15 +294,7 @@ async function main() {
   const factoryWasm = fs.readFileSync('/artifacts/stone_factory.wasm');
   const marketWasm = fs.readFileSync('/artifacts/stone_market.wasm');
 
-  // Check if mock oracle exists, if not we'll skip it
-  let oracleWasm: Buffer | null = null;
-  try {
-    oracleWasm = fs.readFileSync('/artifacts/mock_oracle.wasm');
-  } catch {
-    console.log('Mock oracle WASM not found, will create a simple mock');
-  }
-
-  // Upload contracts
+  // Upload factory and market contracts
   console.log('Uploading factory contract...');
   const factoryUpload = await client.upload(account.address, factoryWasm, 'auto');
   console.log(`Factory code ID: ${factoryUpload.codeId}`);
@@ -93,32 +303,24 @@ async function main() {
   const marketUpload = await client.upload(account.address, marketWasm, 'auto');
   console.log(`Market code ID: ${marketUpload.codeId}`);
 
-  let oracleCodeId = 0;
-  let oracleAddress = '';
+  // Deploy oracle based on ORACLE_TYPE
+  let oracleAddress: string;
+  let oracleCodeId: number;
+  let pythAdapterAddress: string | undefined;
+  let pythAdapterCodeId: number | undefined;
+  let pythContractAddress: string | undefined;
 
-  if (oracleWasm) {
-    console.log('Uploading mock oracle contract...');
-    const oracleUpload = await client.upload(account.address, oracleWasm, 'auto');
-    oracleCodeId = oracleUpload.codeId;
-    console.log(`Oracle code ID: ${oracleCodeId}`);
-
-    // Instantiate mock oracle
-    console.log('Instantiating mock oracle...');
-    const oracleResult = await client.instantiate(
-      account.address,
-      oracleCodeId,
-      {
-        prices: [
-          { denom: 'uatom', price: '10' },    // $10
-          { denom: 'uosmo', price: '1' },     // $1
-          { denom: 'ustone', price: '1' },    // $1
-        ],
-      },
-      'Mock Oracle',
-      'auto'
-    );
-    oracleAddress = oracleResult.contractAddress;
-    console.log(`Oracle address: ${oracleAddress}`);
+  if (ORACLE_TYPE === 'pyth') {
+    const pythDeployment = await deployPythAdapter(client, account);
+    oracleAddress = pythDeployment.oracleAddress;
+    oracleCodeId = pythDeployment.oracleCodeId;
+    pythAdapterAddress = pythDeployment.pythAdapterAddress;
+    pythAdapterCodeId = pythDeployment.pythAdapterCodeId;
+    pythContractAddress = pythDeployment.pythContractAddress;
+  } else {
+    const mockDeployment = await deployMockOracle(client, account);
+    oracleAddress = mockDeployment.oracleAddress;
+    oracleCodeId = mockDeployment.oracleCodeId;
   }
 
   // Instantiate factory
@@ -141,16 +343,11 @@ async function main() {
   const testMarkets: TestMarket[] = [];
 
   // Build oracle config for market creation
-  // Use Generic oracle type with optional code ID validation
-  const oracleConfig = {
-    address: oracleAddress || account.address, // Use deployer address as fallback
-    oracle_type: {
-      generic: {
-        expected_code_id: oracleCodeId > 0 ? oracleCodeId : null,
-        max_staleness_secs: 300, // 5 minutes
-      },
-    },
-  };
+  const oracleConfig = buildOracleConfig(
+    ORACLE_TYPE as 'mock' | 'pyth',
+    oracleAddress,
+    oracleCodeId
+  );
 
   // Market 1: ATOM/STONE (collateral/debt)
   console.log('Creating ATOM/STONE market...');
@@ -256,8 +453,11 @@ async function main() {
     factoryAddress: factoryResult.contractAddress,
     factoryCodeId: factoryUpload.codeId,
     marketCodeId: marketUpload.codeId,
-    oracleAddress: oracleAddress,
-    oracleCodeId: oracleCodeId,
+    oracleAddress,
+    oracleCodeId,
+    pythAdapterAddress,
+    pythAdapterCodeId,
+    pythContractAddress,
     testMarkets,
   };
 
@@ -269,6 +469,8 @@ async function main() {
 FACTORY_ADDRESS=${result.factoryAddress}
 MARKET_CODE_ID=${result.marketCodeId}
 ORACLE_ADDRESS=${result.oracleAddress}
+${pythAdapterAddress ? `PYTH_ADAPTER_ADDRESS=${pythAdapterAddress}` : '# PYTH_ADAPTER_ADDRESS='}
+${pythContractAddress ? `PYTH_CONTRACT_ADDRESS=${pythContractAddress}` : '# PYTH_CONTRACT_ADDRESS='}
 TEST_MARKET_1_ADDRESS=${testMarkets[0]?.marketAddress || ''}
 TEST_MARKET_2_ADDRESS=${testMarkets[1]?.marketAddress || ''}`;
 
@@ -276,13 +478,14 @@ TEST_MARKET_2_ADDRESS=${testMarkets[1]?.marketAddress || ''}`;
 
   // Write frontend .env.local with local chain config
   const frontendEnvContent = `# Local chain configuration (auto-generated by deploy-contracts.ts)
-NEXT_PUBLIC_CHAIN_ID=stone-local-1
-NEXT_PUBLIC_RPC_ENDPOINT=http://localhost:26657
-NEXT_PUBLIC_REST_ENDPOINT=http://localhost:1317
+NEXT_PUBLIC_CHAIN_ID=${CHAIN_ID}
+NEXT_PUBLIC_RPC_ENDPOINT=${RPC_ENDPOINT.replace('26657', '26657')}
+NEXT_PUBLIC_REST_ENDPOINT=${RPC_ENDPOINT.replace('26657', '1317')}
 
 # Contract addresses from deployment
 NEXT_PUBLIC_FACTORY_ADDRESS=${result.factoryAddress}
 NEXT_PUBLIC_ORACLE_ADDRESS=${result.oracleAddress}
+${pythAdapterAddress ? `NEXT_PUBLIC_PYTH_ADAPTER_ADDRESS=${pythAdapterAddress}` : '# NEXT_PUBLIC_PYTH_ADAPTER_ADDRESS='}
 `;
 
   // Also copy to e2e directory for local access

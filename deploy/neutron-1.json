@@ -1,0 +1,14 @@
+{
+  "chainId": "neutron-1",
+  "pythContractAddress": "neutron1m2emc93m9gpwgsrsf2vylv9xvgqh654630v7dfrhrkmr5slly53spg85wv",
+  "priceFeeds": [
+    {
+      "denom": "ibc/C4CFF46FD6DE35CA4CF4CE031E643C8FDC9BA4B99AE598E9B0ED98FE3A2319F9",
+      "feedId": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
+    },
+    {
+      "denom": "ibc/B559A80D62249C8AA07A380E2A2BEA6E5CA9A6F079C912C3A9E9B494105E4F81",
+      "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    }
+  ]
+}
