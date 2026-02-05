@@ -11,6 +11,11 @@ use cosmwasm_std::{coin, Addr, Decimal, Empty, Timestamp};
 use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor, IntoAddr};
 use pyth_oracle_adapter::contract as adapter_contract;
 use pyth_oracle_adapter::msg::{ExecuteMsg as AdapterExecuteMsg, InstantiateMsg as AdapterInstantiateMsg, QueryMsg as AdapterQueryMsg, PriceFeedConfig};
+
+/// Helper function to add context to errors using anyhow
+fn app_error_context<T, E: std::fmt::Display>(result: Result<T, E>) -> anyhow::Result<T> {
+    result.map_err(|e| anyhow::anyhow!("{}", e))
+}
 use stone_testing::{
     mock_pyth_contract, MockPythExecuteMsg, MockPythInstantiateMsg, MockPriceFeedInit,
     COLLATERAL_DENOM, DEBT_DENOM, default_market_params,

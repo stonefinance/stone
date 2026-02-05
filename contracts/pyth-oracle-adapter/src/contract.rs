@@ -1,4 +1,25 @@
 //! Contract entry points for the Pyth oracle adapter.
+//!
+//! This module contains the main contract logic including:
+//! - Entry points (`instantiate`, `execute`, `query`)
+//! - Execute handlers for admin operations
+//! - Query handlers for price and configuration queries
+//!
+//! # Architecture
+//!
+//! The adapter acts as a bridge between Stone markets and Pyth Network:
+//! - Receives `OracleQueryMsg::Price` queries from Stone markets
+//! - Looks up the Pyth feed ID for the requested denom
+//! - Queries the Pyth contract for the latest price
+//! - Validates the price (positive, confidence within bounds)
+//! - Returns a `PriceResponse` in Stone's format
+//!
+//! # Staleness Handling
+//!
+//! This adapter intentionally does NOT check price staleness. Staleness
+//! validation is the responsibility of the market layer, which can apply
+//! different staleness thresholds for different use cases using the same
+//! adapter instance.
 
 use std::collections::HashSet;
 
@@ -11,6 +32,32 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::pyth_types::{PriceFeedResponse, PriceIdentifier, PythQueryMsg};
 use crate::state::{Config, CONFIG, CONTRACT_NAME, CONTRACT_VERSION, PENDING_OWNER, PRICE_FEEDS};
 
+/// Contract entry point for instantiation.
+///
+/// Called once when the contract is deployed. Sets up the initial configuration
+/// including owner, Pyth contract address, confidence ratio, and optionally
+/// initial price feeds.
+///
+/// # Validation
+///
+/// - Owner address must be valid
+/// - Pyth contract address must be valid
+/// - Max confidence ratio must be in range (0, 1]
+/// - Price feed IDs must be valid 64-character hex strings
+/// - Duplicate denoms in price_feeds are rejected
+///
+/// # Example InstantiateMsg
+///
+/// ```json
+/// {
+///   "owner": "neutron1...",
+///   "pyth_contract_addr": "neutron1...",
+///   "max_confidence_ratio": "0.01",
+///   "price_feeds": [
+///     { "denom": "uatom", "feed_id": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819" }
+///   ]
+/// }
+/// ```
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -78,6 +125,11 @@ pub fn instantiate(
         .add_attribute("max_confidence_ratio", config.max_confidence_ratio.to_string()))
 }
 
+/// Contract entry point for execute messages.
+///
+/// Dispatches execute messages to their respective handlers. All execute
+/// operations require authorization except for queries (which are handled
+/// separately in `query`).
 #[entry_point]
 pub fn execute(
     deps: DepsMut,
@@ -103,6 +155,19 @@ pub fn execute(
     }
 }
 
+/// Set or update a price feed mapping.
+///
+/// Associates a denom with a Pyth feed ID. If the denom already exists,
+/// its feed ID is updated to the new value.
+///
+/// # Authorization
+///
+/// Requires the caller to be the contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
+/// * `InvalidFeedId` - Feed ID is not a valid 64-character hex string
 fn execute_set_price_feed(
     deps: DepsMut,
     _env: Env,
@@ -129,6 +194,18 @@ fn execute_set_price_feed(
         .add_attribute("feed_id", feed_id.to_hex()))
 }
 
+/// Remove a price feed mapping.
+///
+/// Removes the association between a denom and its Pyth feed ID.
+///
+/// # Authorization
+///
+/// Requires the caller to be the contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
+/// * `PriceFeedNotConfigured` - No feed exists for the denom
 fn execute_remove_price_feed(
     deps: DepsMut,
     _env: Env,
@@ -152,6 +229,19 @@ fn execute_remove_price_feed(
         .add_attribute("denom", denom))
 }
 
+/// Update contract configuration.
+///
+/// Performs a partial update of configuration. Only provided fields
+/// are updated; `None` values leave existing values unchanged.
+///
+/// # Authorization
+///
+/// Requires the caller to be the contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
+/// * `InvalidConfidenceRatio` - New ratio is 0 or > 1
 fn execute_update_config(
     deps: DepsMut,
     _env: Env,
@@ -205,6 +295,18 @@ fn execute_update_config(
     Ok(resp)
 }
 
+/// Initiate ownership transfer.
+///
+/// Starts a two-step ownership transfer by setting the pending owner.
+/// The new owner must call `accept_ownership` to complete the transfer.
+///
+/// # Authorization
+///
+/// Requires the caller to be the current contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
 fn execute_transfer_ownership(
     deps: DepsMut,
     _env: Env,
@@ -228,6 +330,19 @@ fn execute_transfer_ownership(
         .add_attribute("pending_owner", new_owner_addr.to_string()))
 }
 
+/// Accept ownership transfer.
+///
+/// Completes a two-step ownership transfer. Must be called by the address
+/// previously set as the pending owner.
+///
+/// # Authorization
+///
+/// Requires the caller to be the pending owner.
+///
+/// # Errors
+///
+/// * `PendingOwnerNotSet` - No ownership transfer is pending
+/// * `NotPendingOwner` - Caller is not the pending owner
 fn execute_accept_ownership(
     deps: DepsMut,
     _env: Env,
@@ -255,6 +370,10 @@ fn execute_accept_ownership(
         .add_attribute("new_owner", config.owner.to_string()))
 }
 
+/// Contract entry point for query messages.
+///
+/// Dispatches query messages to their respective handlers. Queries are
+/// read-only and do not require authorization.
 #[entry_point]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     let result = match msg {
@@ -269,8 +388,33 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     Ok(result)
 }
 
-// Note: _env intentionally unused. Staleness checking is handled by the market
-// layer (stone-types::OraclePriceStale), not by the adapter.
+/// Query the current price for a denom.
+///
+/// Implements the Stone `OracleQueryMsg` interface. This is the primary
+/// query used by Stone markets to get price data.
+///
+/// # Flow
+///
+/// 1. Look up the Pyth feed ID for the denom
+/// 2. Query the Pyth contract for the latest price
+/// 3. Validate the price is positive
+/// 4. Validate the confidence ratio is within bounds
+/// 5. Convert the price to a Decimal
+/// 6. Return the PriceResponse
+///
+/// # Note on Staleness
+///
+/// The `_env` parameter is intentionally unused. Staleness checking is
+/// handled by the market layer (`stone_types::OraclePriceStale`), not
+/// by this adapter. This design allows multiple markets to share the
+/// same adapter with different staleness requirements.
+///
+/// # Errors
+///
+/// * `PriceFeedNotConfigured` - No feed ID configured for the denom
+/// * `NegativeOrZeroPrice` - Pyth returned price <= 0
+/// * `ConfidenceTooHigh` - Confidence ratio exceeds max_confidence_ratio
+/// * `InvalidTimestamp` - Pyth returned negative publish_time
 fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::PriceResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -314,6 +458,10 @@ fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::Pric
     Ok(stone_types::PriceResponse { denom, price: decimal_price, updated_at })
 }
 
+/// Query contract configuration.
+///
+/// Returns the current configuration including owner, Pyth contract
+/// address, and max confidence ratio.
 fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     Ok(crate::msg::ConfigResponse {
@@ -323,6 +471,14 @@ fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError>
     })
 }
 
+/// Query price feed information for a specific denom.
+///
+/// Returns the feed ID configured for the given denom. This is useful
+/// for verifying feed configurations.
+///
+/// # Errors
+///
+/// * `PriceFeedNotConfigured` - No feed exists for the denom
 fn query_price_feed(
     deps: Deps,
     denom: String,
@@ -336,9 +492,20 @@ fn query_price_feed(
     })
 }
 
+/// Default pagination limit for price feed queries.
 const DEFAULT_LIMIT: u32 = 10;
+/// Maximum pagination limit to prevent excessive gas usage.
 const MAX_LIMIT: u32 = 30;
 
+/// Query all configured price feeds with pagination.
+///
+/// Returns a list of all price feed configurations, paginated by denom.
+/// Results are ordered by denom in ascending lexicographic order.
+///
+/// # Parameters
+///
+/// * `start_after` - If provided, start pagination after this denom
+/// * `limit` - Maximum number of results (default: 10, max: 30)
 fn query_all_price_feeds(
     deps: Deps,
     start_after: Option<String>,
@@ -375,7 +542,10 @@ mod tests {
         use crate::pyth_types::*;
         use std::collections::HashMap;
 
-        // Create a querier that responds to Pyth queries
+        /// Create a mock querier that responds to Pyth queries.
+        ///
+        /// Returns a tuple of (deps, pyth_bech32_address) where deps has a custom
+        /// querier that responds to Pyth price feed queries.
         fn create_pyth_deps(
             pyth_addr_str: &str,
             feeds: HashMap<String, PriceFeedResponse>,
@@ -409,6 +579,7 @@ mod tests {
             (deps, pyth_bech32)
         }
 
+        /// Create a mock price feed response.
         fn make_feed_response(feed_id: &str, price: i64, conf: u64, expo: i32, publish_time: i64) -> PriceFeedResponse {
             PriceFeedResponse {
                 price_feed: PriceFeed {
@@ -419,7 +590,7 @@ mod tests {
             }
         }
 
-        // Helper to setup deps with config + feeds stored
+        /// Setup deps with config and a price feed stored.
         fn setup_with_pyth(
             pyth_addr_str: &str,
             feed_id: &str,
@@ -449,7 +620,7 @@ mod tests {
         fn test_query_price_happy_path() {
             // ATOM at $10.52 (price=1052000000, expo=-8, conf=1000, publish_time=1700000000)
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -473,7 +644,7 @@ mod tests {
         #[test]
         fn test_query_price_feed_not_configured() {
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -494,7 +665,7 @@ mod tests {
         fn test_query_price_negative_from_pyth() {
             // Pyth returns price=-100 → NegativeOrZeroPrice
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -514,7 +685,7 @@ mod tests {
         fn test_query_price_zero_from_pyth() {
             // Pyth returns price=0 → NegativeOrZeroPrice
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -535,7 +706,7 @@ mod tests {
             // conf/price=0.05, max=0.01 → ConfidenceTooHigh
             // price=10000, conf=500 → ratio=0.05
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -556,7 +727,7 @@ mod tests {
             // conf/price=0.005, max=0.01 → success
             // price=10000, conf=50 → ratio=0.005
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -577,7 +748,7 @@ mod tests {
         fn test_query_price_zero_confidence() {
             // conf=0 → always passes
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -597,7 +768,7 @@ mod tests {
         fn test_query_price_negative_timestamp() {
             // publish_time=-1 → InvalidTimestamp
             let pyth_addr = "pyth";
-            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
             let deps = setup_with_pyth(
                 pyth_addr,
                 feed_id,
@@ -637,15 +808,155 @@ mod tests {
             assert_eq!(result.price, expected_price);
             assert_eq!(result.updated_at, 1700000000u64);
         }
+
+        // Issue #87: Additional query flow tests
+
+        #[test]
+        fn test_query_price_pyth_unreachable_error_propagation() {
+            // Issue #87: Pyth unreachable → propagated error
+            let mut deps = cosmwasm_std::testing::mock_dependencies();
+            let pyth_addr_str = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+
+            // Get the bech32 address
+            let pyth_bech32 = MockApi::default().addr_make(pyth_addr_str).to_string();
+            let pyth_bech32_for_closure = pyth_bech32.clone();
+
+            // Create a querier that fails for Pyth queries
+            deps.querier.update_wasm(move |query| {
+                match query {
+                    WasmQuery::Smart { contract_addr, .. } if contract_addr == &pyth_bech32_for_closure => {
+                        SystemResult::Err(SystemError::NoSuchContract { 
+                            addr: pyth_bech32_for_closure.clone() 
+                        })
+                    }
+                    _ => SystemResult::Err(SystemError::NoSuchContract { addr: "unknown".into() }),
+                }
+            });
+
+            // Store config
+            CONFIG.save(deps.as_mut().storage, &Config {
+                owner: MockApi::default().addr_make("owner"),
+                pyth_contract_addr: cosmwasm_std::Addr::unchecked(pyth_bech32),
+                max_confidence_ratio: Decimal::percent(1),
+            }).unwrap();
+
+            // Store feed mapping
+            let price_id = PriceIdentifier::from_hex(feed_id).unwrap();
+            PRICE_FEEDS.save(deps.as_mut().storage, "uatom", &price_id).unwrap();
+
+            // Query should propagate the error from Pyth
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
+            assert!(result.is_err(), "Expected error when Pyth is unreachable");
+            // Verify it's a StdError (querier error propagates as StdError)
+            assert!(
+                matches!(result.unwrap_err(), ContractError::Std(_)),
+                "Expected StdError for Pyth unreachable"
+            );
+        }
+
+        #[test]
+        fn test_query_price_large_timestamp() {
+            // Issue #87: Timestamp conversion edge case - very large timestamp
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            
+            // Max u64 timestamp that fits in i64: 9223372036854775807 (i64::MAX)
+            let large_timestamp: i64 = i64::MAX;
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1052000000i64,
+                1000u64,
+                -8i32,
+                large_timestamp,
+                Decimal::percent(1),
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string()).unwrap();
+            assert_eq!(result.updated_at, large_timestamp as u64);
+        }
+
+        #[test]
+        fn test_query_price_timestamp_zero() {
+            // Issue #87: Timestamp conversion edge case - zero timestamp
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1052000000i64,
+                1000u64,
+                -8i32,
+                0i64, // Zero timestamp
+                Decimal::percent(1),
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string()).unwrap();
+            assert_eq!(result.updated_at, 0u64);
+        }
+
+        #[test]
+        fn test_query_price_confidence_at_exact_boundary() {
+            // Issue #87: Confidence exactly at max ratio boundary
+            // max_confidence_ratio = 0.02
+            // price = 1000, conf = 20 → ratio = 0.02 (exactly at boundary)
+            // Should NOT fail since check is `conf_ratio > max_confidence_ratio` not >=
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1000i64,      // price
+                20u64,        // conf → 20/1000 = 0.02 = 2%
+                -8i32,
+                1700000000i64,
+                Decimal::from_ratio(2u128, 100u128), // max_confidence_ratio = 0.02
+            );
+
+            // Should succeed since ratio equals max_ratio (not exceeds)
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string()).unwrap();
+            assert_eq!(result.denom, "uatom");
+        }
+
+        #[test]
+        fn test_query_price_confidence_just_above_boundary() {
+            // Issue #87: Confidence just above max ratio boundary
+            // max_confidence_ratio = 0.02
+            // price = 1000, conf = 21 → ratio = 0.021 = 2.1% > 2%
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1000i64,      // price
+                21u64,        // conf → 21/1000 = 0.021 = 2.1%
+                -8i32,
+                1700000000i64,
+                Decimal::from_ratio(2u128, 100u128), // max_confidence_ratio = 0.02
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
+            assert!(
+                matches!(result.unwrap_err(), ContractError::ConfidenceTooHigh { denom, .. } if denom == "uatom"),
+                "Expected ConfidenceTooHigh when ratio exceeds max by a small amount"
+            );
+        }
     }
 
+    /// Create test addresses for use in tests.
     fn test_addrs() -> (cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr) {
         let api = MockApi::default();
         (api.addr_make("owner"), api.addr_make("pyth"), api.addr_make("new_owner"))
     }
 
+    /// Returns a valid Pyth feed ID for use in tests.
     fn valid_feed_id() -> String {
-        "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8".to_string()
+        "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string()
     }
 
     #[test]
@@ -904,9 +1215,10 @@ mod tests {
             max_confidence_ratio: Decimal::percent(1),
             price_feeds: vec![],
         };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Try to remove non-existent price feed
+        let info = message_info(&owner, &[]);
         let res = execute_remove_price_feed(deps.as_mut(), env, info, "uatom".to_string());
         assert!(matches!(res.unwrap_err(), ContractError::PriceFeedNotConfigured { .. }));
     }
@@ -1077,6 +1389,229 @@ mod tests {
         let info = message_info(&wrong_sender, &[]);
         let res = execute_accept_ownership(deps.as_mut(), env, info);
         assert!(matches!(res.unwrap_err(), ContractError::NotPendingOwner));
+    }
+
+    // Issue #87: Execute handler authorization tests
+
+    #[test]
+    fn test_remove_price_feed_unauthorized() {
+        // Issue #87: Non-owner cannot remove price feed
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (owner, pyth, _) = test_addrs();
+        let api = MockApi::default();
+        let not_owner = api.addr_make("not_owner");
+        
+        // Instantiate with a price feed
+        let info = message_info(&owner, &[]);
+        let feed_id = valid_feed_id();
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![crate::msg::PriceFeedConfig {
+                denom: "uatom".to_string(),
+                feed_id: feed_id.clone(),
+            }],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        // Try to remove as non-owner
+        let info = message_info(&not_owner, &[]);
+        let res = execute_remove_price_feed(deps.as_mut(), env, info, "uatom".to_string());
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
+    }
+
+    #[test]
+    fn test_update_config_pyth_addr_unauthorized() {
+        // Issue #87: Non-owner cannot update config (pyth_contract_addr)
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (owner, pyth, _) = test_addrs();
+        let api = MockApi::default();
+        let not_owner = api.addr_make("not_owner");
+        let new_pyth = api.addr_make("new_pyth");
+        
+        // Instantiate
+        let info = message_info(&owner, &[]);
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        // Try to update pyth_contract_addr as non-owner
+        let info = message_info(&not_owner, &[]);
+        let res = execute_update_config(
+            deps.as_mut(),
+            env,
+            info,
+            Some(new_pyth.to_string()),
+            None,
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
+    }
+
+    #[test]
+    fn test_update_config_max_ratio_unauthorized() {
+        // Issue #87: Non-owner cannot update config (max_confidence_ratio)
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (owner, pyth, _) = test_addrs();
+        let api = MockApi::default();
+        let not_owner = api.addr_make("not_owner");
+        
+        // Instantiate
+        let info = message_info(&owner, &[]);
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        // Try to update max_confidence_ratio as non-owner
+        let info = message_info(&not_owner, &[]);
+        let res = execute_update_config(
+            deps.as_mut(),
+            env,
+            info,
+            None,
+            Some(Decimal::percent(2)),
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
+    }
+
+    #[test]
+    fn test_transfer_ownership_unauthorized() {
+        // Issue #87: Non-owner cannot initiate ownership transfer
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (owner, pyth, new_owner) = test_addrs();
+        let api = MockApi::default();
+        let not_owner = api.addr_make("not_owner");
+        
+        // Instantiate
+        let info = message_info(&owner, &[]);
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        // Try to transfer ownership as non-owner
+        let info = message_info(&not_owner, &[]);
+        let res = execute_transfer_ownership(
+            deps.as_mut(),
+            env,
+            info,
+            new_owner.to_string(),
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
+    }
+
+    #[test]
+    fn test_accept_ownership_without_pending() {
+        // Issue #87: Cannot accept ownership if no transfer is pending
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (owner, pyth, _) = test_addrs();
+        let api = MockApi::default();
+        let random_sender = api.addr_make("random");
+        
+        // Instantiate
+        let info = message_info(&owner, &[]);
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        // Try to accept ownership when no transfer is pending
+        let info = message_info(&random_sender, &[]);
+        let res = execute_accept_ownership(deps.as_mut(), env, info);
+        assert!(matches!(res.unwrap_err(), ContractError::PendingOwnerNotSet));
+    }
+
+    #[test]
+    fn test_owner_auth_for_all_execute_messages() {
+        // Issue #87: Comprehensive test that owner auth is required for all execute messages
+        // This test validates the auth check pattern is consistent across all execute handlers
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let (owner, pyth, new_owner) = test_addrs();
+        let api = MockApi::default();
+        let not_owner = api.addr_make("not_owner");
+        
+        // Instantiate with a price feed so we can try to remove it
+        let info = message_info(&owner, &[]);
+        let feed_id = valid_feed_id();
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![crate::msg::PriceFeedConfig {
+                denom: "uatom".to_string(),
+                feed_id: feed_id.clone(),
+            }],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        let info_not_owner = message_info(&not_owner, &[]);
+
+        // Test SetPriceFeed
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            info_not_owner.clone(),
+            ExecuteMsg::SetPriceFeed {
+                denom: "uosmo".to_string(),
+                feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string(),
+            },
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "SetPriceFeed should require owner");
+
+        // Test RemovePriceFeed
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            info_not_owner.clone(),
+            ExecuteMsg::RemovePriceFeed { denom: "uatom".to_string() },
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "RemovePriceFeed should require owner");
+
+        // Test UpdateConfig
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            info_not_owner.clone(),
+            ExecuteMsg::UpdateConfig {
+                pyth_contract_addr: None,
+                max_confidence_ratio: Some(Decimal::percent(2)),
+            },
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "UpdateConfig should require owner");
+
+        // Test TransferOwnership
+        let res = execute(
+            deps.as_mut(),
+            env.clone(),
+            info_not_owner.clone(),
+            ExecuteMsg::TransferOwnership {
+                new_owner: new_owner.to_string(),
+            },
+        );
+        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "TransferOwnership should require owner");
+
+        // AcceptOwnership doesn't require owner - it requires pending_owner
+        // This is tested separately in test_accept_ownership_wrong_sender
     }
 
     // ========== Query Handler Tests ==========

@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InstantiateMsg",
+  "description": "Instantiate message.",
+  "type": "object",
+  "required": [
+    "max_confidence_ratio",
+    "owner",
+    "price_feeds",
+    "pyth_contract_addr"
+  ],
+  "properties": {
+    "max_confidence_ratio": {
+      "description": "Maximum confidence ratio (e.g., 0.01 for 1%).",
+      "allOf": [
+        {
+          "$ref": "#/definitions/Decimal"
+        }
+      ]
+    },
+    "owner": {
+      "description": "Contract owner address.",
+      "type": "string"
+    },
+    "price_feeds": {
+      "description": "Initial price feeds to configure.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PriceFeedConfig"
+      }
+    },
+    "pyth_contract_addr": {
+      "description": "Pyth contract address.",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Decimal": {
+      "description": "A fixed-point decimal value with 18 fractional digits, i.e. Decimal(1_000_000_000_000_000_000) == 1.0\n\nThe greatest possible value that can be represented is 340282366920938463463.374607431768211455 (which is (2^128 - 1) / 10^18)",
+      "type": "string"
+    },
+    "PriceFeedConfig": {
+      "description": "Price feed configuration for a denom.",
+      "type": "object",
+      "required": [
+        "denom",
+        "feed_id"
+      ],
+      "properties": {
+        "denom": {
+          "description": "The denom to provide price for.",
+          "type": "string"
+        },
+        "feed_id": {
+          "description": "The Pyth price feed ID (64-character hex string).",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
