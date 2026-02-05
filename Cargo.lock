@@ -810,6 +810,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyth-oracle-adapter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-multi-test",
+ "cw-storage-plus",
+ "cw2",
+ "hex",
+ "schemars",
+ "serde",
+ "serde-json-wasm",
+ "stone-factory",
+ "stone-market",
+ "stone-testing",
+ "stone-types",
+ "thiserror",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1061,6 +1082,7 @@ dependencies = [
  "cosmwasm-std",
  "cw-multi-test",
  "cw-storage-plus",
+ "hex",
  "schemars",
  "serde",
  "stone-types",

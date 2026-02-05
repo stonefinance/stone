@@ -1,0 +1,14 @@
+{
+  "chainId": "pion-1",
+  "pythContractAddress": "neutron15ldst8t80982akgr8w8ekcytejzkmfpgdkeq4xgtge48qs7435jqp87u3t",
+  "priceFeeds": [
+    {
+      "denom": "uatom",
+      "feedId": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819"
+    },
+    {
+      "denom": "uusdc",
+      "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a"
+    }
+  ]
+}
