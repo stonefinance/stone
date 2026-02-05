@@ -51,8 +51,8 @@ if [ ! -f "$HOME_DIR/.initialized" ]; then
 
     echo "=== Adding genesis accounts ==="
     # Note: Default staking denom is 'stake' not 'ustake'
-    wasmd genesis add-genesis-account "$VALIDATOR_ADDR" 1000000000000stake,1000000000000ustone --home "$HOME_DIR"
-    wasmd genesis add-genesis-account "$USER1_ADDR" 1000000000000stake,1000000000000ustone,1000000000000uatom,1000000000000uosmo --home "$HOME_DIR"
+    wasmd genesis add-genesis-account "$VALIDATOR_ADDR" 1000000000000stake,1000000000000ustone,1000000000000uusdc --home "$HOME_DIR"
+    wasmd genesis add-genesis-account "$USER1_ADDR" 1000000000000stake,1000000000000ustone,1000000000000uatom,1000000000000uusdc --home "$HOME_DIR"
 
     echo "=== Creating genesis transaction ==="
     wasmd genesis gentx validator 100000000stake --chain-id "$CHAIN_ID" --keyring-backend "$KEYRING_BACKEND" --home "$HOME_DIR"

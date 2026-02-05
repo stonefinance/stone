@@ -53,6 +53,11 @@ const LOCAL_CHAIN_INFO = {
       coinMinimalDenom: 'uatom',
       coinDecimals: 6,
     },
+    {
+      coinDenom: 'USDC',
+      coinMinimalDenom: 'uusdc',
+      coinDecimals: 6,
+    },
   ],
   feeCurrencies: [
     {

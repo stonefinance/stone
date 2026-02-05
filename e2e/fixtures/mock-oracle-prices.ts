@@ -6,8 +6,8 @@ export interface OraclePrice {
 // Default oracle prices for testing
 export const DEFAULT_ORACLE_PRICES: OraclePrice[] = [
   { denom: 'uatom', price: '10000000' },  // $10.00
-  { denom: 'uosmo', price: '1000000' },   // $1.00
-  { denom: 'ustone', price: '1000000' },  // $1.00
+  { denom: 'uusdc', price: '1000000' },   // $1.00
+  { denom: 'ustone', price: '500000' },   // $0.50
   { denom: 'ustake', price: '100000' },   // $0.10
 ];
 
@@ -19,32 +19,32 @@ export const PRICE_SCENARIOS = {
   // ATOM price crash (for liquidation testing)
   atomCrash: [
     { denom: 'uatom', price: '5000000' },   // $5.00 (50% drop)
-    { denom: 'uosmo', price: '1000000' },
-    { denom: 'ustone', price: '1000000' },
+    { denom: 'uusdc', price: '1000000' },
+    { denom: 'ustone', price: '500000' },
     { denom: 'ustake', price: '100000' },
   ],
 
   // ATOM price pump
   atomPump: [
     { denom: 'uatom', price: '20000000' },  // $20.00 (100% increase)
-    { denom: 'uosmo', price: '1000000' },
-    { denom: 'ustone', price: '1000000' },
+    { denom: 'uusdc', price: '1000000' },
+    { denom: 'ustone', price: '500000' },
     { denom: 'ustake', price: '100000' },
   ],
 
   // All assets crash
   marketCrash: [
     { denom: 'uatom', price: '3000000' },   // $3.00
-    { denom: 'uosmo', price: '300000' },    // $0.30
-    { denom: 'ustone', price: '800000' },   // $0.80
+    { denom: 'uusdc', price: '800000' },    // $0.80
+    { denom: 'ustone', price: '400000' },   // $0.40
     { denom: 'ustake', price: '50000' },    // $0.05
   ],
 
   // Stablecoin depeg scenario
   stoneDepeg: [
     { denom: 'uatom', price: '10000000' },
-    { denom: 'uosmo', price: '1000000' },
-    { denom: 'ustone', price: '900000' },   // $0.90 (10% depeg)
+    { denom: 'uusdc', price: '1000000' },
+    { denom: 'ustone', price: '450000' },   // $0.45 (10% depeg from $0.50)
     { denom: 'ustake', price: '100000' },
   ],
 };

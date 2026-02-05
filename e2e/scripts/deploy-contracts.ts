@@ -58,20 +58,12 @@ const DEFAULT_PYTH_FEEDS: PythPriceFeedConfig[] = [
     feedId: 'b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819', // ATOM/USD
   },
   {
-    denom: 'uosmo',
-    feedId: '5867f5683c757393a0670ef0f701490950fe93fdb006d181c8265a831ac0c5c6', // OSMO/USD
-  },
-  {
     denom: 'uusdc',
     feedId: 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a', // USDC/USD
   },
   {
-    denom: 'uusdt',
-    feedId: '2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b', // USDT/USD
-  },
-  {
     denom: 'ustone',
-    feedId: 'eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a', // Use USDC feed as STONE stablecoin reference
+    feedId: '4ea5bb4d2f5900cc2e97ba534240950740b4d3b89fe712a94a7304fd2fd92702', // AKT/USD feed as proxy for STONE
   },
 ];
 
@@ -151,10 +143,8 @@ async function deployMockOracle(
     {
       prices: [
         { denom: 'uatom', price: '10' },    // $10
-        { denom: 'uosmo', price: '1' },     // $1
-        { denom: 'ustone', price: '1' },    // $1
         { denom: 'uusdc', price: '1' },     // $1
-        { denom: 'uusdt', price: '1' },     // $1
+        { denom: 'ustone', price: '0.5' },  // $0.50
       ],
     },
     'Mock Oracle',
@@ -424,15 +414,15 @@ async function main() {
     oracleCodeId
   );
 
-  // Market 1: ATOM/STONE (collateral/debt)
-  console.log('Creating ATOM/STONE market...');
+  // Market 1: STONE/USDC (collateral/debt)
+  console.log('Creating STONE/USDC market...');
   const market1Result = await client.execute(
     account.address,
     factoryResult.contractAddress,
     {
       create_market: {
-        collateral_denom: 'uatom',
-        debt_denom: 'ustone',
+        collateral_denom: 'ustone',
+        debt_denom: 'uusdc',
         oracle_config: oracleConfig,
         params: {
           loan_to_value: '0.75',          // 75%
@@ -470,25 +460,25 @@ async function main() {
   testMarkets.push({
     marketId: '1',
     marketAddress: market1Address,
-    collateralDenom: 'uatom',
-    debtDenom: 'ustone',
+    collateralDenom: 'ustone',
+    debtDenom: 'uusdc',
   });
   console.log(`Market 1 address: ${market1Address}`);
 
-  // Market 2: OSMO/STONE
-  console.log('Creating OSMO/STONE market...');
+  // Market 2: ATOM/USDC
+  console.log('Creating ATOM/USDC market...');
   const market2Result = await client.execute(
     account.address,
     factoryResult.contractAddress,
     {
       create_market: {
-        collateral_denom: 'uosmo',
-        debt_denom: 'ustone',
+        collateral_denom: 'uatom',
+        debt_denom: 'uusdc',
         oracle_config: oracleConfig,
         params: {
-          loan_to_value: '0.65',          // 65%
-          liquidation_threshold: '0.75',  // 75%
-          liquidation_bonus: '0.08',      // 8%
+          loan_to_value: '0.75',          // 75%
+          liquidation_threshold: '0.80',  // 80%
+          liquidation_bonus: '0.05',      // 5%
           liquidation_protocol_fee: '0.1', // 10%
           close_factor: '0.5',            // 50%
           dust_debt_threshold: '1000000', // 1M micro-units (1 token)
@@ -496,10 +486,10 @@ async function main() {
           curator_fee: '0.05',            // 5%
           interest_rate_model: {
             linear: {
-              base_rate: '0.03',            // 3%
-              slope_1: '0.05',              // 5%
-              slope_2: '1.00',              // 100%
-              optimal_utilization: '0.75',  // 75%
+              base_rate: '0.02',            // 2%
+              slope_1: '0.04',              // 4%
+              slope_2: '0.75',              // 75%
+              optimal_utilization: '0.80',  // 80%
             },
           },
           supply_cap: null,
@@ -520,8 +510,8 @@ async function main() {
   testMarkets.push({
     marketId: '2',
     marketAddress: market2Address,
-    collateralDenom: 'uosmo',
-    debtDenom: 'ustone',
+    collateralDenom: 'uatom',
+    debtDenom: 'uusdc',
   });
   console.log(`Market 2 address: ${market2Address}`);
 
