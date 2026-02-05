@@ -135,13 +135,13 @@ import { useWallet } from '@/lib/cosmjs/wallet';
 const { signingClient } = useWallet();
 
 // Supply
-await signingClient.supply(marketAddress, { denom: 'uosmo', amount: '1000000' });
+await signingClient.supply(marketAddress, { denom: 'uusdc', amount: '1000000' });
 
 // Borrow
 await signingClient.borrow(marketAddress, '500000');
 
 // Repay
-await signingClient.repay(marketAddress, { denom: 'uosmo', amount: '500000' });
+await signingClient.repay(marketAddress, { denom: 'uusdc', amount: '500000' });
 ```
 
 ## Health Factor

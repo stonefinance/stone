@@ -44,11 +44,6 @@ const LOCAL_CHAIN_INFO = {
       coinDecimals: 6,
     },
     {
-      coinDenom: 'OSMO',
-      coinMinimalDenom: 'uosmo',
-      coinDecimals: 6,
-    },
-    {
       coinDenom: 'ATOM',
       coinMinimalDenom: 'uatom',
       coinDecimals: 6,

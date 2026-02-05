@@ -15,7 +15,7 @@ export const TEST_ACCOUNTS = {
   },
   user1: {
     mnemonic: TEST_USER_1_MNEMONIC,
-    // This is the funded test account with stake, ustone, uatom, uosmo
+    // This is the funded test account with stake, ustone, uatom, uusdc
     address: 'wasm1cyyzpxplxdzkeea7kwsydadg87357qna465cff',
   },
   user2: {
