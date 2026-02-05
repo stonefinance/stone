@@ -279,7 +279,14 @@ export default function MarketDetailPage() {
   const userSupply = position?.supplyAmount
     ? parseFloat(microToBase(position.supplyAmount))
     : 0;
-  const currentLtv = userCollateral > 0 && userDebt > 0 ? (userDebt / userCollateral) * 100 : 0;
+  const userCollateralValue = collateralPrice ? userCollateral * collateralPrice : null;
+  const userDebtValue = debtPrice ? userDebt * debtPrice : null;
+  const currentLtv =
+    userCollateral > 0 && userDebt > 0
+      ? ((userDebtValue != null && userCollateralValue != null
+          ? userDebtValue / userCollateralValue
+          : userDebt / userCollateral) * 100)
+      : 0;
   const hasDebt = hasActiveDebt(position);
 
   // Format large numbers

@@ -15,14 +15,27 @@ interface BorrowPositionProps {
 export function BorrowPosition({ position, market, pythPrices = {} }: BorrowPositionProps) {
   const collateral = parseFloat(microToBase(position.collateralAmount));
   const debt = parseFloat(microToBase(position.debtAmount));
-  const currentLtv = collateral > 0 && debt > 0 ? (debt / collateral) * 100 : 0;
-  const health = position.healthFactor;
 
   const collateralPrice = pythPrices[getChainDenom(market.collateralDenom)];
   const debtPrice = pythPrices[getChainDenom(market.debtDenom)];
 
   const collateralUSD = collateralPrice ? collateral * collateralPrice : null;
   const debtUSD = debtPrice ? debt * debtPrice : null;
+
+  const currentLtv =
+    collateral > 0 && debt > 0
+      ? ((debtUSD != null && collateralUSD != null ? debtUSD / collateralUSD : debt / collateral) * 100)
+      : 0;
+
+  const liquidationThreshold =
+    'params' in market && market.params?.liquidation_threshold
+      ? parseFloat(market.params.liquidation_threshold)
+      : undefined;
+
+  const computedHealth =
+    liquidationThreshold && currentLtv > 0 ? liquidationThreshold / (currentLtv / 100) : undefined;
+
+  const health = position.healthFactor ?? computedHealth;
 
   return (
     <div className="grid grid-cols-2 gap-4">
