@@ -6,7 +6,7 @@ import {
   FAUCET_ALLOWED_DENOMS,
   FAUCET_TOKENS,
   FAUCET_COOLDOWN_MS,
-} from '@/lib/constants/faucet';
+} from '@/lib/constants/faucetServer';
 import { CHAIN_ID, RPC_ENDPOINT, GAS_PRICE } from '@/lib/constants/contracts';
 
 // Guard: faucet only available on local devnet
@@ -14,17 +14,17 @@ const FAUCET_ENABLED =
   CHAIN_ID === 'stone-local-1' ||
   RPC_ENDPOINT.includes('localhost');
 
-// In-memory rate limiter: address → last request timestamp
+// In-memory rate limiter: address+denom → last request timestamp
 const cooldowns = new Map<string, number>();
 
-function isOnCooldown(address: string): boolean {
-  const last = cooldowns.get(address);
+function isOnCooldown(key: string): boolean {
+  const last = cooldowns.get(key);
   if (!last) return false;
   return Date.now() - last < FAUCET_COOLDOWN_MS;
 }
 
-function remainingCooldown(address: string): number {
-  const last = cooldowns.get(address);
+function remainingCooldown(key: string): number {
+  const last = cooldowns.get(key);
   if (!last) return 0;
   return Math.max(0, FAUCET_COOLDOWN_MS - (Date.now() - last));
 }
@@ -70,9 +70,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Rate limit
-  if (isOnCooldown(address)) {
-    const remaining = Math.ceil(remainingCooldown(address) / 1000);
+  // Rate limit (per address+denom)
+  const cooldownKey = `${address}:${denom}`;
+  if (isOnCooldown(cooldownKey)) {
+    const remaining = Math.ceil(remainingCooldown(cooldownKey) / 1000);
     return NextResponse.json(
       { error: `Rate limited — try again in ${remaining}s` },
       { status: 429 }
@@ -89,6 +90,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (!DEV_FAUCET_MNEMONIC) {
+      return NextResponse.json(
+        { error: 'Faucet mnemonic not configured' },
+        { status: 500 }
+      );
+    }
+
     // Create wallet from dev mnemonic
     const wallet = await DirectSecp256k1HdWallet.fromMnemonic(DEV_FAUCET_MNEMONIC, {
       prefix: 'wasm',
@@ -111,7 +119,7 @@ export async function POST(request: NextRequest) {
     );
 
     // Record cooldown
-    cooldowns.set(address, Date.now());
+    cooldowns.set(cooldownKey, Date.now());
 
     client.disconnect();
 

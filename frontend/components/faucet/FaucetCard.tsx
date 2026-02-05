@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { TokenIcon } from '@/components/ui/token-icon';
 import { formatDisplayAmount } from '@/lib/utils/format';
 import { useBalance } from '@/hooks/useBalance';
-import { FAUCET_COOLDOWN_MS, type FaucetToken } from '@/lib/constants/faucet';
+import { FAUCET_COOLDOWN_MS, type FaucetToken } from '@/lib/constants/faucetClient';
 
 interface FaucetCardProps {
   token: FaucetToken;

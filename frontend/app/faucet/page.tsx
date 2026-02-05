@@ -1,20 +1,29 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { FaucetCard } from '@/components/faucet/FaucetCard';
 import { Button } from '@/components/ui/button';
 import { useWallet } from '@/lib/cosmjs/wallet';
-import { FAUCET_TOKENS } from '@/lib/constants/faucet';
+import { FAUCET_TOKENS } from '@/lib/constants/faucetClient';
 import { isLocal } from '@/lib/constants/contracts';
-import { redirect } from 'next/navigation';
 
 export default function FaucetPage() {
+  const router = useRouter();
+
   // Redirect to markets if not on devnet
-  if (!isLocal) {
-    redirect('/markets');
-  }
+  useEffect(() => {
+    if (!isLocal) {
+      router.replace('/markets');
+    }
+  }, [router]);
 
   const { address, isConnected, connect, isLoading } = useWallet();
+
+  if (!isLocal) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-background">
