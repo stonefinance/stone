@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
+    entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Response,
 };
 
 use crate::error::ContractError;
@@ -79,9 +79,11 @@ pub fn instantiate(
 }
 
 /// Migrate entry point for contract upgrades.
-/// No-op migration that just sets the contract version for tracking.
 #[entry_point]
-pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> Result<Response, ContractError> {
+    // Ensure we're not downgrading from a newer version
+    cw2::ensure_from_older_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
     // Set contract version for migration tracking
     cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 

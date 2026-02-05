@@ -11,6 +11,11 @@ use cosmwasm_std::{coin, Addr, Decimal, Empty};
 use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor, IntoAddr};
 use pyth_oracle_adapter::contract as adapter_contract;
 use pyth_oracle_adapter::msg::{ExecuteMsg as AdapterExecuteMsg, InstantiateMsg as AdapterInstantiateMsg, QueryMsg as AdapterQueryMsg, PriceFeedConfig};
+
+/// Helper function to add context to errors using anyhow
+fn app_error_context<T, E: std::fmt::Display>(result: Result<T, E>) -> anyhow::Result<T> {
+    result.map_err(|e| anyhow::anyhow!("{}", e))
+}
 use stone_testing::{
     mock_pyth_contract, MockPythExecuteMsg, MockPythInstantiateMsg, MockPriceFeedInit,
     COLLATERAL_DENOM, DEBT_DENOM, default_market_params,
@@ -541,15 +546,15 @@ fn test_adapter_rejects_negative_price() {
         .unwrap();
 
     // Query should fail due to negative price
-    let result: Result<PriceResponse, _> = app_error_context(app.wrap().query_wasm_smart(
+    let result: Result<PriceResponse, _> = app.wrap().query_wasm_smart(
         adapter_addr,
         &AdapterQueryMsg::Price {
             denom: "uatom".to_string(),
         },
-    ));
+    );
 
     assert!(result.is_err());
-    let err_str = result.unwrap_err().root_cause().to_string();
+    let err_str = result.unwrap_err().to_string();
     assert!(
         err_str.contains("Negative or zero price"),
         "Expected negative price error, got: {}",
@@ -612,15 +617,15 @@ fn test_adapter_rejects_zero_price() {
         .unwrap();
 
     // Query should fail due to zero price
-    let result: Result<PriceResponse, _> = app_error_context(app.wrap().query_wasm_smart(
+    let result: Result<PriceResponse, _> = app.wrap().query_wasm_smart(
         adapter_addr,
         &AdapterQueryMsg::Price {
             denom: "uatom".to_string(),
         },
-    ));
+    );
 
     assert!(result.is_err());
-    let err_str = result.unwrap_err().root_cause().to_string();
+    let err_str = result.unwrap_err().to_string();
     assert!(
         err_str.contains("Negative or zero price"),
         "Expected negative or zero price error, got: {}",
@@ -1123,9 +1128,9 @@ fn test_market_rejects_stale_price() {
     );
 }
 
-/// Test: Price drop triggers liquidation scenario
+/// Test: Price drop propagates through adapter
 #[test]
-fn test_price_drop_affects_health_factor() {
+fn test_price_drop_propagates_through_adapter() {
     let mut env = setup_full_stack_env();
 
     // Create market with Pyth oracle
@@ -1204,9 +1209,4 @@ fn test_price_drop_affects_health_factor() {
 
     // New price: 5_000_000_000 * 10^-8 = 50.00
     assert_eq!(new_price.price, Decimal::from_atomics(50u128, 0).unwrap());
-}
-
-/// Helper to convert anyhow::Error to a comparable error context
-fn app_error_context<T>(result: Result<T, anyhow::Error>) -> Result<T, anyhow::Error> {
-    result
 }
