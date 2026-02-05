@@ -10,9 +10,11 @@ interface PositionDisplayProps {
   positionType: PositionType;
   market: Market;
   isConnected: boolean;
+  /** Pyth USD prices keyed by chain denom — passed from page level */
+  pythPrices?: Record<string, number>;
 }
 
-export function PositionDisplay({ position, positionType, market, isConnected }: PositionDisplayProps) {
+export function PositionDisplay({ position, positionType, market, isConnected, pythPrices }: PositionDisplayProps) {
   if (!isConnected) {
     return (
       <Card>
@@ -27,9 +29,9 @@ export function PositionDisplay({ position, positionType, market, isConnected }:
     case 'none':
       return <NoPosition />;
     case 'supply':
-      return <SupplyPosition position={position!} market={market} />;
+      return <SupplyPosition position={position!} market={market} pythPrices={pythPrices} />;
     case 'borrow':
-      return <BorrowPosition position={position!} market={market} />;
+      return <BorrowPosition position={position!} market={market} pythPrices={pythPrices} />;
     case 'both':
       return (
         <div className="space-y-4">
@@ -37,8 +39,8 @@ export function PositionDisplay({ position, positionType, market, isConnected }:
             <AlertTriangle className="h-4 w-4" />
             <p className="text-sm font-medium">You have both a supply and borrow position. Consider repaying your debt first.</p>
           </div>
-          <SupplyPosition position={position!} market={market} />
-          <BorrowPosition position={position!} market={market} />
+          <SupplyPosition position={position!} market={market} pythPrices={pythPrices} />
+          <BorrowPosition position={position!} market={market} pythPrices={pythPrices} />
         </div>
       );
     default:

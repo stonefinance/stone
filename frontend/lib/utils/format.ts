@@ -100,3 +100,23 @@ export function getHealthFactorStatus(healthFactor?: number): string {
   if (healthFactor >= 1.2) return 'Risky';
   return 'Danger';
 }
+
+/**
+ * Format a unix timestamp (seconds) to a human-readable relative string.
+ * e.g. "just now", "3 mins ago", "2 hours ago", "1 day ago"
+ */
+export function formatRelativeTime(timestamp: number): string {
+  const diff = Math.floor(Date.now() / 1000) - timestamp;
+
+  if (diff < 60) return 'just now';
+  if (diff < 3600) {
+    const mins = Math.floor(diff / 60);
+    return `${mins} min${mins > 1 ? 's' : ''} ago`;
+  }
+  if (diff < 86400) {
+    const hours = Math.floor(diff / 3600);
+    return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  }
+  const days = Math.floor(diff / 86400);
+  return `${days} day${days > 1 ? 's' : ''} ago`;
+}

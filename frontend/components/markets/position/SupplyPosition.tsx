@@ -4,23 +4,22 @@ import { CardContent } from '@/components/ui/card';
 import { TokenIcon } from '@/components/ui/token-icon';
 import { UserPosition } from '@/types';
 import { formatDisplayAmount, formatPercentage, formatUSD, microToBase } from '@/lib/utils/format';
-import { usePythPrices } from '@/hooks/usePythPrices';
 import { getChainDenom } from '@/lib/utils/denom';
 
 interface SupplyPositionProps {
   position: UserPosition;
   market: { debtDenom: string; supplyApy: number };
+  /** Pyth USD prices keyed by chain denom — passed from page level (review #3) */
+  pythPrices?: Record<string, number>;
 }
 
-export function SupplyPosition({ position, market }: SupplyPositionProps) {
+export function SupplyPosition({ position, market, pythPrices = {} }: SupplyPositionProps) {
   const supplyDenom = market.debtDenom; // Supply is in the debt token
   const supplyApy = market.supplyApy;
   const supplyAmount = parseFloat(microToBase(position.supplyAmount));
   const estimatedYield = supplyAmount * (supplyApy / 100);
 
-  // Fetch Pyth price for the supply token
-  const { prices } = usePythPrices([getChainDenom(supplyDenom)], 30000);
-  const price = prices[getChainDenom(supplyDenom)];
+  const price = pythPrices[getChainDenom(supplyDenom)];
 
   const supplyUSD = price ? supplyAmount * price : null;
   const yieldUSD = price ? estimatedYield * price : null;

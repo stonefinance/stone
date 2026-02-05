@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/layout/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +28,7 @@ import {
   getChartLabel,
 } from '@/hooks/useMarketSnapshots';
 import { usePythPrices } from '@/hooks/usePythPrices';
+import { getChainDenom } from '@/lib/utils/denom';
 import {
   formatDisplayAmount,
   formatPercentage,
@@ -35,8 +36,7 @@ import {
   microToBase,
   baseToMicro,
 } from '@/lib/utils/format';
-import { getChainDenom } from '@/lib/utils/denom';
-import { Info, ExternalLink } from 'lucide-react';
+import { Info, ExternalLink, AlertTriangle } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -94,15 +94,26 @@ export default function MarketDetailPage() {
     isLoading: chartLoading,
   } = useMarketSnapshots(marketId, chartTimeRange);
 
-  // Fetch Pyth prices for live price display
-  const { prices: pythPrices, isLoading: pythLoading } = usePythPrices(
-    market ? [getChainDenom(market.collateralDenom), getChainDenom(market.debtDenom)] : [],
-    15000
+  // ── Single Pyth price fetch for the whole page (review #3) ─────────────────
+  // All child components receive prices as props instead of calling the hook
+  // themselves. This avoids up to 4 redundant fetches.
+  const pythDenoms = useMemo(
+    () => (market ? [getChainDenom(market.collateralDenom), getChainDenom(market.debtDenom)] : []),
+    [market],
+  );
+  const { prices: pythPrices, rawPrices: pythRawPrices, isLoading: pythLoading, isStale: pythIsStale, error: pythError, lastUpdated: pythLastUpdated } = usePythPrices(
+    pythDenoms,
+    15000,
   );
 
-  const collateralPrice = market ? pythPrices[getChainDenom(market.collateralDenom)] : undefined;
-  const debtPrice = market ? pythPrices[getChainDenom(market.debtDenom)] : undefined;
-  const oraclePriceRatio = collateralPrice && debtPrice ? collateralPrice / debtPrice : null;
+  const collateralPrice = market
+    ? pythPrices[getChainDenom(market.collateralDenom)]
+    : undefined;
+  const debtPrice = market
+    ? pythPrices[getChainDenom(market.debtDenom)]
+    : undefined;
+  const oraclePriceRatio =
+    collateralPrice && debtPrice ? collateralPrice / debtPrice : null;
 
   useEffect(() => {
     if (initializedTab) return;
@@ -284,6 +295,16 @@ export default function MarketDetailPage() {
       <Header />
 
       <main className="container mx-auto px-4 py-8">
+        {/* Stale price warning (review #2) */}
+        {pythIsStale && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-3 text-yellow-700 dark:text-yellow-400">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <p className="text-sm font-medium">
+              Oracle prices may be stale (older than 5 minutes). Displayed values could be inaccurate.
+            </p>
+          </div>
+        )}
+
         {/* Page Header */}
         <div className="flex items-start justify-between mb-8">
           <div className="flex items-center gap-4">
@@ -393,6 +414,7 @@ export default function MarketDetailPage() {
                   positionType={positionType}
                   market={market}
                   isConnected={isConnected}
+                  pythPrices={pythPrices}
                 />
               </TabsContent>
 
@@ -617,6 +639,12 @@ export default function MarketDetailPage() {
                         }
                       : undefined,
                   }}
+                  pythPrices={pythPrices}
+                  pythRawPrices={pythRawPrices}
+                  pythLoading={pythLoading}
+                  pythError={pythError}
+                  pythLastUpdated={pythLastUpdated}
+                  pythIsStale={pythIsStale}
                 />
               </TabsContent>
 

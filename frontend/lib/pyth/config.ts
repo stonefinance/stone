@@ -18,6 +18,11 @@ export const PYTH_UPDATE_FEE_DENOM = process.env.NEXT_PUBLIC_PYTH_FEE_DENOM || (
 // the real required fee amount. This constant is a safe default for development.
 export const PYTH_UPDATE_FEE_AMOUNT = process.env.NEXT_PUBLIC_PYTH_FEE_AMOUNT || '1';
 
+// ── Staleness threshold for Pyth prices ──────────────────────────────────────
+// Prices older than this threshold are considered stale.
+// For a lending protocol, stale oracle prices can lead to incorrect valuations.
+export const PYTH_STALENESS_THRESHOLD_SECONDS = 300; // 5 minutes
+
 export interface PythFeedConfig {
   feedId: string;
   symbol: string;
@@ -47,8 +52,10 @@ export const DEFAULT_PYTH_FEEDS: Record<string, PythFeedConfig> = {
     feedId: '0xef0d8b6da4fd10e5626b7a6cc5b568ea55500dc6f006a7d515b6a6228e38e6d4',
     symbol: 'SOL/USD',
   },
+  // NOTE: STONE does not yet have its own Pyth price feed.
+  // We use the AKT/USD feed as a proxy — the prices are NOT identical.
+  // Replace this with a real STONE feed when one becomes available.
   ustone: {
-    // Uses AKT/USD as a proxy feed for STONE pricing
     feedId: '0x4ea5bb4d2f5900cc2e97ba534240950740b4d3b89fe712a94a7304fd2fd92702',
     symbol: 'STONE/USD',
   },
@@ -71,7 +78,7 @@ export const PYTH_FEED_IDS: Record<string, string> = Object.entries(DEFAULT_PYTH
     acc[denom] = config.feedId.replace(/^0x/, '');
     return acc;
   },
-  {} as Record<string, string>
+  {} as Record<string, string>,
 );
 
 // Reverse mapping for looking up denom by feed ID
@@ -80,7 +87,7 @@ export const PYTH_FEED_ID_TO_DENOM: Record<string, string> = Object.entries(DEFA
     acc[config.feedId.replace(/^0x/, '')] = denom;
     return acc;
   },
-  {} as Record<string, string>
+  {} as Record<string, string>,
 );
 
 // Pyth Hermes API endpoints
@@ -96,15 +103,15 @@ export const PYTH_HERMES_URLS = {
  */
 export function getHermesUrl(): string {
   const chainId = process.env.NEXT_PUBLIC_CHAIN_ID || '';
-  
+
   if (chainId.includes('local') || chainId.includes('dev')) {
     return PYTH_HERMES_URLS.local;
   }
-  
+
   if (chainId.includes('testnet') || chainId.includes('osmo-test')) {
     return PYTH_HERMES_URLS.testnet;
   }
-  
+
   return PYTH_HERMES_URLS.mainnet;
 }
 
@@ -125,7 +132,7 @@ export function getFeedIdsForDenoms(denoms: string[]): string[] {
   const feedIds = denoms
     .map(getFeedIdForDenom)
     .filter((id): id is string => id !== undefined && id.length > 0);
-  
+
   // Remove duplicates
   return [...new Set(feedIds)];
 }

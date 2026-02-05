@@ -17,6 +17,7 @@ import {
   formatUSD,
   microToBase,
 } from '@/lib/utils/format';
+import { getChainDenom } from '@/lib/utils/denom';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 
 interface MarketsTableProps {
@@ -95,12 +96,6 @@ function TokenCell({ symbol }: { symbol: string }) {
   );
 }
 
-/** Map a display denom (e.g. "ATOM") back to the chain denom (e.g. "uatom"). */
-function toChainDenom(displayDenom: string): string {
-  const lower = displayDenom.toLowerCase();
-  return lower.startsWith('u') ? lower : `u${lower}`;
-}
-
 export function MarketsTable({
   markets,
   positionsMap,
@@ -177,8 +172,8 @@ export function MarketsTable({
               </TableCell>
               <TableCell className="text-right">
                 {(() => {
-                  const colPrice = pythPrices[toChainDenom(market.collateralDenom)];
-                  const debtPrice = pythPrices[toChainDenom(market.debtDenom)];
+                  const colPrice = pythPrices[getChainDenom(market.collateralDenom)];
+                  const debtPrice = pythPrices[getChainDenom(market.debtDenom)];
                   if (colPrice && debtPrice) {
                     return (
                       <span className="font-medium">
@@ -191,14 +186,15 @@ export function MarketsTable({
               </TableCell>
               <TableCell className="text-right">
                 <div>
-                  <span>{formatDisplayAmount(microToBase(market.totalSupplied), 0)} {market.debtDenom}</span>
+                  <span>
+                    {formatDisplayAmount(microToBase(market.totalSupplied), 0)} {market.debtDenom}
+                  </span>
                   {(() => {
-                    const debtPrice = pythPrices[toChainDenom(market.debtDenom)];
+                    const debtPrice = pythPrices[getChainDenom(market.debtDenom)];
                     if (debtPrice) {
-                      const usdValue = parseFloat(microToBase(market.totalSupplied)) * debtPrice;
                       return (
                         <div className="text-xs text-muted-foreground">
-                          {formatUSD(usdValue)}
+                          {formatUSD(parseFloat(microToBase(market.totalSupplied)) * debtPrice)}
                         </div>
                       );
                     }

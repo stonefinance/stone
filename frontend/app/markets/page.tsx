@@ -21,7 +21,7 @@ export default function MarketsPage() {
     direction: 'desc',
   });
 
-  // Collect unique chain denoms from all markets for Pyth price fetch
+  // Collect all unique chain denoms across markets for a single Pyth fetch
   const allDenoms = useMemo(() => {
     const denomSet = new Set<string>();
     markets.forEach((m) => {
