@@ -9,6 +9,7 @@ import { CollateralAtRisk } from './CollateralAtRisk';
 import { LiquidationHistory, LiquidationEvent } from './LiquidationHistory';
 import { parseIRMParams, IRMParams } from '@/lib/utils/irm';
 import { Position } from '@/lib/utils/collateral-risk';
+import { PythPrice } from '@/lib/pyth/client';
 import {
   MOCK_ADVANCED_MARKET_DATA,
   MOCK_IRM_PARAMS,
@@ -34,9 +35,24 @@ interface MarketData {
 
 export interface AdvancedTabProps {
   market: MarketData;
+  /** Pyth USD prices keyed by chain denom — passed from page level (review #3) */
+  pythPrices?: Record<string, number>;
+  pythRawPrices?: Record<string, PythPrice>;
+  pythLoading?: boolean;
+  pythError?: Error | null;
+  pythLastUpdated?: Date | null;
+  pythIsStale?: boolean;
 }
 
-export function AdvancedTab({ market }: AdvancedTabProps) {
+export function AdvancedTab({
+  market,
+  pythPrices,
+  pythRawPrices,
+  pythLoading,
+  pythError,
+  pythLastUpdated,
+  pythIsStale,
+}: AdvancedTabProps) {
   // Parse IRM params from market data or use mock
   const interestRateModel = market.params?.interest_rate_model;
   const irmParams: IRMParams = useMemo(() => {
@@ -70,7 +86,6 @@ export function AdvancedTab({ market }: AdvancedTabProps) {
   // TODO: These values require additional data sources
   // See advanced-tab-data-analysis.md for implementation details
   const oraclePrice = MOCK_ADVANCED_MARKET_DATA.oraclePrice;
-  const referencePrice = MOCK_ADVANCED_MARKET_DATA.referencePrice;
   const totalCollateral = market.totalCollateral
     ? parseFloat(market.totalCollateral)
     : totalSupply / oraclePrice; // Estimate
@@ -96,9 +111,13 @@ export function AdvancedTab({ market }: AdvancedTabProps) {
         oracleAddress={oracleAddress}
         collateralDenom={market.collateralDenom}
         debtDenom={market.debtDenom}
-        oraclePrice={oraclePrice}
-        referencePrice={referencePrice}
         valueSecured={valueSecured}
+        pythPrices={pythPrices}
+        pythRawPrices={pythRawPrices}
+        pythLoading={pythLoading}
+        pythError={pythError}
+        pythLastUpdated={pythLastUpdated}
+        pythIsStale={pythIsStale}
       />
 
       {/* Section 3: IRM Breakdown */}

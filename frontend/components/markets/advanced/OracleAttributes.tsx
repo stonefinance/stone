@@ -1,19 +1,25 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Info, Copy, ExternalLink } from 'lucide-react';
-import { formatDisplayAmount, shortenAddress } from '@/lib/utils/format';
-import { usePythPrices } from '@/hooks/usePythPrices';
-import { formatRelativeTime } from '@/lib/pyth/client';
+import { Info, Copy, ExternalLink, AlertTriangle } from 'lucide-react';
+import { formatDisplayAmount, formatRelativeTime, shortenAddress } from '@/lib/utils/format';
+import { getChainDenom } from '@/lib/utils/denom';
+import { PythPrice } from '@/lib/pyth/client';
+import { PYTH_STALENESS_THRESHOLD_SECONDS } from '@/lib/pyth/config';
 
 export interface OracleAttributesProps {
   oracleAddress: string;
   collateralDenom: string;
   debtDenom: string;
-  // Legacy props - now fetched from Pyth
-  oraclePrice?: number;
-  referencePrice?: number;
   valueSecured?: number;
+  /** Pyth USD prices keyed by chain denom — passed from page level (review #3) */
+  pythPrices?: Record<string, number>;
+  /** Full PythPrice objects for confidence / publishTime display */
+  pythRawPrices?: Record<string, PythPrice>;
+  pythLoading?: boolean;
+  pythError?: Error | null;
+  pythLastUpdated?: Date | null;
+  pythIsStale?: boolean;
 }
 
 export function OracleAttributes({
@@ -21,37 +27,37 @@ export function OracleAttributes({
   collateralDenom,
   debtDenom,
   valueSecured: valueSecuredProp,
+  pythPrices = {},
+  pythRawPrices = {},
+  pythLoading = false,
+  pythError = null,
+  pythLastUpdated = null,
+  pythIsStale = false,
 }: OracleAttributesProps) {
   const handleCopyAddress = () => {
     navigator.clipboard.writeText(oracleAddress);
   };
 
-  // Get Pyth prices for both collateral and debt denoms
-  const { prices, isLoading, error, lastUpdated, rawPrices } = usePythPrices(
-    [collateralDenom, debtDenom],
-    15000 // 15 second refresh
-  );
+  const collateralPrice = pythPrices[getChainDenom(collateralDenom)];
+  const debtPrice = pythPrices[getChainDenom(debtDenom)];
 
-  // Calculate oracle price (collateral / debt)
-  const collateralPrice = prices[collateralDenom];
-  const debtPrice = prices[debtDenom];
-  
-  let oraclePrice: number | undefined;
-  if (collateralPrice && debtPrice) {
-    oraclePrice = collateralPrice / debtPrice;
-  }
+  // Oracle price = collateral / debt
+  const oraclePrice =
+    collateralPrice && debtPrice ? collateralPrice / debtPrice : undefined;
 
-  // Calculate reference price (from Pyth - same as oracle for now, could be from different source)
-  const referencePrice = oraclePrice;
-
-  // Calculate value secured if we have the price
   const valueSecured = valueSecuredProp;
 
-  // Get confidence interval for display
-  const collateralRawPrice = rawPrices[collateralDenom];
-  const confidencePercent = collateralRawPrice?.confidence && collateralRawPrice?.price
-    ? (collateralRawPrice.confidence / collateralRawPrice.price) * 100
-    : null;
+  // Confidence as a percentage of the collateral price
+  const collateralRaw = pythRawPrices[getChainDenom(collateralDenom)];
+  const confidencePercent =
+    collateralRaw?.confidence && collateralRaw?.price
+      ? (collateralRaw.confidence / collateralRaw.price) * 100
+      : null;
+
+  // Check if individual price is stale (for display)
+  const collateralStale = collateralRaw
+    ? Math.floor(Date.now() / 1000) - collateralRaw.publishTime > PYTH_STALENESS_THRESHOLD_SECONDS
+    : false;
 
   const formatLargeUSD = (value: number) => {
     if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
@@ -67,6 +73,16 @@ export function OracleAttributes({
         <CardTitle className="text-base font-medium">Oracle Attributes</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Staleness warning (review #2) */}
+        {pythIsStale && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-2 text-yellow-700 dark:text-yellow-400">
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <p className="text-xs font-medium">
+              Oracle prices may be stale. Displayed values could be inaccurate.
+            </p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-x-8 gap-y-4">
           {/* Left Column */}
           <div className="space-y-4">
@@ -74,7 +90,9 @@ export function OracleAttributes({
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Oracle address</span>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm">{shortenAddress(oracleAddress, 4)}</span>
+                <span className="font-mono text-sm">
+                  {shortenAddress(oracleAddress, 4)}
+                </span>
                 <button
                   onClick={handleCopyAddress}
                   className="text-muted-foreground hover:text-foreground transition-colors"
@@ -97,11 +115,9 @@ export function OracleAttributes({
             {/* Trusted By */}
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Trusted by</span>
-              <div className="flex items-center gap-1">
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                  Pyth
-                </span>
-              </div>
+              <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                Pyth
+              </span>
             </div>
           </div>
 
@@ -111,32 +127,14 @@ export function OracleAttributes({
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Oracle price</span>
               <div className="text-right">
-                {isLoading && oraclePrice === undefined ? (
-                  <span className="text-sm text-muted-foreground animate-pulse">Loading...</span>
-                ) : oraclePrice !== undefined ? (
-                  <span className="text-sm font-medium">
-                    {collateralDenom} / {debtDenom} = {formatDisplayAmount(oraclePrice, 4)}
+                {pythLoading && oraclePrice === undefined ? (
+                  <span className="text-sm text-muted-foreground animate-pulse">
+                    Loading...
                   </span>
-                ) : (
-                  <span className="text-sm text-muted-foreground">N/A</span>
-                )}
-              </div>
-            </div>
-
-            {/* Reference Price */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <span className="text-sm text-muted-foreground">Reference price</span>
-                <span title="Price from Pyth Network">
-                  <Info className="h-3.5 w-3.5 text-muted-foreground" />
-                </span>
-              </div>
-              <div className="text-right">
-                {isLoading && referencePrice === undefined ? (
-                  <span className="text-sm text-muted-foreground animate-pulse">Loading...</span>
-                ) : referencePrice !== undefined ? (
-                  <span className="text-sm font-medium">
-                    {formatDisplayAmount(referencePrice, 4)}
+                ) : oraclePrice !== undefined ? (
+                  <span className={`text-sm font-medium ${collateralStale ? 'text-yellow-600' : ''}`}>
+                    {collateralDenom} / {debtDenom} ={' '}
+                    {formatDisplayAmount(oraclePrice, 4)}
                   </span>
                 ) : (
                   <span className="text-sm text-muted-foreground">N/A</span>
@@ -162,12 +160,12 @@ export function OracleAttributes({
             {/* Last Updated */}
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Last updated</span>
-              <span className="text-sm font-medium">
-                {lastUpdated
-                  ? formatRelativeTime(Math.floor(lastUpdated.getTime() / 1000))
-                  : isLoading
-                  ? 'Loading...'
-                  : 'N/A'}
+              <span className={`text-sm font-medium ${collateralStale ? 'text-yellow-600' : ''}`}>
+                {pythLastUpdated
+                  ? formatRelativeTime(Math.floor(pythLastUpdated.getTime() / 1000))
+                  : pythLoading
+                    ? 'Loading...'
+                    : 'N/A'}
               </span>
             </div>
 
@@ -185,7 +183,7 @@ export function OracleAttributes({
         </div>
 
         {/* Error State */}
-        {error && (
+        {pythError && (
           <div className="mt-4 p-2 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
             Failed to fetch Pyth prices. Using cached data if available.
           </div>
