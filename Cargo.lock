@@ -822,6 +822,8 @@ dependencies = [
  "schemars",
  "serde",
  "serde-json-wasm",
+ "stone-factory",
+ "stone-market",
  "stone-testing",
  "stone-types",
  "thiserror",

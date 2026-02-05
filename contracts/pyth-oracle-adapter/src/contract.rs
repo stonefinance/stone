@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
+    entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
 };
 
 use crate::error::ContractError;
@@ -76,6 +76,19 @@ pub fn instantiate(
         .add_attribute("owner", config.owner)
         .add_attribute("pyth_contract_addr", config.pyth_contract_addr)
         .add_attribute("max_confidence_ratio", config.max_confidence_ratio.to_string()))
+}
+
+/// Migrate entry point for contract upgrades.
+/// No-op migration that just sets the contract version for tracking.
+#[entry_point]
+pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
+    // Set contract version for migration tracking
+    cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    Ok(Response::new()
+        .add_attribute("action", "migrate")
+        .add_attribute("contract", CONTRACT_NAME)
+        .add_attribute("version", CONTRACT_VERSION))
 }
 
 #[entry_point]
@@ -671,6 +684,32 @@ mod tests {
         assert_eq!(config.owner, owner);
         assert_eq!(config.pyth_contract_addr, pyth);
         assert_eq!(config.max_confidence_ratio, Decimal::percent(1));
+    }
+
+    #[test]
+    fn test_migrate_entry_point() {
+        // Test that migrate entry point works correctly
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+
+        // First instantiate the contract
+        let (owner, pyth, _) = test_addrs();
+        let info = message_info(&owner, &[]);
+        let msg = InstantiateMsg {
+            owner: owner.to_string(),
+            pyth_contract_addr: pyth.to_string(),
+            max_confidence_ratio: Decimal::percent(1),
+            price_feeds: vec![],
+        };
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+        // Then migrate (no-op, just updates version)
+        let res = migrate(deps.as_mut(), env, cosmwasm_std::Empty {}).unwrap();
+        
+        // Verify migrate attributes
+        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "migrate"));
+        assert!(res.attributes.iter().any(|a| a.key == "contract" && a.value == CONTRACT_NAME));
+        assert!(res.attributes.iter().any(|a| a.key == "version" && a.value == CONTRACT_VERSION));
     }
 
     #[test]
