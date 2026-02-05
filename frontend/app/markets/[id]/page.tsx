@@ -17,7 +17,7 @@ import { DebtBlocker } from '@/components/markets/actions/DebtBlocker';
 import { useMarket } from '@/hooks/useMarkets';
 import { useUserPosition } from '@/hooks/useUserPosition';
 import { useWallet } from '@/lib/cosmjs/wallet';
-import { hasActiveDebt } from '@/lib/utils/position';
+import { computeLtv, hasActiveDebt } from '@/lib/utils/position';
 import { usePendingTransactions, TransactionAction } from '@/lib/contexts/TransactionContext';
 import { useBalance } from '@/hooks/useBalance';
 import {
@@ -281,12 +281,7 @@ export default function MarketDetailPage() {
     : 0;
   const userCollateralValue = collateralPrice ? userCollateral * collateralPrice : null;
   const userDebtValue = debtPrice ? userDebt * debtPrice : null;
-  const currentLtv =
-    userCollateral > 0 && userDebt > 0
-      ? ((userDebtValue != null && userCollateralValue != null
-          ? userDebtValue / userCollateralValue
-          : userDebt / userCollateral) * 100)
-      : 0;
+  const currentLtv = computeLtv(userDebt, userCollateral, debtPrice, collateralPrice);
   const hasDebt = hasActiveDebt(position);
 
   // Format large numbers
@@ -896,7 +891,7 @@ export default function MarketDetailPage() {
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">LTV</span>
-                        <span>{currentLtv.toFixed(0)}%</span>
+                        <span>{currentLtv === null ? '--' : `${currentLtv.toFixed(0)}%`}</span>
                       </div>
                       <div className="flex items-center justify-between text-sm">
                         <div className="flex items-center gap-1">
