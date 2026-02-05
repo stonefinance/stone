@@ -274,34 +274,24 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::PriceResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
-    // 1. Look up feed ID for this denom
-    let feed_id = PRICE_FEEDS
-        .load(deps.storage, &denom)
-        .map_err(|_| ContractError::PriceFeedNotConfigured {
-            denom: denom.clone(),
-        })?;
+    // 1. Look up feed ID
+    let feed_id = PRICE_FEEDS.load(deps.storage, &denom)
+        .map_err(|_| ContractError::PriceFeedNotConfigured { denom: denom.clone() })?;
 
-    // 2. Query the Pyth contract
-    let pyth_response: PriceFeedResponse = deps
-        .querier
-        .query_wasm_smart(
-            config.pyth_contract_addr.as_str(),
-            &PythQueryMsg::PriceFeed { id: feed_id },
-        )
-        .map_err(|e| ContractError::PythQueryFailed {
-            denom: denom.clone(),
-            reason: e.to_string(),
-        })?;
+    // 2. Query Pyth contract
+    let pyth_response: PriceFeedResponse = deps.querier.query_wasm_smart(
+        config.pyth_contract_addr.as_str(),
+        &PythQueryMsg::PriceFeed { id: feed_id },
+    )?;
 
-    // 3. Get the current price (spot, not EMA)
     let pyth_price = &pyth_response.price_feed.price;
 
-    // 4. Validate price is positive
+    // 3. Reject negative/zero
     if pyth_price.price <= 0 {
         return Err(ContractError::NegativeOrZeroPrice { denom });
     }
 
-    // 5. Check confidence ratio: conf / |price| must be ≤ max_confidence_ratio
+    // 4. Confidence check
     if pyth_price.conf > 0 {
         let conf_ratio = Decimal::from_ratio(pyth_price.conf as u128, pyth_price.price as u128);
         if conf_ratio > config.max_confidence_ratio {
@@ -313,21 +303,15 @@ fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::Pric
         }
     }
 
-    // 6. Convert Pyth price to Decimal using pyth_price_to_decimal
+    // 5. Convert Pyth price to Decimal using pyth_price_to_decimal
     let decimal_price = crate::pyth_types::pyth_price_to_decimal(pyth_price.price, pyth_price.expo)?;
 
-    // 7. Convert publish_time (i64) to updated_at (u64)
-    let updated_at: u64 = pyth_price
-        .publish_time
+    // 6. Convert timestamp
+    let updated_at: u64 = pyth_price.publish_time
         .try_into()
         .map_err(|_| ContractError::InvalidTimestamp)?;
 
-    // 8. Return Stone's PriceResponse
-    Ok(stone_types::PriceResponse {
-        denom,
-        price: decimal_price,
-        updated_at,
-    })
+    Ok(stone_types::PriceResponse { denom, price: decimal_price, updated_at })
 }
 
 fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError> {
@@ -382,6 +366,278 @@ fn query_all_price_feeds(
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockApi};
+
+    // ========== Query Price Handler Tests ==========
+    mod query_price_tests {
+        use super::*;
+        use cosmwasm_std::testing::{mock_env, MockStorage};
+        use cosmwasm_std::{OwnedDeps, SystemResult, ContractResult, to_json_binary, WasmQuery, SystemError};
+        use crate::pyth_types::*;
+        use std::collections::HashMap;
+
+        // Create a querier that responds to Pyth queries
+        fn create_pyth_deps(
+            pyth_addr_str: &str,
+            feeds: HashMap<String, PriceFeedResponse>,
+        ) -> (OwnedDeps<MockStorage, MockApi, cosmwasm_std::testing::MockQuerier>, String) {
+            let mut deps = cosmwasm_std::testing::mock_dependencies();
+            // Get the actual bech32 address that MockApi generates
+            let pyth_bech32 = MockApi::default().addr_make(pyth_addr_str).to_string();
+            let pyth_bech32_clone = pyth_bech32.clone();
+            deps.querier.update_wasm(move |query| {
+                match query {
+                    WasmQuery::Smart { contract_addr, msg } if contract_addr == &pyth_bech32_clone => {
+                        let pyth_msg: PythQueryMsg = cosmwasm_std::from_json(msg).unwrap();
+                        match pyth_msg {
+                            PythQueryMsg::PriceFeed { id } => {
+                                let hex_id = id.to_hex();
+                                match feeds.get(&hex_id) {
+                                    Some(resp) => SystemResult::Ok(ContractResult::Ok(
+                                        to_json_binary(resp).unwrap()
+                                    )),
+                                    None => SystemResult::Err(SystemError::InvalidRequest {
+                                        error: format!("feed {} not found", hex_id),
+                                        request: Default::default(),
+                                    }),
+                                }
+                            }
+                        }
+                    }
+                    _ => SystemResult::Err(SystemError::NoSuchContract { addr: "unknown".into() }),
+                }
+            });
+            (deps, pyth_bech32)
+        }
+
+        fn make_feed_response(feed_id: &str, price: i64, conf: u64, expo: i32, publish_time: i64) -> PriceFeedResponse {
+            PriceFeedResponse {
+                price_feed: PriceFeed {
+                    id: PriceIdentifier::from_hex(feed_id).unwrap(),
+                    price: Price { price, conf, expo, publish_time },
+                    ema_price: Price { price, conf, expo, publish_time },
+                },
+            }
+        }
+
+        // Helper to setup deps with config + feeds stored
+        fn setup_with_pyth(
+            pyth_addr_str: &str,
+            feed_id: &str,
+            denom: &str,
+            pyth_price: i64, conf: u64, expo: i32, publish_time: i64,
+            max_confidence_ratio: Decimal,
+        ) -> OwnedDeps<MockStorage, MockApi, cosmwasm_std::testing::MockQuerier> {
+            let mut feeds = HashMap::new();
+            feeds.insert(feed_id.to_string(), make_feed_response(feed_id, pyth_price, conf, expo, publish_time));
+            let (mut deps, pyth_bech32) = create_pyth_deps(pyth_addr_str, feeds);
+
+            // Store config using the bech32 address that matches what the mock querier expects
+            CONFIG.save(deps.as_mut().storage, &Config {
+                owner: MockApi::default().addr_make("owner"),
+                pyth_contract_addr: cosmwasm_std::Addr::unchecked(pyth_bech32),
+                max_confidence_ratio,
+            }).unwrap();
+
+            // Store feed mapping
+            let price_id = PriceIdentifier::from_hex(feed_id).unwrap();
+            PRICE_FEEDS.save(deps.as_mut().storage, denom, &price_id).unwrap();
+
+            deps
+        }
+
+        #[test]
+        fn test_query_price_happy_path() {
+            // ATOM at $10.52 (price=1052000000, expo=-8, conf=1000, publish_time=1700000000)
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1052000000i64, // price
+                1000u64,       // conf
+                -8i32,         // expo
+                1700000000i64, // publish_time
+                Decimal::percent(1), // max_confidence_ratio = 0.01
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string()).unwrap();
+
+            assert_eq!(result.denom, "uatom");
+            // 1052000000 * 10^-8 = 10.52
+            let expected_price = Decimal::from_atomics(1052u128, 2).unwrap();
+            assert_eq!(result.price, expected_price);
+            assert_eq!(result.updated_at, 1700000000u64);
+        }
+
+        #[test]
+        fn test_query_price_feed_not_configured() {
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1052000000i64,
+                1000u64,
+                -8i32,
+                1700000000i64,
+                Decimal::percent(1),
+            );
+
+            // Query unknown denom
+            let result = query_price(deps.as_ref(), mock_env(), "unknown".to_string());
+            assert!(matches!(result.unwrap_err(), ContractError::PriceFeedNotConfigured { denom } if denom == "unknown"));
+        }
+
+        #[test]
+        fn test_query_price_negative_from_pyth() {
+            // Pyth returns price=-100 → NegativeOrZeroPrice
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                -100i64,       // negative price
+                1000u64,
+                -8i32,
+                1700000000i64,
+                Decimal::percent(1),
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
+            assert!(matches!(result.unwrap_err(), ContractError::NegativeOrZeroPrice { denom } if denom == "uatom"));
+        }
+
+        #[test]
+        fn test_query_price_zero_from_pyth() {
+            // Pyth returns price=0 → NegativeOrZeroPrice
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                0i64,          // zero price
+                1000u64,
+                -8i32,
+                1700000000i64,
+                Decimal::percent(1),
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
+            assert!(matches!(result.unwrap_err(), ContractError::NegativeOrZeroPrice { denom } if denom == "uatom"));
+        }
+
+        #[test]
+        fn test_query_price_confidence_too_high() {
+            // conf/price=0.05, max=0.01 → ConfidenceTooHigh
+            // price=10000, conf=500 → ratio=0.05
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                10000i64,      // price
+                500u64,        // conf → 500/10000 = 0.05
+                -8i32,
+                1700000000i64,
+                Decimal::from_ratio(1u128, 100u128), // max_confidence_ratio = 0.01
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
+            assert!(matches!(result.unwrap_err(), ContractError::ConfidenceTooHigh { denom, .. } if denom == "uatom"));
+        }
+
+        #[test]
+        fn test_query_price_confidence_ok() {
+            // conf/price=0.005, max=0.01 → success
+            // price=10000, conf=50 → ratio=0.005
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                10000i64,      // price
+                50u64,         // conf → 50/10000 = 0.005
+                -8i32,
+                1700000000i64,
+                Decimal::from_ratio(1u128, 100u128), // max_confidence_ratio = 0.01
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string()).unwrap();
+            assert_eq!(result.denom, "uatom");
+            assert_eq!(result.updated_at, 1700000000u64);
+        }
+
+        #[test]
+        fn test_query_price_zero_confidence() {
+            // conf=0 → always passes
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1052000000i64,
+                0u64,          // zero confidence
+                -8i32,
+                1700000000i64,
+                Decimal::from_ratio(1u128, 1000u128), // max_confidence_ratio = 0.001 (very strict)
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string()).unwrap();
+            assert_eq!(result.denom, "uatom");
+        }
+
+        #[test]
+        fn test_query_price_negative_timestamp() {
+            // publish_time=-1 → InvalidTimestamp
+            let pyth_addr = "pyth";
+            let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "uatom",
+                1052000000i64,
+                1000u64,
+                -8i32,
+                -1i64,         // negative timestamp
+                Decimal::percent(1),
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
+            assert!(matches!(result.unwrap_err(), ContractError::InvalidTimestamp));
+        }
+
+        #[test]
+        fn test_query_price_btc_accuracy() {
+            // BTC at $65,000 (price=6500000000000, expo=-8) → verify exact Decimal
+            let pyth_addr = "pyth";
+            let feed_id = "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43";
+            let deps = setup_with_pyth(
+                pyth_addr,
+                feed_id,
+                "ubtc",
+                6_500_000_000_000i64, // price
+                100_000_000u64,       // conf
+                -8i32,                // expo
+                1700000000i64,
+                Decimal::percent(1),
+            );
+
+            let result = query_price(deps.as_ref(), mock_env(), "ubtc".to_string()).unwrap();
+
+            assert_eq!(result.denom, "ubtc");
+            // 6_500_000_000_000 * 10^-8 = 65000.0
+            let expected_price = Decimal::from_atomics(65000u128, 0).unwrap();
+            assert_eq!(result.price, expected_price);
+            assert_eq!(result.updated_at, 1700000000u64);
+        }
+    }
 
     fn test_addrs() -> (cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr) {
         let api = MockApi::default();

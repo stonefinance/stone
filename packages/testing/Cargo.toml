@@ -15,6 +15,7 @@ cosmwasm-std.workspace = true
 cosmwasm-schema.workspace = true
 cw-storage-plus.workspace = true
 cw-multi-test.workspace = true
+hex.workspace = true
 schemars.workspace = true
 serde.workspace = true
 thiserror.workspace = true
