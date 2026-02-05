@@ -35,10 +35,6 @@ pub enum ContractError {
     #[error("Invalid timestamp from Pyth")]
     InvalidTimestamp,
 
-    /// Price is stale (for future use at market layer).
-    #[error("Price is stale for denom: {denom}")]
-    PriceStale { denom: String },
-
     /// Pyth contract query failed.
     #[error("Pyth query failed for {denom}: {reason}")]
     PythQueryFailed { denom: String, reason: String },

@@ -18,7 +18,7 @@ use crate::error::ContractError;
 /// - (42, 0) → $42
 ///
 /// # Errors
-/// - `ContractError::NegativeOrZeroPrice` if price <= 0
+/// - `ContractError::InvalidPrice` if price <= 0
 /// - `ContractError::ExponentOutOfRange` if |expo| > 18
 /// - `ContractError::Overflow` if the calculation overflows
 pub fn pyth_price_to_decimal(price: i64, expo: i32) -> Result<Decimal, ContractError> {
@@ -287,6 +287,48 @@ mod tests {
         let ratio = price.get_confidence_ratio().unwrap();
         // conf / price = 100 / 10000 = 0.01 = 1%
         assert_eq!(ratio, cosmwasm_std::Decimal::from_ratio(100u128, 10000u128));
+    }
+
+    #[test]
+    fn test_confidence_ratio_boundary_exactly_max() {
+        // Test that a confidence ratio of exactly max_confidence_ratio passes through
+        // (since the code uses strict > for the error condition)
+        // price=10000, conf=100 -> ratio = 100/10000 = 0.01
+        let price = Price {
+            price: 10000,
+            conf: 100,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_confidence_ratio = Decimal::from_ratio(1u128, 100u128); // 0.01
+        
+        // Since the check is `conf_ratio > max_confidence_ratio`, 
+        // a ratio exactly equal to max should NOT trigger the error
+        assert!(!(ratio > max_confidence_ratio), 
+            "ratio {} should NOT be > max_confidence_ratio {} (they are equal)", 
+            ratio, max_confidence_ratio);
+        assert_eq!(ratio, max_confidence_ratio);
+    }
+
+    #[test]
+    fn test_confidence_ratio_boundary_just_above_max() {
+        // Test that a confidence ratio just above max_confidence_ratio would fail
+        // price=10000, conf=101 -> ratio = 101/10000 = 0.0101
+        let price = Price {
+            price: 10000,
+            conf: 101,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_confidence_ratio = Decimal::from_ratio(1u128, 100u128); // 0.01
+        
+        // Since the check is `conf_ratio > max_confidence_ratio`, 
+        // a ratio slightly above max SHOULD trigger the error
+        assert!(ratio > max_confidence_ratio, 
+            "ratio {} should be > max_confidence_ratio {}", 
+            ratio, max_confidence_ratio);
     }
 
     #[test]

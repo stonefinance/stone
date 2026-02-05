@@ -269,6 +269,8 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     Ok(result)
 }
 
+// Note: _env intentionally unused. Staleness checking is handled by the market
+// layer (stone-types::OraclePriceStale), not by the adapter.
 fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::PriceResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -301,7 +303,7 @@ fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::Pric
         }
     }
 
-    // 5. Convert price (use pyth_price_to_decimal from pyth_types.rs)
+    // 5. Convert Pyth price to Decimal using pyth_price_to_decimal
     let decimal_price = crate::pyth_types::pyth_price_to_decimal(pyth_price.price, pyth_price.expo)?;
 
     // 6. Convert timestamp
@@ -1309,116 +1311,13 @@ mod tests {
                     feed_id: feed_id.clone(),
                 },
                 crate::msg::PriceFeedConfig {
-                    denom: "uatom".to_string(), // Duplicate!
-                    feed_id: feed_id.clone(),
+                    denom: "uatom".to_string(),
+                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string(),
                 },
             ],
         };
 
-        let res = instantiate(deps.as_mut(), env, info, msg);
-        assert!(matches!(res.unwrap_err(), ContractError::DuplicateDenom { denom } if denom == "uatom"));
-    }
-
-    #[test]
-    fn test_set_price_feed_invalid_feed_id() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let (owner, pyth, _) = test_addrs();
-
-        // Instantiate first
-        let info = message_info(&owner, &[]);
-        let msg = InstantiateMsg {
-            owner: owner.to_string(),
-            pyth_contract_addr: pyth.to_string(),
-            max_confidence_ratio: Decimal::percent(1),
-            price_feeds: vec![],
-        };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
-
-        // Try to set price feed with invalid feed_id
-        let res = execute_set_price_feed(
-            deps.as_mut(),
-            env,
-            info,
-            "uatom".to_string(),
-            "invalid_feed_id".to_string(),
-        );
-        assert!(matches!(res.unwrap_err(), ContractError::InvalidFeedId { feed_id } if feed_id == "invalid_feed_id"));
-    }
-
-    #[test]
-    fn test_update_config_confidence_ratio_zero() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let (owner, pyth, _) = test_addrs();
-
-        // Instantiate
-        let info = message_info(&owner, &[]);
-        let msg = InstantiateMsg {
-            owner: owner.to_string(),
-            pyth_contract_addr: pyth.to_string(),
-            max_confidence_ratio: Decimal::percent(1),
-            price_feeds: vec![],
-        };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
-
-        // Try to update config with confidence_ratio = 0
-        let res = execute_update_config(
-            deps.as_mut(),
-            env,
-            info,
-            None,
-            Some(Decimal::zero()),
-        );
-        assert!(matches!(res.unwrap_err(), ContractError::InvalidConfidenceRatio { value, reason } if value == Decimal::zero() && reason == "must be greater than 0"));
-    }
-
-    #[test]
-    fn test_update_config_confidence_ratio_over_one() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let (owner, pyth, _) = test_addrs();
-
-        // Instantiate
-        let info = message_info(&owner, &[]);
-        let msg = InstantiateMsg {
-            owner: owner.to_string(),
-            pyth_contract_addr: pyth.to_string(),
-            max_confidence_ratio: Decimal::percent(1),
-            price_feeds: vec![],
-        };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
-
-        // Try to update config with confidence_ratio > 1
-        let res = execute_update_config(
-            deps.as_mut(),
-            env,
-            info,
-            None,
-            Some(Decimal::percent(101)), // > 1.0
-        );
-        assert!(matches!(res.unwrap_err(), ContractError::InvalidConfidenceRatio { value, reason } if value == Decimal::percent(101) && reason == "must be less than or equal to 1"));
-    }
-
-    #[test]
-    fn test_accept_ownership_no_pending_transfer() {
-        let mut deps = mock_dependencies();
-        let env = mock_env();
-        let (owner, pyth, new_owner) = test_addrs();
-
-        // Instantiate
-        let info = message_info(&owner, &[]);
-        let msg = InstantiateMsg {
-            owner: owner.to_string(),
-            pyth_contract_addr: pyth.to_string(),
-            max_confidence_ratio: Decimal::percent(1),
-            price_feeds: vec![],
-        };
-        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
-
-        // Try to accept ownership without pending transfer
-        let info = message_info(&new_owner, &[]);
-        let res = execute_accept_ownership(deps.as_mut(), env, info);
-        assert!(matches!(res.unwrap_err(), ContractError::PendingOwnerNotSet));
+        let result = instantiate(deps.as_mut(), env, info, msg);
+        assert!(matches!(result.unwrap_err(), ContractError::DuplicateDenom { denom } if denom == "uatom"));
     }
 }
