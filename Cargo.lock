@@ -813,6 +813,7 @@ dependencies = [
 name = "pyth-oracle-adapter"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-multi-test",
@@ -822,6 +823,8 @@ dependencies = [
  "schemars",
  "serde",
  "serde-json-wasm",
+ "stone-factory",
+ "stone-market",
  "stone-testing",
  "stone-types",
  "thiserror",

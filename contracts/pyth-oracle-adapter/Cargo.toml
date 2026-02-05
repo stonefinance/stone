@@ -26,6 +26,9 @@ thiserror.workspace = true
 stone-types = { path = "../../packages/types" }
 
 [dev-dependencies]
+anyhow.workspace = true
 cw-multi-test.workspace = true
 stone-testing = { path = "../../packages/testing" }
+stone-factory = { path = "../factory" }
+stone-market = { path = "../market" }
 serde-json-wasm = "1.0"
