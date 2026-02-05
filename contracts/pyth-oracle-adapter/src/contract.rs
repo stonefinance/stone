@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use cosmwasm_std::{
-    entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response, StdResult, Empty,
+    entry_point, to_json_binary, Binary, Decimal, Deps, DepsMut, Env, MessageInfo, Response,
 };
 
 use crate::error::ContractError;
@@ -76,19 +76,6 @@ pub fn instantiate(
         .add_attribute("owner", config.owner)
         .add_attribute("pyth_contract_addr", config.pyth_contract_addr)
         .add_attribute("max_confidence_ratio", config.max_confidence_ratio.to_string()))
-}
-
-/// Migrate entry point for contract upgrades.
-/// No-op migration that just sets the contract version for tracking.
-#[entry_point]
-pub fn migrate(deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
-    // Set contract version for migration tracking
-    cw2::set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-
-    Ok(Response::new()
-        .add_attribute("action", "migrate")
-        .add_attribute("contract", CONTRACT_NAME)
-        .add_attribute("version", CONTRACT_VERSION))
 }
 
 #[entry_point]
