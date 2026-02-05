@@ -72,7 +72,9 @@ export function RepayModal({
       const microAmount = baseToMicro(amount);
       const coin = { denom, amount: microAmount };
 
-      const result = await signingClient.repay(marketAddress, coin);
+      const result = collateralDenom && marketDebtDenom
+        ? await signingClient.repayWithPriceUpdate(marketAddress, coin, collateralDenom, marketDebtDenom)
+        : await signingClient.repay(marketAddress, coin);
 
       markCompleted(txId, result.transactionHash);
       const repaidAmount = parseFloat(amount);

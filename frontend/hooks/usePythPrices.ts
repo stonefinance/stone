@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { PYTH_FEED_IDS } from '@/lib/pyth/config';
 import { fetchPythPrices, PythPrice } from '@/lib/pyth/client';
 
@@ -33,9 +33,17 @@ export function usePythPrices(
   // Track if component is mounted to avoid state updates after unmount
   const isMountedRef = useRef(true);
 
+  // Stabilise the denoms array so a new reference with identical contents
+  // doesn't trigger a re-fetch cascade.
+  const stableDenoms = useMemo(
+    () => denoms,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [denoms.join(',')]
+  );
+
   const fetchPrices = useCallback(async () => {
     // Filter to only denoms we have feed IDs for
-    const validDenoms = denoms.filter((denom) => PYTH_FEED_IDS[denom]);
+    const validDenoms = stableDenoms.filter((denom) => PYTH_FEED_IDS[denom]);
     
     if (validDenoms.length === 0) {
       setPrices({});
@@ -81,7 +89,7 @@ export function usePythPrices(
         setIsLoading(false);
       }
     }
-  }, [denoms]);
+  }, [stableDenoms]);
 
   useEffect(() => {
     // Reset mounted ref when dependencies change

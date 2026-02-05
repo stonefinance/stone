@@ -45,7 +45,7 @@ export async function executeWithPriceUpdate(
   const priceUpdateInstructions: ExtendedExecuteInstruction[] = priceUpdateMessages.map(
     (msg) => ({
       contractAddress: msg.contract,
-      msg: JSON.parse(Buffer.from(msg.msg).toString()).update_price_feeds,
+      msg: JSON.parse(Buffer.from(msg.msg).toString()),
       funds: msg.funds as Coin[],
     })
   );

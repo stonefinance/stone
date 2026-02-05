@@ -5,6 +5,7 @@ import { TokenIcon } from '@/components/ui/token-icon';
 import { UserPosition } from '@/types';
 import { formatDisplayAmount, formatPercentage, formatUSD, microToBase } from '@/lib/utils/format';
 import { usePythPrices } from '@/hooks/usePythPrices';
+import { getChainDenom } from '@/lib/utils/denom';
 
 interface SupplyPositionProps {
   position: UserPosition;
@@ -16,12 +17,6 @@ export function SupplyPosition({ position, market }: SupplyPositionProps) {
   const supplyApy = market.supplyApy;
   const supplyAmount = parseFloat(microToBase(position.supplyAmount));
   const estimatedYield = supplyAmount * (supplyApy / 100);
-
-  // Get chain denom for price lookup
-  const getChainDenom = (displayDenom: string) => {
-    const lower = displayDenom.toLowerCase();
-    return lower.startsWith('u') ? lower : `u${lower}`;
-  };
 
   // Fetch Pyth price for the supply token
   const { prices } = usePythPrices([getChainDenom(supplyDenom)], 30000);

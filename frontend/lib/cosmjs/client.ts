@@ -16,8 +16,8 @@ import {
   MarketCountResponse,
   Coin,
 } from '@/types';
-import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_PRICE, PYTH_CONTRACT_ADDRESS, PYTH_MODE } from '@/lib/constants';
-import { executeSingleWithPriceUpdate, getRelevantDenoms, PythUpdateConfig } from '@/lib/pyth';
+import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_PRICE } from '@/lib/constants';
+import { executeSingleWithPriceUpdate, getRelevantDenoms, PythUpdateConfig, PYTH_CONTRACT_ADDRESS, PYTH_MODE } from '@/lib/pyth';
 
 // Query-only client (no wallet required)
 export class QueryClient {

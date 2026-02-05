@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDisplayAmount, formatUSD, microToBase } from '@/lib/utils/format';
 import { Market, UserPosition } from '@/types';
 import { usePythPrices } from '@/hooks/usePythPrices';
+import { getChainDenom } from '@/lib/utils/denom';
 
 interface BorrowPositionProps {
   position: UserPosition;
@@ -15,12 +16,6 @@ export function BorrowPosition({ position, market }: BorrowPositionProps) {
   const debt = parseFloat(microToBase(position.debtAmount));
   const currentLtv = collateral > 0 && debt > 0 ? (debt / collateral) * 100 : 0;
   const health = position.healthFactor;
-
-  // Get chain denoms for price lookup
-  const getChainDenom = (displayDenom: string) => {
-    const lower = displayDenom.toLowerCase();
-    return lower.startsWith('u') ? lower : `u${lower}`;
-  };
 
   // Fetch Pyth prices
   const { prices } = usePythPrices(

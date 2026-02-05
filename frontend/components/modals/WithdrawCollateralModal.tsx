@@ -69,7 +69,9 @@ export function WithdrawCollateralModal({
     try {
       const microAmount = baseToMicro(amount);
 
-      const result = await signingClient.withdrawCollateral(marketAddress, microAmount);
+      const result = collateralDenom && debtDenom
+        ? await signingClient.withdrawCollateralWithPriceUpdate(marketAddress, microAmount, collateralDenom, debtDenom)
+        : await signingClient.withdrawCollateral(marketAddress, microAmount);
 
       markCompleted(txId, result.transactionHash);
       setAmount('');

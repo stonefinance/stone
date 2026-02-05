@@ -1,5 +1,5 @@
 import { MsgExecuteContract } from 'cosmjs-types/cosmwasm/wasm/v1/tx';
-import { getFeedIdsForDenoms, getHermesUrl } from './config';
+import { getFeedIdsForDenoms, getHermesUrl, PYTH_UPDATE_FEE_DENOM, PYTH_UPDATE_FEE_AMOUNT } from './config';
 
 export interface PythUpdateConfig {
   pythContractAddress: string;
@@ -103,8 +103,9 @@ export async function buildPythUpdateMessages(
       ),
       funds: [
         {
-          denom: 'untrn', // Pyth update fee denom (Neutron)
-          amount: '1',    // Minimum fee for price updates
+          denom: PYTH_UPDATE_FEE_DENOM,
+          // TODO: Production should query get_update_fee from the Pyth contract
+          amount: PYTH_UPDATE_FEE_AMOUNT,
         },
       ],
     };

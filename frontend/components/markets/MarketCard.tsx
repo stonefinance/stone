@@ -1,13 +1,15 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Market } from '@/types';
-import { formatDisplayAmount, formatPercentage, microToBase } from '@/lib/utils/format';
+import { formatDisplayAmount, formatPercentage, formatUSD, microToBase } from '@/lib/utils/format';
 
 interface MarketCardProps {
   market: Market;
+  /** USD price of the debt token (from Pyth) */
+  debtUsdPrice?: number;
 }
 
-export function MarketCard({ market }: MarketCardProps) {
+export function MarketCard({ market, debtUsdPrice }: MarketCardProps) {
   const totalSuppliedFormatted = formatDisplayAmount(microToBase(market.totalSupplied), 0);
   const totalBorrowedFormatted = formatDisplayAmount(microToBase(market.totalBorrowed), 0);
 
@@ -51,15 +53,29 @@ export function MarketCard({ market }: MarketCardProps) {
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Total Supplied</span>
-              <span className="text-sm font-medium">
-                {totalSuppliedFormatted} {market.debtDenom}
-              </span>
+              <div className="text-right">
+                <span className="text-sm font-medium">
+                  {totalSuppliedFormatted} {market.debtDenom}
+                </span>
+                {debtUsdPrice != null && (
+                  <div className="text-xs text-muted-foreground">
+                    {formatUSD(parseFloat(microToBase(market.totalSupplied)) * debtUsdPrice)}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Total Borrowed</span>
-              <span className="text-sm font-medium">
-                {totalBorrowedFormatted} {market.debtDenom}
-              </span>
+              <div className="text-right">
+                <span className="text-sm font-medium">
+                  {totalBorrowedFormatted} {market.debtDenom}
+                </span>
+                {debtUsdPrice != null && (
+                  <div className="text-xs text-muted-foreground">
+                    {formatUSD(parseFloat(microToBase(market.totalBorrowed)) * debtUsdPrice)}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Utilization</span>

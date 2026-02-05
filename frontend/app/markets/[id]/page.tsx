@@ -35,6 +35,7 @@ import {
   microToBase,
   baseToMicro,
 } from '@/lib/utils/format';
+import { getChainDenom } from '@/lib/utils/denom';
 import { Info, ExternalLink } from 'lucide-react';
 import {
   AreaChart,
@@ -94,11 +95,6 @@ export default function MarketDetailPage() {
   } = useMarketSnapshots(marketId, chartTimeRange);
 
   // Fetch Pyth prices for live price display
-  const getChainDenom = (displayDenom: string) => {
-    const lower = displayDenom.toLowerCase();
-    return lower.startsWith('u') ? lower : `u${lower}`;
-  };
-
   const { prices: pythPrices, isLoading: pythLoading } = usePythPrices(
     market ? [getChainDenom(market.collateralDenom), getChainDenom(market.debtDenom)] : [],
     15000
@@ -167,7 +163,12 @@ export default function MarketDetailPage() {
     try {
       const microAmount = baseToMicro(collateralAmount);
       const coin = { denom: market.config.collateral_denom, amount: microAmount };
-      const result = await signingClient.supplyCollateral(market.address, coin);
+      const result = await signingClient.supplyCollateralWithPriceUpdate(
+        market.address,
+        coin,
+        market.config.collateral_denom,
+        market.config.debt_denom,
+      );
       markCompleted(txId, result.transactionHash);
       setCollateralAmount('');
       await refetchAll();
@@ -197,7 +198,12 @@ export default function MarketDetailPage() {
     try {
       const microAmount = baseToMicro(supplyAmount);
       const coin = { denom: market.config.debt_denom, amount: microAmount };
-      const result = await signingClient.supply(market.address, coin);
+      const result = await signingClient.supplyWithPriceUpdate(
+        market.address,
+        coin,
+        market.config.collateral_denom,
+        market.config.debt_denom,
+      );
       markCompleted(txId, result.transactionHash);
       setSupplyAmount('');
       await refetchAll();
@@ -226,7 +232,12 @@ export default function MarketDetailPage() {
 
     try {
       const microAmount = baseToMicro(borrowAmount);
-      const result = await signingClient.borrow(market.address, microAmount);
+      const result = await signingClient.borrowWithPriceUpdate(
+        market.address,
+        microAmount,
+        market.config.collateral_denom,
+        market.config.debt_denom,
+      );
       markCompleted(txId, result.transactionHash);
       setBorrowAmount('');
       await refetchAll();

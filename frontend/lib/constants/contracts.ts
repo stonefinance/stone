@@ -1,14 +1,6 @@
 // Contract Addresses - Update these after deployment
 export const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '';
 
-// Pyth Network Configuration
-export const PYTH_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PYTH_CONTRACT_ADDRESS || '';
-export const PYTH_MODE: 'real' | 'mock' = (process.env.NEXT_PUBLIC_PYTH_MODE as 'real' | 'mock') || 'mock';
-
-// Pyth Oracle Configuration
-export const PYTH_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PYTH_CONTRACT_ADDRESS || '';
-export const PYTH_MODE = (process.env.NEXT_PUBLIC_PYTH_MODE as 'mock' | 'live') || 'mock';
-
 // Determine if we're using local chain
 const isLocal = process.env.NEXT_PUBLIC_CHAIN_ID === 'stone-local-1' ||
                 process.env.NEXT_PUBLIC_RPC_ENDPOINT?.includes('localhost');

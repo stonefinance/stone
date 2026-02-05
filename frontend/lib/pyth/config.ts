@@ -2,6 +2,22 @@
 // Maps token denoms to Pyth price feed IDs
 // Feed IDs are the SHA-256 hashes of the price feed symbols (with 0x prefix)
 
+// ── Pyth contract address & mode (canonical declarations) ────────────────────
+export const PYTH_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PYTH_CONTRACT_ADDRESS || '';
+export const PYTH_MODE: 'mock' | 'live' = (process.env.NEXT_PUBLIC_PYTH_MODE as 'mock' | 'live') || 'mock';
+
+// ── Fee configuration for Pyth price update messages ─────────────────────────
+// The fee denom must match the chain's native fee denom.
+// Local dev chain uses 'stake'; Neutron mainnet/testnet uses 'untrn'.
+const isLocal = process.env.NEXT_PUBLIC_CHAIN_ID === 'stone-local-1' ||
+                process.env.NEXT_PUBLIC_RPC_ENDPOINT?.includes('localhost');
+
+export const PYTH_UPDATE_FEE_DENOM = process.env.NEXT_PUBLIC_PYTH_FEE_DENOM || (isLocal ? 'stake' : 'untrn');
+
+// TODO: In production, query `get_update_fee` from the Pyth contract to get
+// the real required fee amount. This constant is a safe default for development.
+export const PYTH_UPDATE_FEE_AMOUNT = process.env.NEXT_PUBLIC_PYTH_FEE_AMOUNT || '1';
+
 export interface PythFeedConfig {
   feedId: string;
   symbol: string;
@@ -12,7 +28,7 @@ export interface PythFeedConfig {
 export const DEFAULT_PYTH_FEEDS: Record<string, PythFeedConfig> = {
   // Major cryptocurrencies
   uatom: {
-    feedId: '0xb00b60f88b03a6a625a8d1c048c3f66645bdbd8f458f635e66c6c6f6a6a7700e',
+    feedId: '0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819',
     symbol: 'ATOM/USD',
   },
   uosmo: {
@@ -32,10 +48,8 @@ export const DEFAULT_PYTH_FEEDS: Record<string, PythFeedConfig> = {
     symbol: 'SOL/USD',
   },
   ustone: {
-    // Note: This is a placeholder - STONE may not have a Pyth feed yet
-    // In production, this should be replaced with the actual feed ID or
-    // a custom oracle solution
-    feedId: '',
+    // Uses AKT/USD as a proxy feed for STONE pricing
+    feedId: '0x4ea5bb4d2f5900cc2e97ba534240950740b4d3b89fe712a94a7304fd2fd92702',
     symbol: 'STONE/USD',
   },
   untrn: {

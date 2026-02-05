@@ -22,6 +22,9 @@ interface BorrowModalProps {
   denom: string; // Minimal denom for transactions (e.g., "ustone")
   displayDenom?: string; // Display denom for UI (e.g., "STONE")
   maxBorrowValue?: number;
+  // Pyth price update configuration
+  collateralDenom?: string;
+  debtDenom?: string;
 }
 
 export function BorrowModal({
@@ -31,6 +34,8 @@ export function BorrowModal({
   denom,
   displayDenom,
   maxBorrowValue,
+  collateralDenom,
+  debtDenom,
 }: BorrowModalProps) {
   const { signingClient, isConnected } = useWallet();
   const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
@@ -61,7 +66,9 @@ export function BorrowModal({
 
     try {
       const microAmount = baseToMicro(amount);
-      const result = await signingClient.borrow(marketAddress, microAmount);
+      const result = collateralDenom && debtDenom
+        ? await signingClient.borrowWithPriceUpdate(marketAddress, microAmount, collateralDenom, debtDenom)
+        : await signingClient.borrow(marketAddress, microAmount);
 
       markCompleted(txId, result.transactionHash);
       setAmount('');
