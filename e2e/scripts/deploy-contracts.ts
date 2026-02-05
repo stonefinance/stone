@@ -31,14 +31,22 @@ interface TestMarket {
   debtDenom: string;
 }
 
+interface PythMockPrice {
+  price: number;
+  expo: number;
+  conf: number;
+}
+
 interface PythPriceFeedConfig {
   denom: string;
   feedId: string;
+  mockPrice?: PythMockPrice;
 }
 
 interface PythDeploymentConfig {
   chainId: string;
   pythContractAddress: string;
+  note?: string;
   priceFeeds: PythPriceFeedConfig[];
 }
 
@@ -161,6 +169,61 @@ async function deployMockOracle(
   };
 }
 
+async function deployMockPyth(
+  client: SigningCosmWasmClient,
+  account: { address: string },
+  config: PythDeploymentConfig
+): Promise<{ pythContractAddress: string; pythCodeId: number }> {
+  console.log('Deploying mock Pyth contract for local testing...');
+
+  // Read mock Pyth WASM
+  const mockPythWasm = fs.readFileSync('/artifacts/mock_pyth.wasm');
+
+  // Upload mock Pyth contract
+  console.log('Uploading mock Pyth contract...');
+  const uploadResult = await client.upload(account.address, mockPythWasm, 'auto');
+  console.log(`Mock Pyth code ID: ${uploadResult.codeId}`);
+
+  // Prepare price feeds for instantiation
+  const now = Math.floor(Date.now() / 1000);
+  const feeds = config.priceFeeds
+    .filter(feed => feed.mockPrice)
+    .map(feed => ({
+      id: feed.feedId,
+      price: feed.mockPrice!.price,
+      conf: feed.mockPrice!.conf,
+      expo: feed.mockPrice!.expo,
+      publish_time: now,
+    }));
+
+  if (feeds.length === 0) {
+    throw new Error('No price feeds with mockPrice configured in local.json');
+  }
+
+  console.log(`Initializing mock Pyth with ${feeds.length} price feeds:`);
+  for (const feed of feeds) {
+ const actualPrice = feed.price * Math.pow(10, feed.expo);
+ console.log(`  - ${feed.id}: $${actualPrice.toFixed(2)} (price=${feed.price}, expo=${feed.expo})`);
+  }
+
+  // Instantiate mock Pyth contract
+  console.log('Instantiating mock Pyth contract...');
+  const instantiateResult = await client.instantiate(
+    account.address,
+    uploadResult.codeId,
+    { feeds },
+    'Mock Pyth Oracle',
+    'auto'
+  );
+
+  console.log(`Mock Pyth contract address: ${instantiateResult.contractAddress}`);
+
+  return {
+    pythContractAddress: instantiateResult.contractAddress,
+    pythCodeId: uploadResult.codeId,
+  };
+}
+
 async function deployPythAdapter(
   client: SigningCosmWasmClient,
   account: { address: string }
@@ -182,8 +245,15 @@ async function deployPythAdapter(
     );
   }
 
-  const pythContractAddress = config.pythContractAddress;
   const priceFeeds = config.priceFeeds || DEFAULT_PYTH_FEEDS;
+
+  // Check if we need to deploy mock Pyth (empty pythContractAddress indicates local mode)
+  let pythContractAddress = config.pythContractAddress;
+  if (!pythContractAddress) {
+    console.log('pythContractAddress is empty - deploying mock Pyth contract for local testing');
+    const mockPythDeployment = await deployMockPyth(client, account, config);
+    pythContractAddress = mockPythDeployment.pythContractAddress;
+  }
 
   console.log(`Using Pyth contract: ${pythContractAddress}`);
   console.log(`Price feeds: ${priceFeeds.length} configured`);
@@ -210,7 +280,7 @@ async function deployPythAdapter(
     {
       owner: account.address,
       pyth_contract_addr: pythContractAddress,
-      max_confidence_ratio: '0.01', // 1% max confidence ratio
+      max_confidence_ratio: '0.05', // 5% max confidence ratio for local testing
       price_feeds: priceFeedsConfig,
     },
     'Pyth Oracle Adapter',

@@ -2,7 +2,7 @@
 
 # Contract build targets (only contracts, not testing package which has non-wasm deps)
 build:
-	cargo build --release --target wasm32-unknown-unknown -p stone-factory -p stone-market -p mock-oracle -p pyth-oracle-adapter
+	cargo build --release --target wasm32-unknown-unknown -p stone-factory -p stone-market -p mock-oracle -p mock-pyth -p pyth-oracle-adapter
 
 test:
 	cargo test --workspace
@@ -13,6 +13,7 @@ e2e-build: build
 	cp target/wasm32-unknown-unknown/release/stone_factory.wasm artifacts/stone_factory.wasm
 	cp target/wasm32-unknown-unknown/release/stone_market.wasm artifacts/stone_market.wasm
 	cp target/wasm32-unknown-unknown/release/mock_oracle.wasm artifacts/mock_oracle.wasm
+	cp target/wasm32-unknown-unknown/release/mock_pyth.wasm artifacts/mock_pyth.wasm
 	cp target/wasm32-unknown-unknown/release/pyth_oracle_adapter.wasm artifacts/pyth_oracle_adapter.wasm
 
 e2e-up: e2e-build

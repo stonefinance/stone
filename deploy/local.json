@@ -1,10 +1,22 @@
 {
   "chainId": "local",
   "pythContractAddress": "",
-  "note": "For local dev stack with mock Pyth. Set pythContractAddress after deploying mock-pyth locally.",
+  "note": "For local dev stack. Mock Pyth is deployed automatically when pythContractAddress is empty.",
   "priceFeeds": [
-    { "denom": "uatom", "feedId": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819" },
-    { "denom": "uusdc", "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a" },
-    { "denom": "ustone", "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a" }
+    {
+      "denom": "uatom",
+      "feedId": "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819",
+      "mockPrice": { "price": 1000000000, "expo": -8, "conf": 1000000 }
+    },
+    {
+      "denom": "uusdc",
+      "feedId": "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a",
+      "mockPrice": { "price": 100000000, "expo": -8, "conf": 100000 }
+    },
+    {
+      "denom": "ustone",
+      "feedId": "4ea5bb4d2f5900cc2e97ba534240950740b4d3b89fe712a94a7304fd2fd92702",
+      "mockPrice": { "price": 50000000, "expo": -8, "conf": 500000 }
+    }
   ]
 }

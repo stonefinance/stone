@@ -708,6 +708,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mock-pyth"
+version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "cw-storage-plus",
+ "hex",
+ "schemars",
+ "serde",
+ "stone-types",
+]
+
+[[package]]
 name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
