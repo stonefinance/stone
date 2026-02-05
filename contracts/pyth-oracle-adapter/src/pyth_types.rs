@@ -311,6 +311,81 @@ mod tests {
         assert_eq!(ratio, max_confidence_ratio);
     }
 
+    // ==========================================================================
+    // Issue #87: Additional confidence validation tests
+    // ==========================================================================
+
+    #[test]
+    fn confidence_ratio_1_percent_passes() {
+        // Issue #87: conf=10, price=1000, max_ratio=0.02 -> 1% < 2% → pass
+        // ratio = 10/1000 = 0.01
+        let price = Price {
+            price: 1000,
+            conf: 10,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_ratio = Decimal::from_ratio(2u128, 100u128); // 0.02
+        
+        // Should pass: 1% < 2%
+        assert!(ratio < max_ratio, "ratio {} should be < max_ratio {}", ratio, max_ratio);
+        assert!(!(ratio > max_ratio), "ratio {} should NOT exceed max_ratio {}", ratio, max_ratio);
+    }
+
+    #[test]
+    fn confidence_ratio_3_percent_fails() {
+        // Issue #87: conf=30, price=1000, max_ratio=0.02 -> 3% > 2% → fail
+        // ratio = 30/1000 = 0.03
+        let price = Price {
+            price: 1000,
+            conf: 30,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_ratio = Decimal::from_ratio(2u128, 100u128); // 0.02
+        
+        // Should fail: 3% > 2%
+        assert!(ratio > max_ratio, "ratio {} should exceed max_ratio {}", ratio, max_ratio);
+    }
+
+    #[test]
+    fn confidence_ratio_zero_conf_always_passes() {
+        // Issue #87: conf=0 -> always passes regardless of max_ratio
+        let price = Price {
+            price: 1000,
+            conf: 0,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        
+        // Even with extremely strict max_ratio, conf=0 should pass
+        let very_strict_max = Decimal::from_ratio(1u128, 10000u128); // 0.0001
+        assert_eq!(ratio, Decimal::zero(), "ratio should be zero when conf=0");
+        assert!(!(ratio > very_strict_max), "zero ratio should not exceed any positive max_ratio");
+    }
+
+    #[test]
+    fn confidence_ratio_exactly_at_max_boundary() {
+        // Issue #87: Boundary at exactly max ratio
+        // For max_ratio=0.02, price=1000, we need conf=20 to get exactly 2%
+        // ratio = 20/1000 = 0.02 exactly
+        let price = Price {
+            price: 1000,
+            conf: 20,
+            expo: 0,
+            publish_time: 1000,
+        };
+        let ratio = price.get_confidence_ratio().unwrap();
+        let max_ratio = Decimal::from_ratio(2u128, 100u128); // 0.02
+        
+        // Exactly at boundary - should NOT fail (check is > not >=)
+        assert_eq!(ratio, max_ratio, "ratio should equal max_ratio at boundary");
+        assert!(!(ratio > max_ratio), "ratio at boundary should NOT exceed max_ratio");
+    }
+
     #[test]
     fn test_confidence_ratio_boundary_just_above_max() {
         // Test that a confidence ratio just above max_confidence_ratio would fail
