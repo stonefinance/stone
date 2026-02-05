@@ -16,7 +16,8 @@ import {
   MarketCountResponse,
   Coin,
 } from '@/types';
-import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_PRICE } from '@/lib/constants';
+import { RPC_ENDPOINT, FACTORY_ADDRESS, GAS_PRICE, PYTH_CONTRACT_ADDRESS, PYTH_MODE } from '@/lib/constants';
+import { executeSingleWithPriceUpdate, getRelevantDenoms, PythUpdateConfig } from '@/lib/pyth';
 
 // Query-only client (no wallet required)
 export class QueryClient {
@@ -223,6 +224,246 @@ export class SigningClient {
       'auto',
       undefined,
       [repayAmount]
+    );
+  }
+
+  // ============================================================================
+  // Pyth-Enabled Transaction Methods
+  // These methods bundle Pyth price updates with the actual transaction
+  // to ensure fresh oracle data is available on-chain
+  // ============================================================================
+
+  /**
+   * Get Pyth configuration for transactions
+   */
+  private getPythConfig(): PythUpdateConfig {
+    return {
+      pythContractAddress: PYTH_CONTRACT_ADDRESS,
+      mode: PYTH_MODE,
+    };
+  }
+
+  /**
+   * Supply liquidity with Pyth price updates
+   */
+  async supplyWithPriceUpdate(
+    marketAddress: string,
+    amount: Coin,
+    collateralDenom: string,
+    debtDenom: string,
+    recipient?: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.supply(marketAddress, amount, recipient);
+    }
+
+    const msg: MarketExecuteMsg = { supply: { recipient } };
+    const relevantDenoms = getRelevantDenoms('supply', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      [amount],
+      relevantDenoms,
+      pythConfig
+    );
+  }
+
+  /**
+   * Withdraw supply with Pyth price updates
+   */
+  async withdrawWithPriceUpdate(
+    marketAddress: string,
+    amount: string | undefined,
+    collateralDenom: string,
+    debtDenom: string,
+    recipient?: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.withdraw(marketAddress, amount, recipient);
+    }
+
+    const msg: MarketExecuteMsg = { withdraw: { amount, recipient } };
+    const relevantDenoms = getRelevantDenoms('withdraw', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      undefined,
+      relevantDenoms,
+      pythConfig
+    );
+  }
+
+  /**
+   * Supply collateral with Pyth price updates
+   */
+  async supplyCollateralWithPriceUpdate(
+    marketAddress: string,
+    amount: Coin,
+    collateralDenom: string,
+    debtDenom: string,
+    recipient?: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.supplyCollateral(marketAddress, amount, recipient);
+    }
+
+    const msg: MarketExecuteMsg = { supply_collateral: { recipient } };
+    const relevantDenoms = getRelevantDenoms('supply_collateral', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      [amount],
+      relevantDenoms,
+      pythConfig
+    );
+  }
+
+  /**
+   * Withdraw collateral with Pyth price updates
+   */
+  async withdrawCollateralWithPriceUpdate(
+    marketAddress: string,
+    amount: string | undefined,
+    collateralDenom: string,
+    debtDenom: string,
+    recipient?: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.withdrawCollateral(marketAddress, amount, recipient);
+    }
+
+    const msg: MarketExecuteMsg = { withdraw_collateral: { amount, recipient } };
+    const relevantDenoms = getRelevantDenoms('withdraw_collateral', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      undefined,
+      relevantDenoms,
+      pythConfig
+    );
+  }
+
+  /**
+   * Borrow with Pyth price updates
+   */
+  async borrowWithPriceUpdate(
+    marketAddress: string,
+    amount: string,
+    collateralDenom: string,
+    debtDenom: string,
+    recipient?: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.borrow(marketAddress, amount, recipient);
+    }
+
+    const msg: MarketExecuteMsg = { borrow: { amount, recipient } };
+    const relevantDenoms = getRelevantDenoms('borrow', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      undefined,
+      relevantDenoms,
+      pythConfig
+    );
+  }
+
+  /**
+   * Repay debt with Pyth price updates
+   */
+  async repayWithPriceUpdate(
+    marketAddress: string,
+    amount: Coin,
+    collateralDenom: string,
+    debtDenom: string,
+    onBehalfOf?: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.repay(marketAddress, amount, onBehalfOf);
+    }
+
+    const msg: MarketExecuteMsg = { repay: { on_behalf_of: onBehalfOf } };
+    const relevantDenoms = getRelevantDenoms('repay', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      [amount],
+      relevantDenoms,
+      pythConfig
+    );
+  }
+
+  /**
+   * Liquidate with Pyth price updates
+   */
+  async liquidateWithPriceUpdate(
+    marketAddress: string,
+    borrower: string,
+    repayAmount: Coin,
+    collateralDenom: string,
+    debtDenom: string
+  ) {
+    const client = await this.connect();
+    const pythConfig = this.getPythConfig();
+
+    // Skip if mock mode or no Pyth contract configured
+    if (pythConfig.mode === 'mock' || !pythConfig.pythContractAddress) {
+      return this.liquidate(marketAddress, borrower, repayAmount);
+    }
+
+    const msg: MarketExecuteMsg = { liquidate: { borrower } };
+    const relevantDenoms = getRelevantDenoms('liquidate', collateralDenom, debtDenom);
+
+    return executeSingleWithPriceUpdate(
+      client,
+      this.address,
+      marketAddress,
+      msg,
+      [repayAmount],
+      relevantDenoms,
+      pythConfig
     );
   }
 }

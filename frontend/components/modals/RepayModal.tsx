@@ -24,6 +24,9 @@ interface RepayModalProps {
   currentDebt?: string;
   onSuccess?: () => void;
   onFullRepay?: () => void;
+  // Pyth price update configuration
+  collateralDenom?: string;
+  debtDenom?: string;
 }
 
 export function RepayModal({
@@ -35,6 +38,8 @@ export function RepayModal({
   currentDebt,
   onSuccess,
   onFullRepay,
+  collateralDenom,
+  debtDenom: marketDebtDenom,
 }: RepayModalProps) {
   const { signingClient, isConnected } = useWallet();
   const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
