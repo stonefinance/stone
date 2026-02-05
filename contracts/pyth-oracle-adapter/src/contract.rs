@@ -1,4 +1,25 @@
 //! Contract entry points for the Pyth oracle adapter.
+//!
+//! This module contains the main contract logic including:
+//! - Entry points (`instantiate`, `execute`, `query`)
+//! - Execute handlers for admin operations
+//! - Query handlers for price and configuration queries
+//!
+//! # Architecture
+//!
+//! The adapter acts as a bridge between Stone markets and Pyth Network:
+//! - Receives `OracleQueryMsg::Price` queries from Stone markets
+//! - Looks up the Pyth feed ID for the requested denom
+//! - Queries the Pyth contract for the latest price
+//! - Validates the price (positive, confidence within bounds)
+//! - Returns a `PriceResponse` in Stone's format
+//!
+//! # Staleness Handling
+//!
+//! This adapter intentionally does NOT check price staleness. Staleness
+//! validation is the responsibility of the market layer, which can apply
+//! different staleness thresholds for different use cases using the same
+//! adapter instance.
 
 use std::collections::HashSet;
 
@@ -11,6 +32,32 @@ use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::pyth_types::{PriceFeedResponse, PriceIdentifier, PythQueryMsg};
 use crate::state::{Config, CONFIG, CONTRACT_NAME, CONTRACT_VERSION, PENDING_OWNER, PRICE_FEEDS};
 
+/// Contract entry point for instantiation.
+///
+/// Called once when the contract is deployed. Sets up the initial configuration
+/// including owner, Pyth contract address, confidence ratio, and optionally
+/// initial price feeds.
+///
+/// # Validation
+///
+/// - Owner address must be valid
+/// - Pyth contract address must be valid
+/// - Max confidence ratio must be in range (0, 1]
+/// - Price feed IDs must be valid 64-character hex strings
+/// - Duplicate denoms in price_feeds are rejected
+///
+/// # Example InstantiateMsg
+///
+/// ```json
+/// {
+///   "owner": "neutron1...",
+///   "pyth_contract_addr": "neutron1...",
+///   "max_confidence_ratio": "0.01",
+///   "price_feeds": [
+///     { "denom": "uatom", "feed_id": "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8" }
+///   ]
+/// }
+/// ```
 #[entry_point]
 pub fn instantiate(
     deps: DepsMut,
@@ -78,6 +125,11 @@ pub fn instantiate(
         .add_attribute("max_confidence_ratio", config.max_confidence_ratio.to_string()))
 }
 
+/// Contract entry point for execute messages.
+///
+/// Dispatches execute messages to their respective handlers. All execute
+/// operations require authorization except for queries (which are handled
+/// separately in `query`).
 #[entry_point]
 pub fn execute(
     deps: DepsMut,
@@ -103,6 +155,19 @@ pub fn execute(
     }
 }
 
+/// Set or update a price feed mapping.
+///
+/// Associates a denom with a Pyth feed ID. If the denom already exists,
+/// its feed ID is updated to the new value.
+///
+/// # Authorization
+///
+/// Requires the caller to be the contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
+/// * `InvalidFeedId` - Feed ID is not a valid 64-character hex string
 fn execute_set_price_feed(
     deps: DepsMut,
     _env: Env,
@@ -129,6 +194,18 @@ fn execute_set_price_feed(
         .add_attribute("feed_id", feed_id.to_hex()))
 }
 
+/// Remove a price feed mapping.
+///
+/// Removes the association between a denom and its Pyth feed ID.
+///
+/// # Authorization
+///
+/// Requires the caller to be the contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
+/// * `PriceFeedNotConfigured` - No feed exists for the denom
 fn execute_remove_price_feed(
     deps: DepsMut,
     _env: Env,
@@ -152,6 +229,19 @@ fn execute_remove_price_feed(
         .add_attribute("denom", denom))
 }
 
+/// Update contract configuration.
+///
+/// Performs a partial update of configuration. Only provided fields
+/// are updated; `None` values leave existing values unchanged.
+///
+/// # Authorization
+///
+/// Requires the caller to be the contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
+/// * `InvalidConfidenceRatio` - New ratio is 0 or > 1
 fn execute_update_config(
     deps: DepsMut,
     _env: Env,
@@ -205,6 +295,18 @@ fn execute_update_config(
     Ok(resp)
 }
 
+/// Initiate ownership transfer.
+///
+/// Starts a two-step ownership transfer by setting the pending owner.
+/// The new owner must call `accept_ownership` to complete the transfer.
+///
+/// # Authorization
+///
+/// Requires the caller to be the current contract owner.
+///
+/// # Errors
+///
+/// * `Unauthorized` - Caller is not the owner
 fn execute_transfer_ownership(
     deps: DepsMut,
     _env: Env,
@@ -228,6 +330,19 @@ fn execute_transfer_ownership(
         .add_attribute("pending_owner", new_owner_addr.to_string()))
 }
 
+/// Accept ownership transfer.
+///
+/// Completes a two-step ownership transfer. Must be called by the address
+/// previously set as the pending owner.
+///
+/// # Authorization
+///
+/// Requires the caller to be the pending owner.
+///
+/// # Errors
+///
+/// * `PendingOwnerNotSet` - No ownership transfer is pending
+/// * `NotPendingOwner` - Caller is not the pending owner
 fn execute_accept_ownership(
     deps: DepsMut,
     _env: Env,
@@ -255,6 +370,10 @@ fn execute_accept_ownership(
         .add_attribute("new_owner", config.owner.to_string()))
 }
 
+/// Contract entry point for query messages.
+///
+/// Dispatches query messages to their respective handlers. Queries are
+/// read-only and do not require authorization.
 #[entry_point]
 pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     let result = match msg {
@@ -269,8 +388,33 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     Ok(result)
 }
 
-// Note: _env intentionally unused. Staleness checking is handled by the market
-// layer (stone-types::OraclePriceStale), not by the adapter.
+/// Query the current price for a denom.
+///
+/// Implements the Stone `OracleQueryMsg` interface. This is the primary
+/// query used by Stone markets to get price data.
+///
+/// # Flow
+///
+/// 1. Look up the Pyth feed ID for the denom
+/// 2. Query the Pyth contract for the latest price
+/// 3. Validate the price is positive
+/// 4. Validate the confidence ratio is within bounds
+/// 5. Convert the price to a Decimal
+/// 6. Return the PriceResponse
+///
+/// # Note on Staleness
+///
+/// The `_env` parameter is intentionally unused. Staleness checking is
+/// handled by the market layer (`stone_types::OraclePriceStale`), not
+/// by this adapter. This design allows multiple markets to share the
+/// same adapter with different staleness requirements.
+///
+/// # Errors
+///
+/// * `PriceFeedNotConfigured` - No feed ID configured for the denom
+/// * `NegativeOrZeroPrice` - Pyth returned price <= 0
+/// * `ConfidenceTooHigh` - Confidence ratio exceeds max_confidence_ratio
+/// * `InvalidTimestamp` - Pyth returned negative publish_time
 fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::PriceResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -314,6 +458,10 @@ fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::Pric
     Ok(stone_types::PriceResponse { denom, price: decimal_price, updated_at })
 }
 
+/// Query contract configuration.
+///
+/// Returns the current configuration including owner, Pyth contract
+/// address, and max confidence ratio.
 fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     Ok(crate::msg::ConfigResponse {
@@ -323,6 +471,14 @@ fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError>
     })
 }
 
+/// Query price feed information for a specific denom.
+///
+/// Returns the feed ID configured for the given denom. This is useful
+/// for verifying feed configurations.
+///
+/// # Errors
+///
+/// * `PriceFeedNotConfigured` - No feed exists for the denom
 fn query_price_feed(
     deps: Deps,
     denom: String,
@@ -336,9 +492,20 @@ fn query_price_feed(
     })
 }
 
+/// Default pagination limit for price feed queries.
 const DEFAULT_LIMIT: u32 = 10;
+/// Maximum pagination limit to prevent excessive gas usage.
 const MAX_LIMIT: u32 = 30;
 
+/// Query all configured price feeds with pagination.
+///
+/// Returns a list of all price feed configurations, paginated by denom.
+/// Results are ordered by denom in ascending lexicographic order.
+///
+/// # Parameters
+///
+/// * `start_after` - If provided, start pagination after this denom
+/// * `limit` - Maximum number of results (default: 10, max: 30)
 fn query_all_price_feeds(
     deps: Deps,
     start_after: Option<String>,
@@ -375,7 +542,10 @@ mod tests {
         use crate::pyth_types::*;
         use std::collections::HashMap;
 
-        // Create a querier that responds to Pyth queries
+        /// Create a mock querier that responds to Pyth queries.
+        ///
+        /// Returns a tuple of (deps, pyth_bech32_address) where deps has a custom
+        /// querier that responds to Pyth price feed queries.
         fn create_pyth_deps(
             pyth_addr_str: &str,
             feeds: HashMap<String, PriceFeedResponse>,
@@ -409,6 +579,7 @@ mod tests {
             (deps, pyth_bech32)
         }
 
+        /// Create a mock price feed response.
         fn make_feed_response(feed_id: &str, price: i64, conf: u64, expo: i32, publish_time: i64) -> PriceFeedResponse {
             PriceFeedResponse {
                 price_feed: PriceFeed {
@@ -419,7 +590,7 @@ mod tests {
             }
         }
 
-        // Helper to setup deps with config + feeds stored
+        /// Setup deps with config and a price feed stored.
         fn setup_with_pyth(
             pyth_addr_str: &str,
             feed_id: &str,
@@ -639,11 +810,13 @@ mod tests {
         }
     }
 
+    /// Create test addresses for use in tests.
     fn test_addrs() -> (cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr) {
         let api = MockApi::default();
         (api.addr_make("owner"), api.addr_make("pyth"), api.addr_make("new_owner"))
     }
 
+    /// Returns a valid Pyth feed ID for use in tests.
     fn valid_feed_id() -> String {
         "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8".to_string()
     }
@@ -904,9 +1077,10 @@ mod tests {
             max_confidence_ratio: Decimal::percent(1),
             price_feeds: vec![],
         };
-        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+        instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
 
         // Try to remove non-existent price feed
+        let info = message_info(&owner, &[]);
         let res = execute_remove_price_feed(deps.as_mut(), env, info, "uatom".to_string());
         assert!(matches!(res.unwrap_err(), ContractError::PriceFeedNotConfigured { .. }));
     }
