@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { TransactionHistoryDropdown } from '@/components/transactions/TransactionHistoryDropdown';
 import { useWallet } from '@/lib/cosmjs/wallet';
 import { shortenAddress } from '@/lib/utils/format';
+import { isLocal } from '@/lib/constants/contracts';
 
 export function Header() {
   const { address, isConnected, connect, disconnect, isLoading } = useWallet();
@@ -31,6 +32,14 @@ export function Header() {
               >
                 Dashboard
               </Link>
+              {isLocal && (
+                <Link
+                  href="/faucet"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Faucet
+                </Link>
+              )}
             </nav>
           </div>
 

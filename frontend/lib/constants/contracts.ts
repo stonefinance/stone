@@ -2,7 +2,7 @@
 export const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_FACTORY_ADDRESS || '';
 
 // Determine if we're using local chain
-const isLocal = process.env.NEXT_PUBLIC_CHAIN_ID === 'stone-local-1' ||
+export const isLocal = process.env.NEXT_PUBLIC_CHAIN_ID === 'stone-local-1' ||
                 process.env.NEXT_PUBLIC_RPC_ENDPOINT?.includes('localhost');
 
 // Network Configuration
