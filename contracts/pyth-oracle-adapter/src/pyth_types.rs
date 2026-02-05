@@ -1,5 +1,20 @@
 //! Minimal Pyth types for oracle adapter.
-//! These types mirror the Pyth SDK structures for querying price feeds.
+//!
+//! This module defines types that mirror the Pyth SDK structures for querying
+//! price feeds. These types enable the adapter to deserialize responses from
+//! the Pyth contract without depending on the full Pyth SDK.
+//!
+//! # Key Types
+//!
+//! - [`PriceIdentifier`] - 32-byte feed ID (64-char hex string)
+//! - [`Price`] - Price data with confidence, exponent, and timestamp
+//! - [`PriceFeed`] - Complete price feed including EMA price
+//! - [`PythQueryMsg`] - Messages for querying the Pyth contract
+//!
+//! # Price Conversion
+//!
+//! Pyth prices use a fixed-point representation: `price * 10^expo`
+//! The [`pyth_price_to_decimal`] function converts this to a `Decimal`.
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Decimal, StdError};
@@ -12,15 +27,31 @@ use crate::error::ContractError;
 /// Convert a Pyth price and exponent to a cosmwasm_std::Decimal.
 ///
 /// Pyth prices are represented as `price * 10^expo` where expo is typically negative.
-/// Examples:
-/// - (1_052_000_000, -8) → $10.52
-/// - (100, 2) → $10000
-/// - (42, 0) → $42
+/// This function handles the conversion to Decimal, including validation and
+/// overflow protection.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // ATOM at $10.52 (Pyth representation)
+/// let decimal = pyth_price_to_decimal(1_052_000_000, -8)?;
+/// // Result: 10.52
+///
+/// // BTC at $65,000
+/// let decimal = pyth_price_to_decimal(6_500_000_000_000, -8)?;
+/// // Result: 65000.0
+/// ```
+///
+/// # Arguments
+///
+/// * `price` - The raw price value from Pyth (must be positive)
+/// * `expo` - The exponent (typically negative, |expo| ≤ 18)
 ///
 /// # Errors
-/// - `ContractError::InvalidPrice` if price <= 0
-/// - `ContractError::ExponentOutOfRange` if |expo| > 18
-/// - `ContractError::Overflow` if the calculation overflows
+///
+/// * `ContractError::InvalidPrice` - If price ≤ 0
+/// * `ContractError::ExponentOutOfRange` - If |expo| > 18
+/// * `ContractError::Overflow` - If the calculation overflows
 pub fn pyth_price_to_decimal(price: i64, expo: i32) -> Result<Decimal, ContractError> {
     // 1. Reject negative or zero price
     if price <= 0 {
@@ -54,26 +85,64 @@ pub fn pyth_price_to_decimal(price: i64, expo: i32) -> Result<Decimal, ContractE
 }
 
 /// Price identifier - 32 bytes serialized as 64-character hex string.
+///
+/// This type represents a Pyth price feed ID. It's stored as a fixed 32-byte
+/// array and serialized/deserialized as a hex string.
+///
+/// # Format
+///
+/// - Internal: `[u8; 32]` - 32-byte array
+/// - External: 64-character hex string (optionally with "0x" prefix)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let id = PriceIdentifier::from_hex("b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819")?;
+/// assert_eq!(id.to_hex(), "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819");
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PriceIdentifier([u8; 32]);
 
 impl PriceIdentifier {
     /// Create a new PriceIdentifier from a 32-byte array.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let id = PriceIdentifier::new([0u8; 32]); // All zeros
+    /// ```
     pub const fn new(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
 
     /// Get the underlying bytes.
+    ///
+    /// Returns a reference to the 32-byte array.
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
 
     /// Convert to a 64-character hex string.
+    ///
+    /// Produces a lowercase hex string without "0x" prefix.
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
 
     /// Parse from a 64-character hex string (with optional `0x` prefix).
+    ///
+    /// # Errors
+    ///
+    /// Returns `StdError` if:
+    /// - The string is not 64 characters (after removing optional "0x")
+    /// - The string contains invalid hex characters
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let id = PriceIdentifier::from_hex("b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819")?;
+    /// let id = PriceIdentifier::from_hex("0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819")?; // With prefix
+    /// ```
     pub fn from_hex(hex_str: &str) -> Result<Self, StdError> {
         // Strip optional 0x prefix
         let hex_str = hex_str.strip_prefix("0x").unwrap_or(hex_str);
@@ -149,14 +218,31 @@ impl JsonSchema for PriceIdentifier {
 }
 
 /// Price data from Pyth.
+///
+/// Represents a single price point from Pyth, including the price value,
+/// confidence interval, exponent, and timestamp.
+///
+/// # Fields
+///
+/// * `price` - The price value (can be negative for some feeds, though
+///   the adapter rejects negative prices)
+/// * `conf` - Confidence interval representing uncertainty around the price
+/// * `expo` - Exponent for the price (price = raw_price * 10^expo)
+/// * `publish_time` - Unix timestamp when this price was published
 #[cw_serde]
 #[derive(Copy)]
 pub struct Price {
     /// Price value (can be negative for some feeds).
     pub price: i64,
     /// Confidence interval (uncertainty around the price).
+    ///
+    /// This represents the standard deviation of the price estimate.
+    /// A lower confidence indicates more certainty in the price.
     pub conf: u64,
     /// Exponent (price = raw_price * 10^expo).
+    ///
+    /// Typically negative. For example, an exponent of -8 means the
+    /// actual price is `price * 10^-8`.
     pub expo: i32,
     /// Unix timestamp when this price was published.
     pub publish_time: i64,
@@ -164,12 +250,34 @@ pub struct Price {
 
 impl Price {
     /// Get the price as a decimal value.
-    /// Returns None if the price is negative/zero or if the exponent would cause overflow.
+    ///
+    /// Converts the Pyth price to a `Decimal` using the exponent.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Decimal)` - The converted price
+    /// * `None` - If the price is negative/zero or exponent causes overflow
     pub fn get_price_as_decimal(&self) -> Option<cosmwasm_std::Decimal> {
         pyth_price_to_decimal(self.price, self.expo).ok()
     }
 
     /// Get the confidence as a ratio of the price.
+    ///
+    /// Returns the confidence divided by the price as a Decimal.
+    /// This ratio is used to validate price quality.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Decimal)` - The confidence ratio (conf / price)
+    /// * `None` - If the price is negative or zero
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let price = Price { price: 10000, conf: 100, expo: 0, publish_time: 0 };
+    /// let ratio = price.get_confidence_ratio().unwrap();
+    /// // ratio = 0.01 (1%)
+    /// ```
     pub fn get_confidence_ratio(&self) -> Option<cosmwasm_std::Decimal> {
         if self.price <= 0 {
             return None;
@@ -179,6 +287,10 @@ impl Price {
 }
 
 /// Complete price feed data from Pyth.
+///
+/// Contains both the current price and the EMA (exponential moving average)
+/// price. The adapter primarily uses the current price, but the EMA is
+/// available for future use cases.
 #[cw_serde]
 #[derive(Copy)]
 pub struct PriceFeed {
@@ -187,10 +299,17 @@ pub struct PriceFeed {
     /// Current price.
     pub price: Price,
     /// EMA (exponential moving average) price.
+    ///
+    /// The EMA provides a smoothed price over time, which can be useful
+    /// for applications that want to reduce the impact of short-term
+    /// price fluctuations.
     pub ema_price: Price,
 }
 
 /// Response from Pyth price feed query.
+///
+/// This is the response type returned by the Pyth contract when querying
+/// a price feed. It wraps the [`PriceFeed`] struct.
 #[cw_serde]
 pub struct PriceFeedResponse {
     /// The price feed data.
@@ -198,10 +317,16 @@ pub struct PriceFeedResponse {
 }
 
 /// Query messages for the Pyth contract.
+///
+/// These are the messages that can be sent to the Pyth contract to
+/// query price data. The adapter uses these to fetch prices.
 #[cw_serde]
 #[derive(cosmwasm_schema::QueryResponses)]
 pub enum PythQueryMsg {
     /// Query a single price feed by ID.
+    ///
+    /// Returns the complete price feed data including current price,
+    /// EMA price, and metadata.
     #[returns(PriceFeedResponse)]
     PriceFeed { id: PriceIdentifier },
 }
@@ -213,7 +338,7 @@ mod tests {
     #[test]
     fn test_price_identifier_hex_roundtrip() {
         // Test with a known Pyth feed ID (e.g., ATOM/USD)
-        let hex_str = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+        let hex_str = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
         let id = PriceIdentifier::from_hex(hex_str).unwrap();
         assert_eq!(id.to_hex(), hex_str);
 
@@ -228,7 +353,7 @@ mod tests {
     #[test]
     fn test_price_identifier_from_hex_with_prefix() {
         // Test with 0x prefix
-        let hex_str = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
+        let hex_str = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
         let hex_with_prefix = format!("0x{}", hex_str);
         
         let id_from_plain = PriceIdentifier::from_hex(hex_str).unwrap();

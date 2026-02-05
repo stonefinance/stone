@@ -283,7 +283,7 @@ mod tests {
     }
 
     fn atom_feed_id() -> String {
-        "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8".to_string()
+        "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string()
     }
 
     fn atom_feed_id_bytes() -> [u8; 32] {
