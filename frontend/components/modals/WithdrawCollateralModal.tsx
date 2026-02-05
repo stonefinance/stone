@@ -23,6 +23,9 @@ interface WithdrawCollateralModalProps {
   currentCollateral?: string;
   hasDebt?: boolean;
   onSuccess?: () => void;
+  // Pyth price update configuration
+  collateralDenom?: string;
+  debtDenom?: string;
 }
 
 export function WithdrawCollateralModal({
@@ -33,6 +36,8 @@ export function WithdrawCollateralModal({
   currentCollateral,
   hasDebt,
   onSuccess,
+  collateralDenom,
+  debtDenom,
 }: WithdrawCollateralModalProps) {
   const { signingClient, isConnected } = useWallet();
   const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
@@ -63,7 +68,10 @@ export function WithdrawCollateralModal({
 
     try {
       const microAmount = baseToMicro(amount);
-      const result = await signingClient.withdrawCollateral(marketAddress, microAmount);
+
+      const result = collateralDenom && debtDenom
+        ? await signingClient.withdrawCollateralWithPriceUpdate(marketAddress, microAmount, collateralDenom, debtDenom)
+        : await signingClient.withdrawCollateral(marketAddress, microAmount);
 
       markCompleted(txId, result.transactionHash);
       setAmount('');

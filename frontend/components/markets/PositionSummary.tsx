@@ -1,7 +1,7 @@
 'use client';
 
 import { TokenIcon } from '@/components/ui/token-icon';
-import { formatDisplayAmount, getHealthFactorColor } from '@/lib/utils/format';
+import { formatDisplayAmount, formatUSD, getHealthFactorColor } from '@/lib/utils/format';
 import { Info } from 'lucide-react';
 
 interface PositionSummaryProps {
@@ -15,6 +15,10 @@ interface PositionSummaryProps {
   utilization?: number;         // 0 to 100
   liquidationPrice?: number;
   percentToLiquidation?: number;
+  /** USD price of collateral token (from Pyth) */
+  collateralUsdPrice?: number;
+  /** USD price of debt token (from Pyth) */
+  debtUsdPrice?: number;
 }
 
 function getLtvDotColor(currentLtv: number, liquidationLtv: number): string {
@@ -37,6 +41,8 @@ export function PositionSummary({
   utilization,
   liquidationPrice,
   percentToLiquidation,
+  collateralUsdPrice,
+  debtUsdPrice,
 }: PositionSummaryProps) {
   const collateralNum = typeof collateralAmount === 'string' ? parseFloat(collateralAmount) : collateralAmount;
   const debtNum = typeof debtAmount === 'string' ? parseFloat(debtAmount) : debtAmount;
@@ -51,9 +57,16 @@ export function PositionSummary({
           <span className="text-sm text-muted-foreground">Collateral</span>
           <div className="flex items-center gap-2">
             <TokenIcon symbol={collateralDenom} size="sm" />
-            <span className="text-sm font-medium">
-              {formatDisplayAmount(collateralNum)} {collateralDenom}
-            </span>
+            <div className="text-right">
+              <span className="text-sm font-medium">
+                {formatDisplayAmount(collateralNum)} {collateralDenom}
+              </span>
+              {collateralUsdPrice != null && collateralNum > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {formatUSD(collateralNum * collateralUsdPrice)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -62,9 +75,16 @@ export function PositionSummary({
           <span className="text-sm text-muted-foreground">Loan</span>
           <div className="flex items-center gap-2">
             <TokenIcon symbol={debtDenom} size="sm" />
-            <span className="text-sm font-medium">
-              {formatDisplayAmount(debtNum)} {debtDenom}
-            </span>
+            <div className="text-right">
+              <span className="text-sm font-medium">
+                {formatDisplayAmount(debtNum)} {debtDenom}
+              </span>
+              {debtUsdPrice != null && debtNum > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {formatUSD(debtNum * debtUsdPrice)}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

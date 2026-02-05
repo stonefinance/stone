@@ -8,6 +8,7 @@ import { MarketsFilter } from '@/components/markets/MarketsFilter';
 import { Card, CardContent } from '@/components/ui/card';
 import { useMarketsWithPositions } from '@/hooks/useMarketsWithPositions';
 import { useWallet } from '@/lib/cosmjs/wallet';
+import { usePythPrices } from '@/hooks/usePythPrices';
 import { MarketFilter, SortConfig } from '@/types';
 
 export default function MarketsPage() {
@@ -19,6 +20,20 @@ export default function MarketsPage() {
     column: 'totalSupplied',
     direction: 'desc',
   });
+
+  // Collect unique chain denoms from all markets for Pyth price fetch
+  const allDenoms = useMemo(() => {
+    const denomSet = new Set<string>();
+    markets.forEach((m) => {
+      const col = m.collateralDenom.toLowerCase();
+      const debt = m.debtDenom.toLowerCase();
+      denomSet.add(col.startsWith('u') ? col : `u${col}`);
+      denomSet.add(debt.startsWith('u') ? debt : `u${debt}`);
+    });
+    return Array.from(denomSet);
+  }, [markets]);
+
+  const { prices: pythPrices } = usePythPrices(allDenoms, 15000);
 
   // Calculate filter counts
   const filterCounts = useMemo(() => {
@@ -182,6 +197,7 @@ export default function MarketsPage() {
                     isConnected={isConnected}
                     sortConfig={sortConfig}
                     onSort={handleSort}
+                    pythPrices={pythPrices}
                   />
                 </CardContent>
               </Card>
@@ -189,9 +205,18 @@ export default function MarketsPage() {
 
             {/* Mobile/Tablet Cards */}
             <div className="lg:hidden grid grid-cols-1 md:grid-cols-2 gap-6">
-              {sortedMarkets.map((market) => (
-                <MarketCard key={market.id} market={market} />
-              ))}
+              {sortedMarkets.map((market) => {
+                const debtChainDenom = market.debtDenom.toLowerCase().startsWith('u')
+                  ? market.debtDenom.toLowerCase()
+                  : `u${market.debtDenom.toLowerCase()}`;
+                return (
+                  <MarketCard
+                    key={market.id}
+                    market={market}
+                    debtUsdPrice={pythPrices[debtChainDenom]}
+                  />
+                );
+              })}
             </div>
           </>
         )}

@@ -24,6 +24,9 @@ interface RepayModalProps {
   currentDebt?: string;
   onSuccess?: () => void;
   onFullRepay?: () => void;
+  // Pyth price update configuration
+  collateralDenom?: string;
+  debtDenom?: string;
 }
 
 export function RepayModal({
@@ -35,6 +38,8 @@ export function RepayModal({
   currentDebt,
   onSuccess,
   onFullRepay,
+  collateralDenom,
+  debtDenom: marketDebtDenom,
 }: RepayModalProps) {
   const { signingClient, isConnected } = useWallet();
   const { addPendingTransaction, markCompleted, markFailed } = usePendingTransactions();
@@ -67,7 +72,9 @@ export function RepayModal({
       const microAmount = baseToMicro(amount);
       const coin = { denom, amount: microAmount };
 
-      const result = await signingClient.repay(marketAddress, coin);
+      const result = collateralDenom && marketDebtDenom
+        ? await signingClient.repayWithPriceUpdate(marketAddress, coin, collateralDenom, marketDebtDenom)
+        : await signingClient.repay(marketAddress, coin);
 
       markCompleted(txId, result.transactionHash);
       const repaidAmount = parseFloat(amount);

@@ -14,6 +14,7 @@ import { Market, UserPosition, SortConfig } from '@/types';
 import {
   formatDisplayAmount,
   formatPercentage,
+  formatUSD,
   microToBase,
 } from '@/lib/utils/format';
 import { ChevronUp, ChevronDown } from 'lucide-react';
@@ -24,6 +25,8 @@ interface MarketsTableProps {
   isConnected: boolean;
   sortConfig: SortConfig;
   onSort: (column: string) => void;
+  /** Pyth USD prices keyed by chain denom (e.g. 'uatom') */
+  pythPrices?: Record<string, number>;
 }
 
 function SortIcon({ column, sortConfig }: { column: string; sortConfig: SortConfig }) {
@@ -92,12 +95,19 @@ function TokenCell({ symbol }: { symbol: string }) {
   );
 }
 
+/** Map a display denom (e.g. "ATOM") back to the chain denom (e.g. "uatom"). */
+function toChainDenom(displayDenom: string): string {
+  const lower = displayDenom.toLowerCase();
+  return lower.startsWith('u') ? lower : `u${lower}`;
+}
+
 export function MarketsTable({
   markets,
   positionsMap,
   isConnected,
   sortConfig,
   onSort,
+  pythPrices = {},
 }: MarketsTableProps) {
   const router = useRouter();
 
@@ -165,9 +175,36 @@ export function MarketsTable({
               <TableCell>
                 <TokenCell symbol={market.debtDenom} />
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">--</TableCell>
               <TableCell className="text-right">
-                {formatDisplayAmount(microToBase(market.totalSupplied), 0)} {market.debtDenom}
+                {(() => {
+                  const colPrice = pythPrices[toChainDenom(market.collateralDenom)];
+                  const debtPrice = pythPrices[toChainDenom(market.debtDenom)];
+                  if (colPrice && debtPrice) {
+                    return (
+                      <span className="font-medium">
+                        {formatDisplayAmount(colPrice / debtPrice, 4)}
+                      </span>
+                    );
+                  }
+                  return <span className="text-muted-foreground">--</span>;
+                })()}
+              </TableCell>
+              <TableCell className="text-right">
+                <div>
+                  <span>{formatDisplayAmount(microToBase(market.totalSupplied), 0)} {market.debtDenom}</span>
+                  {(() => {
+                    const debtPrice = pythPrices[toChainDenom(market.debtDenom)];
+                    if (debtPrice) {
+                      const usdValue = parseFloat(microToBase(market.totalSupplied)) * debtPrice;
+                      return (
+                        <div className="text-xs text-muted-foreground">
+                          {formatUSD(usdValue)}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
               </TableCell>
               <TableCell className="text-right text-green-600 font-medium">
                 {formatPercentage(market.supplyApy)}

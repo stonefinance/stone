@@ -27,12 +27,15 @@ import {
   getChartDataKey,
   getChartLabel,
 } from '@/hooks/useMarketSnapshots';
+import { usePythPrices } from '@/hooks/usePythPrices';
 import {
   formatDisplayAmount,
   formatPercentage,
+  formatUSD,
   microToBase,
   baseToMicro,
 } from '@/lib/utils/format';
+import { getChainDenom } from '@/lib/utils/denom';
 import { Info, ExternalLink } from 'lucide-react';
 import {
   AreaChart,
@@ -90,6 +93,16 @@ export default function MarketDetailPage() {
     hasData: hasChartData,
     isLoading: chartLoading,
   } = useMarketSnapshots(marketId, chartTimeRange);
+
+  // Fetch Pyth prices for live price display
+  const { prices: pythPrices, isLoading: pythLoading } = usePythPrices(
+    market ? [getChainDenom(market.collateralDenom), getChainDenom(market.debtDenom)] : [],
+    15000
+  );
+
+  const collateralPrice = market ? pythPrices[getChainDenom(market.collateralDenom)] : undefined;
+  const debtPrice = market ? pythPrices[getChainDenom(market.debtDenom)] : undefined;
+  const oraclePriceRatio = collateralPrice && debtPrice ? collateralPrice / debtPrice : null;
 
   useEffect(() => {
     if (initializedTab) return;
@@ -150,7 +163,12 @@ export default function MarketDetailPage() {
     try {
       const microAmount = baseToMicro(collateralAmount);
       const coin = { denom: market.config.collateral_denom, amount: microAmount };
-      const result = await signingClient.supplyCollateral(market.address, coin);
+      const result = await signingClient.supplyCollateralWithPriceUpdate(
+        market.address,
+        coin,
+        market.config.collateral_denom,
+        market.config.debt_denom,
+      );
       markCompleted(txId, result.transactionHash);
       setCollateralAmount('');
       await refetchAll();
@@ -180,7 +198,12 @@ export default function MarketDetailPage() {
     try {
       const microAmount = baseToMicro(supplyAmount);
       const coin = { denom: market.config.debt_denom, amount: microAmount };
-      const result = await signingClient.supply(market.address, coin);
+      const result = await signingClient.supplyWithPriceUpdate(
+        market.address,
+        coin,
+        market.config.collateral_denom,
+        market.config.debt_denom,
+      );
       markCompleted(txId, result.transactionHash);
       setSupplyAmount('');
       await refetchAll();
@@ -209,7 +232,12 @@ export default function MarketDetailPage() {
 
     try {
       const microAmount = baseToMicro(borrowAmount);
-      const result = await signingClient.borrow(market.address, microAmount);
+      const result = await signingClient.borrowWithPriceUpdate(
+        market.address,
+        microAmount,
+        market.config.collateral_denom,
+        market.config.debt_denom,
+      );
       markCompleted(txId, result.transactionHash);
       setBorrowAmount('');
       await refetchAll();
@@ -284,9 +312,12 @@ export default function MarketDetailPage() {
               <Info className="h-3.5 w-3.5" />
             </div>
             <p className="text-2xl font-bold">{formatLargeNumber(totalMarketSize)}</p>
-            <p className="text-sm text-muted-foreground">
-              {formatDisplayAmount(totalMarketSize, 2)} {market.debtDenom}
-            </p>
+            <div className="text-sm text-muted-foreground">
+              <span>{formatDisplayAmount(totalMarketSize, 2)} {market.debtDenom}</span>
+              {debtPrice && (
+                <span className="ml-1">({formatUSD(totalMarketSize * debtPrice)})</span>
+              )}
+            </div>
           </div>
           <div>
             <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
@@ -294,9 +325,12 @@ export default function MarketDetailPage() {
               <Info className="h-3.5 w-3.5" />
             </div>
             <p className="text-2xl font-bold">{formatLargeNumber(totalLiquidity)}</p>
-            <p className="text-sm text-muted-foreground">
-              {formatDisplayAmount(totalLiquidity, 2)} {market.debtDenom}
-            </p>
+            <div className="text-sm text-muted-foreground">
+              <span>{formatDisplayAmount(totalLiquidity, 2)} {market.debtDenom}</span>
+              {debtPrice && (
+                <span className="ml-1">({formatUSD(totalLiquidity * debtPrice)})</span>
+              )}
+            </div>
           </div>
           <div>
             <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
@@ -381,7 +415,13 @@ export default function MarketDetailPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Oracle price</span>
                         <span className="font-medium">
-                          {market.collateralDenom} / {market.debtDenom} = 1.00
+                          {pythLoading && !oraclePriceRatio ? (
+                            <span className="text-muted-foreground animate-pulse">Loading...</span>
+                          ) : oraclePriceRatio ? (
+                            `${market.collateralDenom} / ${market.debtDenom} = ${formatDisplayAmount(oraclePriceRatio, 4)}`
+                          ) : (
+                            `${market.collateralDenom} / ${market.debtDenom} = --`
+                          )}
                         </span>
                       </div>
                       <div className="flex items-center justify-between">
@@ -884,6 +924,8 @@ export default function MarketDetailPage() {
         currentDebt={position?.debtAmount}
         onSuccess={refetchAll}
         onFullRepay={() => setActionTab('lend')}
+        collateralDenom={market.config.collateral_denom}
+        debtDenom={market.config.debt_denom}
       />
 
       <WithdrawModal
@@ -893,6 +935,8 @@ export default function MarketDetailPage() {
         displayDenom={market.debtDenom}
         currentSupply={position?.supplyAmount}
         onSuccess={refetchAll}
+        collateralDenom={market.config.collateral_denom}
+        debtDenom={market.config.debt_denom}
       />
 
       <WithdrawCollateralModal
@@ -903,6 +947,8 @@ export default function MarketDetailPage() {
         currentCollateral={position?.collateralAmount}
         hasDebt={userDebt > 0}
         onSuccess={refetchAll}
+        collateralDenom={market.config.collateral_denom}
+        debtDenom={market.config.debt_denom}
       />
     </div>
   );
