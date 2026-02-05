@@ -7,17 +7,18 @@
 //! - Market (optional, if available)
 
 use cosmwasm_std::testing::MockApi;
-use cosmwasm_std::{coin, Addr, Decimal, Empty};
+use cosmwasm_std::{coin, Addr, Decimal, Empty, Timestamp};
 use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor, IntoAddr};
 use pyth_oracle_adapter::contract as adapter_contract;
 use pyth_oracle_adapter::msg::{ExecuteMsg as AdapterExecuteMsg, InstantiateMsg as AdapterInstantiateMsg, QueryMsg as AdapterQueryMsg, PriceFeedConfig};
+use pyth_oracle_adapter::error::ContractError as AdapterContractError;
 use stone_testing::{
     mock_pyth_contract, MockPythExecuteMsg, MockPythInstantiateMsg, MockPriceFeedInit,
     COLLATERAL_DENOM, DEBT_DENOM, default_market_params,
 };
 use stone_types::{
-    FactoryExecuteMsg, FactoryInstantiateMsg, OracleConfigUnchecked, OracleType, PriceResponse,
-    MarketQueryMsg, MarketConfigResponse,
+    ContractError as TypesContractError, FactoryExecuteMsg, FactoryInstantiateMsg,
+    OracleConfigUnchecked, OracleType, PriceResponse, MarketQueryMsg, MarketConfigResponse,
 };
 
 // Feed IDs for testing (64-character hex strings)
