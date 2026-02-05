@@ -7,7 +7,7 @@
 //! - Market (optional, if available)
 
 use cosmwasm_std::testing::MockApi;
-use cosmwasm_std::{coin, Addr, Decimal, Empty};
+use cosmwasm_std::{coin, Addr, Decimal, Empty, Timestamp};
 use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor, IntoAddr};
 use pyth_oracle_adapter::contract as adapter_contract;
 use pyth_oracle_adapter::msg::{ExecuteMsg as AdapterExecuteMsg, InstantiateMsg as AdapterInstantiateMsg, QueryMsg as AdapterQueryMsg, PriceFeedConfig};
@@ -729,7 +729,7 @@ struct FullStackEnv {
     app: App,
     owner: Addr,
     curator: Addr,
-    collector: Addr,
+    _collector: Addr,
     pyth_addr: Addr,
     adapter_addr: Addr,
     factory_addr: Addr,
@@ -754,7 +754,7 @@ fn setup_full_stack_env() -> FullStackEnv {
         app,
         owner: owner.clone(),
         curator: curator.clone(),
-        collector: collector.clone(),
+        _collector: collector.clone(),
         pyth_addr: Addr::unchecked(""),
         adapter_addr: Addr::unchecked(""),
         factory_addr: Addr::unchecked(""),
@@ -1018,8 +1018,14 @@ fn test_market_rejects_stale_price() {
     let factory_code_id = app.store_code(factory_wrapper());
     let market_code_id = app.store_code(market_wrapper());
 
-    // Instantiate mock Pyth with old publish_time
-    let stale_publish_time = 1_000_000_000i64; // Very old timestamp
+    // Set explicit block time close to the publish_time we will use
+    // This ensures the price will be fresh when we query it
+    let publish_time = 1_700_000_000i64;
+    app.update_block(|block| {
+        block.time = Timestamp::from_seconds(publish_time as u64);
+    });
+
+    // Instantiate mock Pyth with current publish_time
     let pyth_addr = app
         .instantiate_contract(
             pyth_code_id,
@@ -1031,7 +1037,7 @@ fn test_market_rejects_stale_price() {
                         price: 10_000_000_000i64,
                         conf: 1_000_000u64,
                         expo: -8,
-                        publish_time: stale_publish_time,
+                        publish_time,
                         ema_price: None,
                         ema_conf: None,
                     },
@@ -1040,7 +1046,7 @@ fn test_market_rejects_stale_price() {
                         price: 100_000_000i64,
                         conf: 100_000u64,
                         expo: -8,
-                        publish_time: stale_publish_time,
+                        publish_time,
                         ema_price: None,
                         ema_conf: None,
                     },
@@ -1095,8 +1101,7 @@ fn test_market_rejects_stale_price() {
         )
         .unwrap();
 
-    // Try to create market with very short max_staleness
-    // The market will reject because the price is too old
+    // First verify that market creation works with fresh prices
     let create_msg = FactoryExecuteMsg::CreateMarket {
         collateral_denom: COLLATERAL_DENOM.to_string(),
         debt_denom: DEBT_DENOM.to_string(),
@@ -1104,7 +1109,7 @@ fn test_market_rejects_stale_price() {
             address: adapter_addr.to_string(),
             oracle_type: OracleType::Pyth {
                 expected_code_id: adapter_code_id,
-                max_staleness_secs: 60, // Only 60 seconds tolerance
+                max_staleness_secs: 300, // 5 minutes tolerance
                 max_confidence_ratio: Decimal::percent(2),
             },
         },
@@ -1112,10 +1117,104 @@ fn test_market_rejects_stale_price() {
         salt: None,
     };
 
+    app.execute_contract(
+        curator.clone(),
+        factory_addr.clone(),
+        &create_msg,
+        &[coin(1_000, "uosmo")],
+    )
+    .unwrap();
+
+    // Now test stale price rejection
+    // Create new feeds with an updated publish_time
+    let new_publish_time = 1_800_000_000i64;
+
+    // Create a new mock Pyth with fresh feeds
+    let pyth_addr_stale = app
+        .instantiate_contract(
+            pyth_code_id,
+            owner.clone(),
+            &MockPythInstantiateMsg {
+                feeds: vec![
+                    MockPriceFeedInit {
+                        id: ATOM_FEED_ID.to_string(),
+                        price: 10_000_000_000i64,
+                        conf: 1_000_000u64,
+                        expo: -8,
+                        publish_time: new_publish_time,
+                        ema_price: None,
+                        ema_conf: None,
+                    },
+                    MockPriceFeedInit {
+                        id: USDC_FEED_ID.to_string(),
+                        price: 100_000_000i64,
+                        conf: 100_000u64,
+                        expo: -8,
+                        publish_time: new_publish_time,
+                        ema_price: None,
+                        ema_conf: None,
+                    },
+                ],
+            },
+            &[],
+            "mock-pyth-stale",
+            None,
+        )
+        .unwrap();
+
+    // Create a new adapter pointing to the stale feeds
+    let adapter_addr_stale = app
+        .instantiate_contract(
+            adapter_code_id,
+            owner.clone(),
+            &AdapterInstantiateMsg {
+                owner: owner.to_string(),
+                pyth_contract_addr: pyth_addr_stale.to_string(),
+                max_confidence_ratio: Decimal::percent(2),
+                price_feeds: vec![
+                    PriceFeedConfig {
+                        denom: COLLATERAL_DENOM.to_string(),
+                        feed_id: ATOM_FEED_ID.to_string(),
+                    },
+                    PriceFeedConfig {
+                        denom: DEBT_DENOM.to_string(),
+                        feed_id: USDC_FEED_ID.to_string(),
+                    },
+                ],
+            },
+            &[],
+            "pyth-adapter-stale",
+            None,
+        )
+        .unwrap();
+
+    // Advance block time well past max_staleness_secs from publish_time
+    // new_publish_time + 120 seconds > max_staleness_secs of 60
+    app.update_block(|block| {
+        block.time = Timestamp::from_seconds(new_publish_time as u64 + 120);
+    });
+
+    // Try to create market with very short max_staleness
+    // The market will reject because the price is too old
+    let create_msg_stale = FactoryExecuteMsg::CreateMarket {
+        collateral_denom: COLLATERAL_DENOM.to_string(),
+        debt_denom: DEBT_DENOM.to_string(),
+        oracle_config: OracleConfigUnchecked {
+            address: adapter_addr_stale.to_string(),
+            oracle_type: OracleType::Pyth {
+                expected_code_id: adapter_code_id,
+                max_staleness_secs: 60, // Only 60 seconds tolerance
+                max_confidence_ratio: Decimal::percent(2),
+            },
+        },
+        params: Box::new(default_market_params()),
+        salt: Some(1u64),
+    };
+
     let result = app.execute_contract(
         curator,
         factory_addr,
-        &create_msg,
+        &create_msg_stale,
         &[coin(1_000, "uosmo")],
     );
 
