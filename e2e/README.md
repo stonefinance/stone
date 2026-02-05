@@ -107,7 +107,7 @@ notice oak worry limit wrap speak medal online prefer cluster roof addict wrist 
 
 **Balances:**
 - 1,000,000 ATOM (1000000000000 uatom)
-- 1,000,000 OSMO (1000000000000 uosmo)
+- 1,000,000 USDC (1000000000000 uusdc)
 - 1,000,000 STONE (1000000000000 ustone)
 - 1,000,000 STAKE (1000000000000 stake)
 
@@ -125,7 +125,7 @@ satisfy adjust timber high purchase tuition stool faith fine install that you un
 - **Chain ID:** `stone-local-1`
 - **Block time:** ~1 second
 - **Staking denom:** `stake`
-- **Test tokens:** `uatom`, `uosmo`, `ustone`
+- **Test tokens:** `uatom`, `uusdc`, `ustone`
 
 ## Verifying the Chain
 

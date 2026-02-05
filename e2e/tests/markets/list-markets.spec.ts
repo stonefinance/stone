@@ -19,7 +19,7 @@ test.describe('Markets Page @smoke', () => {
 
     // If no data-testid, fall back to checking for market denoms
     if (count === 0) {
-      await expect(page.getByText(/ATOM|OSMO/i).first()).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/STONE|USDC/i).first()).toBeVisible({ timeout: 10000 });
     } else {
       expect(count).toBeGreaterThanOrEqual(2);
     }

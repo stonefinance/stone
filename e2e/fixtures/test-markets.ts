@@ -13,25 +13,25 @@ export interface TestMarketConfig {
 export const TEST_MARKETS: TestMarketConfig[] = [
   {
     id: '1',
-    name: 'ATOM/STONE',
-    collateralDenom: 'uatom',
-    debtDenom: 'ustone',
+    name: 'STONE/USDC',
+    collateralDenom: 'ustone',
+    debtDenom: 'uusdc',
     ltv: 75,
     liquidationThreshold: 80,
     liquidationBonus: 5,
-    collateralPrice: 10,  // $10 per ATOM
-    debtPrice: 1,         // $1 per STONE
+    collateralPrice: 0.5,  // $0.50 per STONE
+    debtPrice: 1,          // $1 per USDC
   },
   {
     id: '2',
-    name: 'OSMO/STONE',
-    collateralDenom: 'uosmo',
-    debtDenom: 'ustone',
-    ltv: 65,
-    liquidationThreshold: 75,
-    liquidationBonus: 8,
-    collateralPrice: 1,   // $1 per OSMO
-    debtPrice: 1,         // $1 per STONE
+    name: 'ATOM/USDC',
+    collateralDenom: 'uatom',
+    debtDenom: 'uusdc',
+    ltv: 75,
+    liquidationThreshold: 80,
+    liquidationBonus: 5,
+    collateralPrice: 10,   // $10 per ATOM
+    debtPrice: 1,          // $1 per USDC
   },
 ];
 
@@ -47,6 +47,7 @@ export function formatDenom(denom: string): string {
     uosmo: 'OSMO',
     ustone: 'STONE',
     ustake: 'STAKE',
+    uusdc: 'USDC',
   };
   return denomMap[denom] || denom.toUpperCase().replace(/^U/, '');
 }
