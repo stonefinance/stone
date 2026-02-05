@@ -47,11 +47,11 @@ interface PythDeploymentConfig {
 const DEFAULT_PYTH_FEEDS: PythPriceFeedConfig[] = [
   {
     denom: 'uatom',
-    feedId: 'b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8', // ATOM/USD
+    feedId: 'b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819', // ATOM/USD
   },
   {
     denom: 'uosmo',
-    feedId: '5867f5683c757393a0670ef0f701490950fe159ff0003c75188f5f0cbb9d5e5a', // OSMO/USD
+    feedId: '5867f5683c757393a0670ef0f701490950fe93fdb006d181c8265a831ac0c5c6', // OSMO/USD
   },
   {
     denom: 'uusdc',
