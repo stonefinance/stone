@@ -1,5 +1,5 @@
 import { Card, CardContent } from '@/components/ui/card';
-import { Market, PositionType, UserPosition } from '@/types';
+import { Market, MarketDetail, PositionType, UserPosition } from '@/types';
 import { NoPosition } from './NoPosition';
 import { SupplyPosition } from './SupplyPosition';
 import { BorrowPosition } from './BorrowPosition';
@@ -8,7 +8,7 @@ import { AlertTriangle } from 'lucide-react';
 interface PositionDisplayProps {
   position: UserPosition | null;
   positionType: PositionType;
-  market: Market;
+  market: Market | MarketDetail;
   isConnected: boolean;
   /** Pyth USD prices keyed by chain denom — passed from page level */
   pythPrices?: Record<string, number>;

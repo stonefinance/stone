@@ -2,13 +2,18 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDisplayAmount, formatUSD, microToBase } from '@/lib/utils/format';
-import { Market, UserPosition } from '@/types';
+import { Market, MarketDetail, UserPosition } from '@/types';
 import { getChainDenom } from '@/lib/utils/denom';
 import { computeHealthFactor, computeLtv } from '@/lib/utils/position';
 
+/** Type guard to check if market has params (is MarketDetail) */
+function isMarketDetail(market: Market | MarketDetail): market is MarketDetail {
+  return 'params' in market && market.params !== undefined;
+}
+
 interface BorrowPositionProps {
   position: UserPosition;
-  market: Market;
+  market: Market | MarketDetail;
   /** Pyth USD prices keyed by chain denom — passed from page level (review #3) */
   pythPrices?: Record<string, number>;
 }
@@ -26,7 +31,7 @@ export function BorrowPosition({ position, market, pythPrices = {} }: BorrowPosi
   const currentLtv = computeLtv(debt, collateral, debtPrice, collateralPrice);
 
   const liquidationThreshold =
-    'params' in market && market.params?.liquidation_threshold
+    isMarketDetail(market) && market.params?.liquidation_threshold
       ? parseFloat(market.params.liquidation_threshold)
       : undefined;
 
