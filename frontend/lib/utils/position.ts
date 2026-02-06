@@ -63,6 +63,7 @@ export function computeHealthFactor(
   currentLtv: number | null,
   liquidationThreshold: number,
 ): number | null {
-  if (currentLtv === null || currentLtv === 0) return null;
+  if (currentLtv === null) return null;
+  if (currentLtv === 0) return Infinity;
   return liquidationThreshold / (currentLtv / 100);
 }

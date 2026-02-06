@@ -15,16 +15,22 @@ export function HealthFactor({ healthFactor, size = 'md' }: HealthFactorProps) {
     lg: 'text-6xl',
   };
 
+  const isFiniteHealth = Number.isFinite(healthFactor);
+
   return (
     <div className="space-y-2">
       <div className="flex items-baseline gap-2">
         <span className={`font-bold ${sizeClasses[size]} ${color}`}>
-          {healthFactor ? healthFactor.toFixed(2) : 'N/A'}
+          {healthFactor === null || healthFactor === undefined
+            ? 'N/A'
+            : isFiniteHealth
+            ? healthFactor.toFixed(2)
+            : '∞'}
         </span>
         <span className={`text-sm font-medium ${color}`}>{status}</span>
       </div>
 
-      {healthFactor && (
+      {isFiniteHealth && (
         <div className="space-y-1">
           <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div

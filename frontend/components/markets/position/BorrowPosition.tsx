@@ -79,7 +79,11 @@ export function BorrowPosition({ position, market, pythPrices = {} }: BorrowPosi
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-bold text-green-600">
-            {health === null ? '--' : health.toFixed(2)}
+            {health === null
+              ? '--'
+              : Number.isFinite(health)
+              ? health.toFixed(2)
+              : '∞'}
           </p>
         </CardContent>
       </Card>

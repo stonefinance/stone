@@ -30,9 +30,9 @@ describe('position utils', () => {
       expect(health).toBeCloseTo(3.2, 6);
     });
 
-    it('returns null for zero LTV', () => {
+    it('returns infinity for zero LTV', () => {
       const health = computeHealthFactor(0, 0.8);
-      expect(health).toBeNull();
+      expect(health).toBe(Infinity);
     });
 
     it('returns null for null LTV', () => {
