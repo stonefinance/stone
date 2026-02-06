@@ -30,7 +30,7 @@ export function HealthFactor({ healthFactor, size = 'md' }: HealthFactorProps) {
         <span className={`text-sm font-medium ${color}`}>{status}</span>
       </div>
 
-      {isFiniteHealth && (
+      {isFiniteHealth && healthFactor !== undefined && (
         <div className="space-y-1">
           <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div
