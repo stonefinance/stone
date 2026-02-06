@@ -45,3 +45,25 @@ export function hasActiveDebt(position: UserPosition | null): boolean {
   if (!position) return false;
   return parseInt(position.debtAmount) > DUST_THRESHOLD;
 }
+
+export function computeLtv(
+  debtAmount: number,
+  collateralAmount: number,
+  debtPrice: number | undefined,
+  collateralPrice: number | undefined,
+): number | null {
+  if (!debtPrice || !collateralPrice || collateralAmount === 0) return null;
+  const debtValue = debtAmount * debtPrice;
+  const collateralValue = collateralAmount * collateralPrice;
+  if (collateralValue === 0) return null;
+  return (debtValue / collateralValue) * 100;
+}
+
+export function computeHealthFactor(
+  currentLtv: number | null,
+  liquidationThreshold: number,
+): number | null {
+  if (currentLtv === null) return null;
+  if (currentLtv === 0) return Infinity;
+  return liquidationThreshold / (currentLtv / 100);
+}

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDisplayAmount, formatUSD, microToBase } from '@/lib/utils/format';
 import { Market, UserPosition } from '@/types';
 import { getChainDenom } from '@/lib/utils/denom';
+import { computeHealthFactor, computeLtv } from '@/lib/utils/position';
 
 interface BorrowPositionProps {
   position: UserPosition;
@@ -15,14 +16,24 @@ interface BorrowPositionProps {
 export function BorrowPosition({ position, market, pythPrices = {} }: BorrowPositionProps) {
   const collateral = parseFloat(microToBase(position.collateralAmount));
   const debt = parseFloat(microToBase(position.debtAmount));
-  const currentLtv = collateral > 0 && debt > 0 ? (debt / collateral) * 100 : 0;
-  const health = position.healthFactor;
 
   const collateralPrice = pythPrices[getChainDenom(market.collateralDenom)];
   const debtPrice = pythPrices[getChainDenom(market.debtDenom)];
 
   const collateralUSD = collateralPrice ? collateral * collateralPrice : null;
   const debtUSD = debtPrice ? debt * debtPrice : null;
+
+  const currentLtv = computeLtv(debt, collateral, debtPrice, collateralPrice);
+
+  const liquidationThreshold =
+    'params' in market && market.params?.liquidation_threshold
+      ? parseFloat(market.params.liquidation_threshold)
+      : undefined;
+
+  const computedHealth =
+    liquidationThreshold !== undefined ? computeHealthFactor(currentLtv, liquidationThreshold) : null;
+
+  const health = currentLtv === null ? null : position.healthFactor ?? computedHealth;
 
   return (
     <div className="grid grid-cols-2 gap-4">
@@ -57,7 +68,9 @@ export function BorrowPosition({ position, market, pythPrices = {} }: BorrowPosi
           <CardTitle className="text-sm font-medium text-muted-foreground">Current LTV</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-2xl font-bold">{currentLtv.toFixed(1)}%</p>
+          <p className="text-2xl font-bold">
+            {currentLtv === null ? '--' : `${currentLtv.toFixed(1)}%`}
+          </p>
         </CardContent>
       </Card>
       <Card>
@@ -66,7 +79,11 @@ export function BorrowPosition({ position, market, pythPrices = {} }: BorrowPosi
         </CardHeader>
         <CardContent>
           <p className="text-2xl font-bold text-green-600">
-            {health !== undefined ? health.toFixed(2) : '∞'}
+            {health === null
+              ? '--'
+              : Number.isFinite(health)
+              ? health.toFixed(2)
+              : '∞'}
           </p>
         </CardContent>
       </Card>

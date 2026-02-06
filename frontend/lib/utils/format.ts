@@ -85,7 +85,8 @@ export function baseToMicro(baseAmount: string, decimals: number = 6): string {
 
 // Calculate health factor color
 export function getHealthFactorColor(healthFactor?: number): string {
-  if (!healthFactor) return 'text-gray-500';
+  if (healthFactor === null || healthFactor === undefined) return 'text-gray-500';
+  if (!Number.isFinite(healthFactor)) return 'text-gray-500';
   if (healthFactor >= 2) return 'text-green-600';
   if (healthFactor >= 1.5) return 'text-yellow-600';
   if (healthFactor >= 1.2) return 'text-orange-600';
@@ -94,7 +95,8 @@ export function getHealthFactorColor(healthFactor?: number): string {
 
 // Get health factor status text
 export function getHealthFactorStatus(healthFactor?: number): string {
-  if (!healthFactor) return 'No debt';
+  if (healthFactor === null || healthFactor === undefined) return 'No debt';
+  if (!Number.isFinite(healthFactor)) return 'No debt';
   if (healthFactor >= 2) return 'Safe';
   if (healthFactor >= 1.5) return 'Moderate';
   if (healthFactor >= 1.2) return 'Risky';
