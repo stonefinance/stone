@@ -233,9 +233,11 @@ describe('Event Parsers', () => {
 
     describe('withdraw_collateral', () => {
       it('parses withdraw_collateral event', () => {
+        // Contract emits 'user' attribute (not 'withdrawer')
+        // See: contracts/market/src/execute/collateral.rs
         const attributes = {
           action: 'withdraw_collateral',
-          withdrawer: ADDRESSES.userA,
+          user: ADDRESSES.userA,
           recipient: ADDRESSES.userB,
           amount: DECIMALS.oneToken,
         };
@@ -251,6 +253,7 @@ describe('Event Parsers', () => {
 
         expect(result).not.toBeNull();
         expect(result!.action).toBe('withdraw_collateral');
+        // Parser maps 'user' to 'withdrawer' for consistency
         expect((result as any).withdrawer).toBe(ADDRESSES.userA);
         expect((result as any).recipient).toBe(ADDRESSES.userB);
       });
