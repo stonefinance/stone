@@ -1,4 +1,5 @@
 import Decimal from 'decimal.js';
+import { getDisplaySymbol } from './denom-registry';
 
 // Format token amount with proper decimals
 export function formatTokenAmount(amount: string | number, decimals: number = 6): string {
@@ -55,17 +56,8 @@ export function shortenAddress(address: string, chars: number = 4): string {
 
 // Format denom to display name
 export function formatDenom(denom: string): string {
-  // Remove "u" prefix for micro denominations
-  if (denom.startsWith('u')) {
-    return denom.slice(1).toUpperCase();
-  }
-
-  // Handle IBC denoms
-  if (denom.startsWith('ibc/')) {
-    return 'IBC';
-  }
-
-  return denom.toUpperCase();
+  // Use registry for proper IBC denom resolution
+  return getDisplaySymbol(denom);
 }
 
 // Parse Decimal type from contract
