@@ -137,7 +137,7 @@ export function parseMarketEvent(
     case 'withdraw_collateral':
       return {
         action: 'withdraw_collateral',
-        withdrawer: attributes.withdrawer,
+        withdrawer: attributes.user, // Contract emits 'user', not 'withdrawer'
         recipient: attributes.recipient,
         amount: attributes.amount,
         marketAddress,
