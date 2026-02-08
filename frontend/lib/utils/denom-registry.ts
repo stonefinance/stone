@@ -1,9 +1,16 @@
 /**
  * IBC Denom Registry
- * 
+ *
  * Maps IBC denom hashes to their underlying asset information.
  * This is needed because IBC denoms are opaque hashes that don't reveal
  * what asset they represent without a lookup table.
+ *
+ * CANONICAL SOURCE: The IBC denoms used in production deployments are defined in
+ * the deployment configuration files (e.g., deploy/neutron-1.json). When adding
+ * new markets or assets, ensure this registry stays in sync with those configs.
+ *
+ * @see deploy/neutron-1.json - Mainnet deployment configuration
+ * @see deploy/pion-1.json - Testnet deployment configuration
  */
 
 export interface DenomInfo {
@@ -52,7 +59,8 @@ export const IBC_DENOM_REGISTRY: Record<string, DenomInfo> = {
     name: 'Osmosis',
     decimals: 6,
   },
-  // Add more IBC denoms as needed...
+  // NOTE: When adding new IBC denoms, check deploy/*.json for the denom hashes
+  // used in production. The priceFeeds[].denom values are the canonical IBC paths.
 };
 
 /**
@@ -138,7 +146,11 @@ export function getChainDenomFromRegistry(denom: string): string {
     return info.chainDenom;
   }
 
-  // Fallback: assume it's already a valid chain denom or convert from display
+  // Fallback for unknown denoms:
+  // Assume it's already a chain denom (e.g., "uatom") or convert display name
+  // to micro-denom (e.g., "ATOM" -> "uatom"). This heuristic works for standard
+  // Cosmos denoms but may fail for non-standard naming. If price lookups fail,
+  // check that the denom is properly registered in the registry above.
   const lower = denom.toLowerCase();
   return lower.startsWith('u') ? lower : `u${lower}`;
 }
@@ -152,9 +164,12 @@ export function getDisplaySymbol(denom: string): string {
     return info.symbol;
   }
 
-  // Fallback: strip 'u' prefix and uppercase
+  // Fallback for unknown denoms:
+  // - IBC denoms: Return generic "IBC" since the hash doesn't encode the symbol.
+  //   If you see "IBC" displayed in the UI, the denom needs to be added to
+  //   IBC_DENOM_REGISTRY above (check deploy/*.json for the canonical list).
   if (denom.startsWith('ibc/')) {
-    return 'IBC'; // Unknown IBC denom
+    return 'IBC';
   }
 
   const lower = denom.toLowerCase();
