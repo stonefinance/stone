@@ -62,10 +62,10 @@ test.describe('Smoke Tests @smoke', () => {
           query {
             markets {
               id
-              address
+              marketAddress
               collateralDenom
               debtDenom
-              ltv
+              loanToValue
               liquidationThreshold
               totalSupply
               totalDebt
@@ -79,7 +79,7 @@ test.describe('Smoke Tests @smoke', () => {
 
     // Verify first market has expected structure
     const market = data.data.markets[0];
-    expect(market.address).toBeTruthy();
+    expect(market.marketAddress).toBeTruthy();
     expect(market.collateralDenom).toBeTruthy();
     expect(market.debtDenom).toBeTruthy();
   });

@@ -19,7 +19,7 @@ export async function assertUserHasPosition(
   marketId: string
 ): Promise<UserPosition> {
   const positions = await graphqlClient.getUserPositions(userAddress);
-  const position = positions.find(p => p.marketId === marketId);
+  const position = positions.find(p => p.market.id === marketId);
   expect(position, `User ${userAddress} should have position in market ${marketId}`).toBeDefined();
   return position!;
 }

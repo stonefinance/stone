@@ -19,7 +19,7 @@ test.describe('Full Lending Flow @integration', () => {
     expect(markets.length).toBeGreaterThan(0);
 
     const market = markets[0];
-    const marketAddress = market.address;
+    const marketAddress = market.marketAddress;
 
     // 1. Check initial balances
     const initialAtomBalance = await chainClient.getBalance('uatom');
@@ -42,7 +42,7 @@ test.describe('Full Lending Flow @integration', () => {
     // Wait for indexer to catch up
     await waitForIndexerSync(graphqlClient, async () => {
       const positions = await graphqlClient.getUserPositions(TEST_ACCOUNTS.user1.address);
-      return positions.some(p => p.marketId === market.id && BigInt(p.collateralBalance) > 0);
+      return positions.some(p => p.market.id === market.id && BigInt(p.collateral) > 0);
     });
 
     // 4. Verify position via chain query
