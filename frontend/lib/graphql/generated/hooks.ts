@@ -279,7 +279,7 @@ export type UserPositionTransactionsArgs = {
 
 export type MarketFieldsFragment = { __typename?: 'Market', id: string, marketAddress: string, curator: string, collateralDenom: string, debtDenom: string, oracle: string, createdAt: string, createdAtBlock: number, loanToValue: string, liquidationThreshold: string, liquidationBonus: string, liquidationProtocolFee: string, closeFactor: string, interestRateModel: Record<string, unknown>, protocolFee: string, curatorFee: string, supplyCap?: string | null, borrowCap?: string | null, enabled: boolean, isMutable: boolean, borrowIndex: string, liquidityIndex: string, borrowRate: string, liquidityRate: string, totalSupply: string, totalDebt: string, totalCollateral: string, utilization: string, availableLiquidity: string, lastUpdate: number };
 
-export type MarketSummaryFieldsFragment = { __typename?: 'Market', id: string, marketAddress: string, collateralDenom: string, debtDenom: string, curator: string, loanToValue: string, liquidationThreshold: string, borrowRate: string, liquidityRate: string, totalSupply: string, totalDebt: string, totalCollateral: string, utilization: string, availableLiquidity: string, enabled: boolean };
+export type MarketSummaryFieldsFragment = { __typename?: 'Market', id: string, marketAddress: string, collateralDenom: string, debtDenom: string, curator: string, oracle: string, loanToValue: string, liquidationThreshold: string, borrowRate: string, liquidityRate: string, totalSupply: string, totalDebt: string, totalCollateral: string, utilization: string, availableLiquidity: string, enabled: boolean };
 
 export type PositionFieldsFragment = { __typename?: 'UserPosition', id: string, userAddress: string, supplyScaled: string, debtScaled: string, collateral: string, supplyAmount: string, debtAmount: string, healthFactor?: string | null, firstInteraction: string, lastInteraction: string, market: { __typename?: 'Market', id: string, marketAddress: string, collateralDenom: string, debtDenom: string, loanToValue: string, liquidationThreshold: string, liquidityIndex: string, borrowIndex: string } };
 
@@ -295,7 +295,7 @@ export type GetMarketsQueryVariables = Exact<{
 }>;
 
 
-export type GetMarketsQuery = { __typename?: 'Query', markets: Array<{ __typename?: 'Market', id: string, marketAddress: string, collateralDenom: string, debtDenom: string, curator: string, loanToValue: string, liquidationThreshold: string, borrowRate: string, liquidityRate: string, totalSupply: string, totalDebt: string, totalCollateral: string, utilization: string, availableLiquidity: string, enabled: boolean }> };
+export type GetMarketsQuery = { __typename?: 'Query', markets: Array<{ __typename?: 'Market', id: string, marketAddress: string, collateralDenom: string, debtDenom: string, curator: string, oracle: string, loanToValue: string, liquidationThreshold: string, borrowRate: string, liquidityRate: string, totalSupply: string, totalDebt: string, totalCollateral: string, utilization: string, availableLiquidity: string, enabled: boolean }> };
 
 export type GetMarketQueryVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -440,6 +440,7 @@ export const MarketSummaryFieldsFragmentDoc = gql`
   collateralDenom
   debtDenom
   curator
+  oracle
   loanToValue
   liquidationThreshold
   borrowRate
