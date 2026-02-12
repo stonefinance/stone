@@ -76,6 +76,8 @@ pub struct PositionHealth {
     pub collateral_value: Decimal256,
     /// Debt value in USD (debt_amount * debt_price)
     pub debt_value: Decimal256,
+    /// Price of collateral token (needed for recalculating collateral value)
+    pub collateral_price: Decimal,
     /// Price of debt token (needed for converting values back to tokens)
     pub debt_price: Decimal,
     /// Loan-to-Value ratio from market params
@@ -164,6 +166,7 @@ impl PositionHealth {
             debt_amount: new_debt_amount,
             collateral_value: self.collateral_value,
             debt_value: new_debt_value,
+            collateral_price: self.collateral_price,
             debt_price: self.debt_price,
             loan_to_value: self.loan_to_value,
             liquidation_threshold: self.liquidation_threshold,
@@ -172,24 +175,21 @@ impl PositionHealth {
 
     /// Create a modified position with reduced collateral.
     /// Used to check if a withdrawal would be allowed.
-    pub fn with_reduced_collateral(
-        &self,
-        withdraw_amount: Uint128,
-        collateral_price: Decimal,
-    ) -> Result<Self, ContractError> {
+    pub fn with_reduced_collateral(&self, withdraw_amount: Uint128) -> Result<Self, ContractError> {
         if withdraw_amount > self.collateral_amount {
             return Err(ContractError::NoCollateral);
         }
 
         let new_collateral_amount = self.collateral_amount.checked_sub(withdraw_amount)?;
         let new_collateral_value = u128_to_decimal256(new_collateral_amount)
-            .checked_mul(decimal_to_decimal256(collateral_price))?;
+            .checked_mul(decimal_to_decimal256(self.collateral_price))?;
 
         Ok(Self {
             collateral_amount: new_collateral_amount,
             debt_amount: self.debt_amount,
             collateral_value: new_collateral_value,
             debt_value: self.debt_value,
+            collateral_price: self.collateral_price,
             debt_price: self.debt_price,
             loan_to_value: self.loan_to_value,
             liquidation_threshold: self.liquidation_threshold,
@@ -215,20 +215,11 @@ impl PositionHealth {
     /// Check if withdrawing collateral would make the position unhealthy.
     /// Uses LTV for withdrawal check (more conservative than liquidation threshold).
     /// Returns Ok(()) if the withdrawal is allowed, Err otherwise.
-    pub fn check_withdrawal_allowed(
-        &self,
-        withdraw_amount: Uint128,
-        collateral_price: Decimal,
-    ) -> Result<(), ContractError> {
-        // If no debt, any withdrawal is allowed (as long as we have enough collateral)
-        if self.debt_amount.is_zero() {
-            if withdraw_amount > self.collateral_amount {
-                return Err(ContractError::NoCollateral);
-            }
-            return Ok(());
-        }
-
-        let position_after = self.with_reduced_collateral(withdraw_amount, collateral_price)?;
+    ///
+    /// Note: This method assumes the caller has verified there is debt. If no debt exists,
+    /// use the public `check_withdrawal_allowed` function which skips oracle queries entirely.
+    pub fn check_withdrawal_allowed(&self, withdraw_amount: Uint128) -> Result<(), ContractError> {
+        let position_after = self.with_reduced_collateral(withdraw_amount)?;
         let max_debt_value = position_after.max_borrow_value()?;
 
         if position_after.debt_value > max_debt_value {
@@ -284,6 +275,7 @@ pub fn calculate_position_health_with_config(
         debt_amount,
         collateral_value,
         debt_value,
+        collateral_price,
         debt_price,
         loan_to_value: params.loan_to_value,
         liquidation_threshold: params.liquidation_threshold,
@@ -345,24 +337,16 @@ pub fn check_withdrawal_allowed(
     user: &str,
     withdraw_amount: Uint128,
 ) -> Result<(), ContractError> {
-    let collateral_amount = get_user_collateral(deps.storage, user)?;
     let debt_amount = get_user_debt(deps.storage, user)?;
 
-    // If no debt, any withdrawal is allowed (no oracle query needed)
+    // If no debt, any withdrawal is allowed (no oracle query needed, no validation)
     if debt_amount.is_zero() {
-        if withdraw_amount > collateral_amount {
-            return Err(ContractError::NoCollateral);
-        }
         return Ok(());
     }
 
     // Only query prices and load full position when there's debt
-    let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
-    
-    let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
-    let position = calculate_position_health_with_config(deps, env, user, &config, &params)?;
-    position.check_withdrawal_allowed(withdraw_amount, collateral_price)
+    let position = calculate_position_health(deps, env, user)?;
+    position.check_withdrawal_allowed(withdraw_amount)
 }
 
 /// Calculate liquidation price for collateral.
@@ -1041,8 +1025,7 @@ mod tests {
         let position = calculate_position_health(deps.as_ref(), &env, "user1").unwrap();
 
         // After reducing collateral by 200
-        let collateral_price = Decimal::from_ratio(10u128, 1u128);
-        let new_position = position.with_reduced_collateral(Uint128::new(200), collateral_price).unwrap();
+        let new_position = position.with_reduced_collateral(Uint128::new(200)).unwrap();
         assert_eq!(new_position.collateral_amount, Uint128::new(800));
         assert_eq!(new_position.debt_amount, position.debt_amount);
     }
@@ -1064,8 +1047,7 @@ mod tests {
         let position = calculate_position_health(deps.as_ref(), &env, "user1").unwrap();
 
         // Try to reduce collateral by more than available
-        let collateral_price = Decimal::from_ratio(10u128, 1u128);
-        let result = position.with_reduced_collateral(Uint128::new(1001), collateral_price);
+        let result = position.with_reduced_collateral(Uint128::new(1001));
         assert!(matches!(result, Err(ContractError::NoCollateral)));
     }
 }
