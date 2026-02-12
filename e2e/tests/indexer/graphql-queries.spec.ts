@@ -32,6 +32,23 @@ test.describe('GraphQL API @integration', () => {
   });
 
   test('fetches single market by ID', async () => {
+    // First, get the list of markets to find a valid ID
+    const listQuery = gql`
+      query {
+        markets {
+          id
+          collateralDenom
+        }
+      }
+    `;
+    const listData = await client.request<{ markets: Array<{ id: string; collateralDenom: string }> }>(listQuery);
+    expect(listData.markets.length).toBeGreaterThan(0);
+
+    // Find the ATOM market (collateral=uatom)
+    const atomMarket = listData.markets.find(m => m.collateralDenom === 'uatom');
+    expect(atomMarket).toBeDefined();
+
+    // Now query the specific market by its actual ID
     const query = gql`
       query GetMarket($id: ID!) {
         market(id: $id) {
@@ -48,13 +65,25 @@ test.describe('GraphQL API @integration', () => {
 
     const data = await client.request<{ market: { id: string; collateralDenom: string } | null }>(
       query,
-      { id: '1' }
+      { id: atomMarket!.id }
     );
     expect(data.market).toBeDefined();
     expect(data.market?.collateralDenom).toBe('uatom');
   });
 
   test('fetches market with transactions', async () => {
+    // First, get a valid market ID
+    const listQuery = gql`
+      query {
+        markets {
+          id
+        }
+      }
+    `;
+    const listData = await client.request<{ markets: Array<{ id: string }> }>(listQuery);
+    expect(listData.markets.length).toBeGreaterThan(0);
+    const marketId = listData.markets[0].id;
+
     const query = gql`
       query GetMarketWithTransactions($id: ID!) {
         market(id: $id) {
@@ -76,7 +105,7 @@ test.describe('GraphQL API @integration', () => {
         id: string;
         transactions: unknown[];
       } | null;
-    }>(query, { id: '1' });
+    }>(query, { id: marketId });
 
     expect(data.market).toBeDefined();
     expect(data.market?.transactions).toBeInstanceOf(Array);

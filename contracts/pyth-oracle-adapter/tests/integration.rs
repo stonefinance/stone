@@ -10,19 +10,23 @@ use cosmwasm_std::testing::MockApi;
 use cosmwasm_std::{coin, Addr, Decimal, Empty, Timestamp};
 use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor, IntoAddr};
 use pyth_oracle_adapter::contract as adapter_contract;
-use pyth_oracle_adapter::msg::{ExecuteMsg as AdapterExecuteMsg, InstantiateMsg as AdapterInstantiateMsg, QueryMsg as AdapterQueryMsg, PriceFeedConfig};
+use pyth_oracle_adapter::msg::{
+    ExecuteMsg as AdapterExecuteMsg, InstantiateMsg as AdapterInstantiateMsg, PriceFeedConfig,
+    QueryMsg as AdapterQueryMsg,
+};
 
 /// Helper function to add context to errors using anyhow
+#[allow(dead_code)]
 fn app_error_context<T, E: std::fmt::Display>(result: Result<T, E>) -> anyhow::Result<T> {
     result.map_err(|e| anyhow::anyhow!("{}", e))
 }
 use stone_testing::{
-    mock_pyth_contract, MockPythExecuteMsg, MockPythInstantiateMsg, MockPriceFeedInit,
-    COLLATERAL_DENOM, DEBT_DENOM, default_market_params,
+    default_market_params, mock_pyth_contract, MockPriceFeedInit, MockPythExecuteMsg,
+    MockPythInstantiateMsg, COLLATERAL_DENOM, DEBT_DENOM,
 };
 use stone_types::{
-    FactoryExecuteMsg, FactoryInstantiateMsg, OracleConfigUnchecked, OracleType, PriceResponse,
-    MarketQueryMsg, MarketConfigResponse,
+    FactoryExecuteMsg, FactoryInstantiateMsg, MarketConfigResponse, MarketQueryMsg,
+    OracleConfigUnchecked, OracleType, PriceResponse,
 };
 
 // Feed IDs for testing (64-character hex strings)

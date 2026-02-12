@@ -187,7 +187,8 @@ impl<'de> Deserialize<'de> for PriceIdentifier {
             type Value = PriceIdentifier;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a 64-character hex string representing a 32-byte price identifier")
+                formatter
+                    .write_str("a 64-character hex string representing a 32-byte price identifier")
             }
 
             fn visit_str<E>(self, value: &str) -> Result<PriceIdentifier, E>
@@ -282,7 +283,10 @@ impl Price {
         if self.price <= 0 {
             return None;
         }
-        Some(cosmwasm_std::Decimal::from_ratio(self.conf, self.price as u64))
+        Some(cosmwasm_std::Decimal::from_ratio(
+            self.conf,
+            self.price as u64,
+        ))
     }
 }
 
@@ -355,10 +359,10 @@ mod tests {
         // Test with 0x prefix
         let hex_str = "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819";
         let hex_with_prefix = format!("0x{}", hex_str);
-        
+
         let id_from_plain = PriceIdentifier::from_hex(hex_str).unwrap();
         let id_from_prefixed = PriceIdentifier::from_hex(&hex_with_prefix).unwrap();
-        
+
         assert_eq!(id_from_plain, id_from_prefixed);
         assert_eq!(id_from_prefixed.to_hex(), hex_str);
     }
@@ -388,7 +392,10 @@ mod tests {
             publish_time: 1000,
         };
         let decimal = price.get_price_as_decimal().unwrap();
-        assert_eq!(decimal, cosmwasm_std::Decimal::from_ratio(12345u128, 100u128));
+        assert_eq!(
+            decimal,
+            cosmwasm_std::Decimal::from_ratio(12345u128, 100u128)
+        );
 
         // Price = 100, expo = 2 -> 10000
         let price = Price {
@@ -427,12 +434,15 @@ mod tests {
         };
         let ratio = price.get_confidence_ratio().unwrap();
         let max_confidence_ratio = Decimal::from_ratio(1u128, 100u128); // 0.01
-        
-        // Since the check is `conf_ratio > max_confidence_ratio`, 
+
+        // Since the check is `conf_ratio > max_confidence_ratio`,
         // a ratio exactly equal to max should NOT trigger the error
-        assert!(!(ratio > max_confidence_ratio), 
-            "ratio {} should NOT be > max_confidence_ratio {} (they are equal)", 
-            ratio, max_confidence_ratio);
+        assert!(
+            ratio <= max_confidence_ratio,
+            "ratio {} should NOT be > max_confidence_ratio {} (they are equal)",
+            ratio,
+            max_confidence_ratio
+        );
         assert_eq!(ratio, max_confidence_ratio);
     }
 
@@ -452,9 +462,14 @@ mod tests {
         };
         let ratio = price.get_confidence_ratio().unwrap();
         let max_ratio = Decimal::from_ratio(2u128, 100u128); // 0.02
-        
+
         // Should pass: 1% < 2%
-        assert!(ratio < max_ratio, "ratio {} should be < max_ratio {}", ratio, max_ratio);
+        assert!(
+            ratio < max_ratio,
+            "ratio {} should be < max_ratio {}",
+            ratio,
+            max_ratio
+        );
     }
 
     #[test]
@@ -469,9 +484,14 @@ mod tests {
         };
         let ratio = price.get_confidence_ratio().unwrap();
         let max_ratio = Decimal::from_ratio(2u128, 100u128); // 0.02
-        
+
         // Should fail: 3% > 2%
-        assert!(ratio > max_ratio, "ratio {} should exceed max_ratio {}", ratio, max_ratio);
+        assert!(
+            ratio > max_ratio,
+            "ratio {} should exceed max_ratio {}",
+            ratio,
+            max_ratio
+        );
     }
 
     #[test]
@@ -484,11 +504,14 @@ mod tests {
             publish_time: 1000,
         };
         let ratio = price.get_confidence_ratio().unwrap();
-        
+
         // Even with extremely strict max_ratio, conf=0 should pass
         let very_strict_max = Decimal::from_ratio(1u128, 10000u128); // 0.0001
         assert_eq!(ratio, Decimal::zero(), "ratio should be zero when conf=0");
-        assert!(!(ratio > very_strict_max), "zero ratio should not exceed any positive max_ratio");
+        assert!(
+            ratio <= very_strict_max,
+            "zero ratio should not exceed any positive max_ratio"
+        );
     }
 
     #[test]
@@ -503,12 +526,15 @@ mod tests {
         };
         let ratio = price.get_confidence_ratio().unwrap();
         let max_confidence_ratio = Decimal::from_ratio(1u128, 100u128); // 0.01
-        
-        // Since the check is `conf_ratio > max_confidence_ratio`, 
+
+        // Since the check is `conf_ratio > max_confidence_ratio`,
         // a ratio slightly above max SHOULD trigger the error
-        assert!(ratio > max_confidence_ratio, 
-            "ratio {} should be > max_confidence_ratio {}", 
-            ratio, max_confidence_ratio);
+        assert!(
+            ratio > max_confidence_ratio,
+            "ratio {} should be > max_confidence_ratio {}",
+            ratio,
+            max_confidence_ratio
+        );
     }
 
     #[test]
@@ -521,7 +547,11 @@ mod tests {
             publish_time: 1000,
         };
         let result = price.get_price_as_decimal();
-        assert!(result.is_none(), "Expected None for negative price, got {:?}", result);
+        assert!(
+            result.is_none(),
+            "Expected None for negative price, got {:?}",
+            result
+        );
 
         // Zero price returns None for get_price_as_decimal (delegates to pyth_price_to_decimal)
         let price = Price {
@@ -650,7 +680,7 @@ mod tests {
     fn max_safe_values() {
         // Test with large values that still fit within Decimal (18 decimal places max)
         // Decimal::MAX is approximately 3.4e38
-        
+
         // Large value with negative exponent to keep it within bounds
         // 1e18 with 18 decimal places = 1.0
         let result = pyth_price_to_decimal(1_000_000_000_000_000_000i64, -18);
@@ -661,12 +691,12 @@ mod tests {
         // 1e9 * 10^9 = 1e18 which easily fits in Decimal
         let result = pyth_price_to_decimal(1_000_000_000i64, 9);
         assert!(result.is_ok());
-        
+
         // Test with reasonably large price values using known-working patterns
         // BTC price ~65000 with 8 decimals = 6_500_000_000_000
         let result = pyth_price_to_decimal(6_500_000_000_000i64, -8);
         assert!(result.is_ok());
-        
+
         // Test large price with exponent 0
         let result = pyth_price_to_decimal(1_000_000_000_000_000i64, 0);
         assert!(result.is_ok());

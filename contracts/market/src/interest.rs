@@ -130,7 +130,10 @@ pub fn get_user_debt(storage: &dyn Storage, user: &str) -> Result<Uint128, Contr
     let scaled = crate::state::DEBTS
         .may_load(storage, user)?
         .unwrap_or_default();
-    Ok(stone_types::scaled_to_amount_ceil(scaled, state.borrow_index))
+    Ok(stone_types::scaled_to_amount_ceil(
+        scaled,
+        state.borrow_index,
+    ))
 }
 
 /// Get user collateral amount (not scaled, stored as-is).

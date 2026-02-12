@@ -110,7 +110,11 @@ pub enum ContractError {
     OracleZeroPrice { denom: String },
 
     #[error("Oracle price timestamp is in the future for {denom}: updated_at={updated_at}, current={current}")]
-    OraclePriceFuture { denom: String, updated_at: u64, current: u64 },
+    OraclePriceFuture {
+        denom: String,
+        updated_at: u64,
+        current: u64,
+    },
 
     #[error("Math overflow: {reason}")]
     MathOverflow { reason: String },

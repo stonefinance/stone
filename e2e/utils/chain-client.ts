@@ -146,7 +146,7 @@ export class ChainClient {
     health_factor: string;
   }> {
     return this.queryContract(marketAddress, {
-      position: { user: this.address },
+      user_position: { user: this.address },
     });
   }
 

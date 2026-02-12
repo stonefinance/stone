@@ -466,8 +466,8 @@ mod tests {
         let mut state = MarketState::new(1000);
         state.total_supply_scaled = Uint128::new(1000);
         state.total_debt_scaled = Uint128::new(1100); // More debt than supply
-        // Without indices: utilization would be 1100/1000 = 1.1
-        // With clamping: utilization should be 1.0
+                                                      // Without indices: utilization would be 1100/1000 = 1.1
+                                                      // With clamping: utilization should be 1.0
         assert_eq!(state.utilization(), Decimal::one());
     }
 
@@ -479,10 +479,10 @@ mod tests {
         state.total_debt_scaled = Uint128::new(500);
         state.liquidity_index = Decimal::one(); // 1.0
         state.borrow_index = Decimal::from_ratio(3u128, 1u128); // 3.0
-        // Actual supply = 1000 * 1.0 = 1000
-        // Actual debt = 500 * 3.0 = 1500
-        // Raw utilization = 1500/1000 = 1.5
-        // Clamped utilization = 1.0
+                                                                // Actual supply = 1000 * 1.0 = 1000
+                                                                // Actual debt = 500 * 3.0 = 1500
+                                                                // Raw utilization = 1500/1000 = 1.5
+                                                                // Clamped utilization = 1.0
         assert_eq!(state.utilization(), Decimal::one());
     }
 

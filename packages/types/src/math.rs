@@ -40,7 +40,9 @@ pub fn div_decimal_ceil(amount: Uint128, decimal: Decimal) -> Uint128 {
     // We need: ceil(amount * denominator / numerator)
     let amount_times_denom = amount.checked_multiply_ratio(denominator, 1u128).unwrap();
     // ceil(x / y) = (x + y - 1) / y
-    let adjusted = amount_times_denom.checked_add(numerator.checked_sub(1u128.into()).unwrap()).unwrap();
+    let adjusted = amount_times_denom
+        .checked_add(numerator.checked_sub(1u128.into()).unwrap())
+        .unwrap();
     adjusted.checked_div(numerator).unwrap()
 }
 
@@ -113,14 +115,20 @@ mod tests {
     fn test_div_decimal_zero() {
         let amount = Uint128::new(1000);
         let decimal = Decimal::zero();
-        assert_eq!(div_decimal(amount, decimal), Err(ContractError::DivideByZero {}));
+        assert_eq!(
+            div_decimal(amount, decimal),
+            Err(ContractError::DivideByZero {})
+        );
     }
 
     #[test]
     fn test_amount_to_scaled_zero() {
         let amount = Uint128::new(1000);
         let index = Decimal::zero();
-        assert_eq!(amount_to_scaled(amount, index), Err(ContractError::DivideByZero {}));
+        assert_eq!(
+            amount_to_scaled(amount, index),
+            Err(ContractError::DivideByZero {})
+        );
     }
 
     #[test]

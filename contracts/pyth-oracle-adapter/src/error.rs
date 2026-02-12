@@ -27,7 +27,6 @@ pub enum ContractError {
     // =========================================================================
     // Price Data Errors
     // =========================================================================
-
     /// Price feed not configured for the given denom.
     ///
     /// Occurs when querying a price for a denom that doesn't have a
@@ -102,7 +101,6 @@ pub enum ContractError {
     // =========================================================================
     // Validation Errors
     // =========================================================================
-
     /// Invalid feed ID format.
     ///
     /// Occurs when a feed ID is not a valid 64-character hex string.
@@ -145,7 +143,6 @@ pub enum ContractError {
     // =========================================================================
     // Arithmetic Errors
     // =========================================================================
-
     /// Arithmetic overflow during price conversion.
     ///
     /// Occurs when converting a Pyth price to Decimal would overflow
@@ -156,7 +153,6 @@ pub enum ContractError {
     // =========================================================================
     // Authorization Errors
     // =========================================================================
-
     /// Unauthorized access.
     ///
     /// Occurs when a non-owner attempts to perform an owner-only operation

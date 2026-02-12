@@ -14,11 +14,11 @@ pub const CONFIG: Item<FactoryConfig> = Item::new("config");
 pub const PENDING_OWNER: Item<Addr> = Item::new("pending_owner");
 
 /// Pending market salt for the currently in-flight market instantiation.
-/// 
+///
 /// This is a single Item (not a Map) because the factory only supports one pending
 /// market instantiation at a time. If future changes allow multiple instantiations
 /// per execute/tx, this should be reconsidered (e.g., keyed by a sequence counter).
-/// 
+///
 /// Stores the salt used during market creation to properly compute market ID in reply handler.
 pub const PENDING_MARKET_SALTS: Item<Option<u64>> = Item::new("pending_market_salts");
 

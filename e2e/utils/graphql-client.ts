@@ -4,28 +4,28 @@ const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'http://localhost:4000/
 
 export interface Market {
   id: string;
-  address: string;
+  marketAddress: string;
   collateralDenom: string;
   debtDenom: string;
-  ltv: string;
+  loanToValue: string;
   liquidationThreshold: string;
   liquidationBonus: string;
   totalSupply: string;
   totalDebt: string;
   totalCollateral: string;
-  utilizationRate: string;
-  supplyRate: string;
+  utilization: string;
+  liquidityRate: string;
   borrowRate: string;
 }
 
 export interface UserPosition {
   id: string;
   userAddress: string;
-  marketId: string;
-  supplyBalance: string;
-  debtBalance: string;
-  collateralBalance: string;
-  healthFactor: string;
+  market: { id: string };
+  supplyAmount: string;
+  debtAmount: string;
+  collateral: string;
+  healthFactor: string | null;
 }
 
 export interface Transaction {
@@ -35,9 +35,8 @@ export interface Transaction {
   timestamp: string;
   action: string;
   userAddress: string;
-  marketId: string;
-  amount: string;
-  denom: string;
+  market: { id: string };
+  amount: string | null;
 }
 
 export class GraphQLTestClient {
@@ -52,17 +51,17 @@ export class GraphQLTestClient {
       query {
         markets {
           id
-          address
+          marketAddress
           collateralDenom
           debtDenom
-          ltv
+          loanToValue
           liquidationThreshold
           liquidationBonus
           totalSupply
           totalDebt
           totalCollateral
-          utilizationRate
-          supplyRate
+          utilization
+          liquidityRate
           borrowRate
         }
       }
@@ -77,17 +76,17 @@ export class GraphQLTestClient {
       query GetMarket($id: ID!) {
         market(id: $id) {
           id
-          address
+          marketAddress
           collateralDenom
           debtDenom
-          ltv
+          loanToValue
           liquidationThreshold
           liquidationBonus
           totalSupply
           totalDebt
           totalCollateral
-          utilizationRate
-          supplyRate
+          utilization
+          liquidityRate
           borrowRate
         }
       }
@@ -103,10 +102,12 @@ export class GraphQLTestClient {
         userPositions(userAddress: $userAddress) {
           id
           userAddress
-          marketId
-          supplyBalance
-          debtBalance
-          collateralBalance
+          market {
+            id
+          }
+          supplyAmount
+          debtAmount
+          collateral
           healthFactor
         }
       }
@@ -124,9 +125,9 @@ export class GraphQLTestClient {
   }): Promise<Transaction[]> {
     const query = gql`
       query GetTransactions(
-        $marketId: String
+        $marketId: ID
         $userAddress: String
-        $action: String
+        $action: TransactionAction
         $limit: Int
       ) {
         transactions(
@@ -141,9 +142,10 @@ export class GraphQLTestClient {
           timestamp
           action
           userAddress
-          marketId
+          market {
+            id
+          }
           amount
-          denom
         }
       }
     `;
