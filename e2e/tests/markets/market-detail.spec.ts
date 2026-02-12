@@ -43,12 +43,13 @@ test.describe('Market Detail Page @smoke', () => {
     await page.waitForLoadState('networkidle');
 
     // Check for LTV or similar parameters - look for both abbreviated and full text
+    // Frontend displays "Liquidation LTV" in Market Attributes section
     const hasLTV = await page.getByText(/ltv|loan.to.value|loan to value/i).isVisible().catch(() => false);
-    const hasLiqThreshold = await page.getByText(/liquidation.*threshold|liq.*threshold/i).isVisible().catch(() => false);
-    const hasParams = await page.getByText(/75%|80%|parameters|risk/i).isVisible().catch(() => false);
+    const hasLiqLTV = await page.getByText(/liquidation\s*ltv/i).isVisible().catch(() => false);
+    const hasParams = await page.getByText(/75%|80%|85%|86%|parameters|risk/i).isVisible().catch(() => false);
 
     // At least one parameter indicator should be visible
-    expect(hasLTV || hasLiqThreshold || hasParams).toBe(true);
+    expect(hasLTV || hasLiqLTV || hasParams).toBe(true);
   });
 
   test('shows action buttons when wallet connected', async ({ page }) => {
