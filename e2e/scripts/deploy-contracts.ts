@@ -7,7 +7,7 @@ const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'http://localhost:26657';
 const CHAIN_ID = process.env.CHAIN_ID || 'stone-local-1';
 const DEPLOYER_MNEMONIC = process.env.DEPLOYER_MNEMONIC ||
   'satisfy adjust timber high purchase tuition stool faith fine install that you unaware feed domain license impose boss human eager hat rent enjoy dawn';
-const ORACLE_TYPE = (process.env.ORACLE_TYPE || 'mock').toLowerCase(); // 'mock' or 'pyth'
+const ORACLE_TYPE = (process.env.ORACLE_TYPE || 'pyth').toLowerCase(); // 'mock' or 'pyth'
 
 // Pyth configuration file path (optional)
 const PYTH_CONFIG_PATH = process.env.PYTH_CONFIG_PATH;

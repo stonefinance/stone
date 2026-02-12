@@ -1,7 +1,7 @@
 {
-  "chainId": "local",
+  "chainId": "stone-local-1",
   "pythContractAddress": "",
-  "note": "For local dev stack. Mock Pyth is deployed automatically when pythContractAddress is empty.",
+  "note": "For local dev stack (stone-local-1). Mock Pyth is deployed automatically when pythContractAddress is empty.",
   "priceFeeds": [
     {
       "denom": "uatom",
