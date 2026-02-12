@@ -106,10 +106,11 @@ pub fn instantiate(
     // Parse and store each PriceFeedConfig in the PRICE_FEEDS map
     for price_feed in msg.price_feeds {
         // Validate feed_id is valid 64-char hex
-        let feed_id = PriceIdentifier::from_hex(&price_feed.feed_id)
-            .map_err(|_| ContractError::InvalidFeedId {
+        let feed_id = PriceIdentifier::from_hex(&price_feed.feed_id).map_err(|_| {
+            ContractError::InvalidFeedId {
                 feed_id: price_feed.feed_id.clone(),
-            })?;
+            }
+        })?;
         // Store mapping: denom → PriceIdentifier
         PRICE_FEEDS.save(deps.storage, &price_feed.denom, &feed_id)?;
     }
@@ -122,7 +123,10 @@ pub fn instantiate(
         .add_attribute("contract", CONTRACT_NAME)
         .add_attribute("owner", config.owner)
         .add_attribute("pyth_contract_addr", config.pyth_contract_addr)
-        .add_attribute("max_confidence_ratio", config.max_confidence_ratio.to_string()))
+        .add_attribute(
+            "max_confidence_ratio",
+            config.max_confidence_ratio.to_string(),
+        ))
 }
 
 /// Contract entry point for execute messages.
@@ -141,9 +145,7 @@ pub fn execute(
         ExecuteMsg::SetPriceFeed { denom, feed_id } => {
             execute_set_price_feed(deps, env, info, denom, feed_id)
         }
-        ExecuteMsg::RemovePriceFeed { denom } => {
-            execute_remove_price_feed(deps, env, info, denom)
-        }
+        ExecuteMsg::RemovePriceFeed { denom } => execute_remove_price_feed(deps, env, info, denom),
         ExecuteMsg::UpdateConfig {
             pyth_contract_addr,
             max_confidence_ratio,
@@ -182,8 +184,10 @@ fn execute_set_price_feed(
     }
 
     // Validate feed_id via PriceIdentifier::from_hex()
-    let feed_id = PriceIdentifier::from_hex(&feed_id)
-        .map_err(|_| ContractError::InvalidFeedId { feed_id: feed_id.clone() })?;
+    let feed_id =
+        PriceIdentifier::from_hex(&feed_id).map_err(|_| ContractError::InvalidFeedId {
+            feed_id: feed_id.clone(),
+        })?;
 
     // Save to PRICE_FEEDS map
     PRICE_FEEDS.save(deps.storage, &denom, &feed_id)?;
@@ -220,7 +224,9 @@ fn execute_remove_price_feed(
 
     // Remove from PRICE_FEEDS map (error if not found)
     if !PRICE_FEEDS.has(deps.storage, &denom) {
-        return Err(ContractError::PriceFeedNotConfigured { denom: denom.clone() });
+        return Err(ContractError::PriceFeedNotConfigured {
+            denom: denom.clone(),
+        });
     }
     PRICE_FEEDS.remove(deps.storage, &denom);
 
@@ -255,9 +261,7 @@ fn execute_update_config(
         return Err(ContractError::Unauthorized);
     }
 
-    let mut attributes = vec![
-        ("action", "update_config".to_string()),
-    ];
+    let mut attributes = vec![("action", "update_config".to_string())];
 
     // Partial update — only update fields that are Some
     if let Some(addr) = pyth_contract_addr {
@@ -281,7 +285,10 @@ fn execute_update_config(
             });
         }
         config.max_confidence_ratio = ratio;
-        attributes.push(("max_confidence_ratio", config.max_confidence_ratio.to_string()));
+        attributes.push((
+            "max_confidence_ratio",
+            config.max_confidence_ratio.to_string(),
+        ));
     }
 
     // Save updated Config
@@ -415,12 +422,19 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
 /// * `NegativeOrZeroPrice` - Pyth returned price <= 0
 /// * `ConfidenceTooHigh` - Confidence ratio exceeds max_confidence_ratio
 /// * `InvalidTimestamp` - Pyth returned negative publish_time
-fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::PriceResponse, ContractError> {
+fn query_price(
+    deps: Deps,
+    _env: Env,
+    denom: String,
+) -> Result<stone_types::PriceResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
     // 1. Look up feed ID
-    let feed_id = PRICE_FEEDS.load(deps.storage, &denom)
-        .map_err(|_| ContractError::PriceFeedNotConfigured { denom: denom.clone() })?;
+    let feed_id = PRICE_FEEDS.load(deps.storage, &denom).map_err(|_| {
+        ContractError::PriceFeedNotConfigured {
+            denom: denom.clone(),
+        }
+    })?;
 
     // 2. Query Pyth contract
     let pyth_response: PriceFeedResponse = deps.querier.query_wasm_smart(
@@ -448,14 +462,20 @@ fn query_price(deps: Deps, _env: Env, denom: String) -> Result<stone_types::Pric
     }
 
     // 5. Convert Pyth price to Decimal using pyth_price_to_decimal
-    let decimal_price = crate::pyth_types::pyth_price_to_decimal(pyth_price.price, pyth_price.expo)?;
+    let decimal_price =
+        crate::pyth_types::pyth_price_to_decimal(pyth_price.price, pyth_price.expo)?;
 
     // 6. Convert timestamp
-    let updated_at: u64 = pyth_price.publish_time
+    let updated_at: u64 = pyth_price
+        .publish_time
         .try_into()
         .map_err(|_| ContractError::InvalidTimestamp)?;
 
-    Ok(stone_types::PriceResponse { denom, price: decimal_price, updated_at })
+    Ok(stone_types::PriceResponse {
+        denom,
+        price: decimal_price,
+        updated_at,
+    })
 }
 
 /// Query contract configuration.
@@ -479,13 +499,12 @@ fn query_config(deps: Deps) -> Result<crate::msg::ConfigResponse, ContractError>
 /// # Errors
 ///
 /// * `PriceFeedNotConfigured` - No feed exists for the denom
-fn query_price_feed(
-    deps: Deps,
-    denom: String,
-) -> Result<crate::msg::PriceFeedInfo, ContractError> {
-    let feed_id = PRICE_FEEDS
-        .load(deps.storage, &denom)
-        .map_err(|_| ContractError::PriceFeedNotConfigured { denom: denom.clone() })?;
+fn query_price_feed(deps: Deps, denom: String) -> Result<crate::msg::PriceFeedInfo, ContractError> {
+    let feed_id = PRICE_FEEDS.load(deps.storage, &denom).map_err(|_| {
+        ContractError::PriceFeedNotConfigured {
+            denom: denom.clone(),
+        }
+    })?;
     Ok(crate::msg::PriceFeedInfo {
         denom,
         feed_id: feed_id.to_hex(),
@@ -537,9 +556,11 @@ mod tests {
     // ========== Query Price Handler Tests ==========
     mod query_price_tests {
         use super::*;
-        use cosmwasm_std::testing::{mock_env, MockStorage};
-        use cosmwasm_std::{OwnedDeps, SystemResult, ContractResult, to_json_binary, WasmQuery, SystemError};
         use crate::pyth_types::*;
+        use cosmwasm_std::testing::{mock_env, MockStorage};
+        use cosmwasm_std::{
+            to_json_binary, ContractResult, OwnedDeps, SystemError, SystemResult, WasmQuery,
+        };
         use std::collections::HashMap;
 
         /// Create a mock querier that responds to Pyth queries.
@@ -549,43 +570,62 @@ mod tests {
         fn create_pyth_deps(
             pyth_addr_str: &str,
             feeds: HashMap<String, PriceFeedResponse>,
-        ) -> (OwnedDeps<MockStorage, MockApi, cosmwasm_std::testing::MockQuerier>, String) {
+        ) -> (
+            OwnedDeps<MockStorage, MockApi, cosmwasm_std::testing::MockQuerier>,
+            String,
+        ) {
             let mut deps = cosmwasm_std::testing::mock_dependencies();
             // Get the actual bech32 address that MockApi generates
             let pyth_bech32 = MockApi::default().addr_make(pyth_addr_str).to_string();
             let pyth_bech32_clone = pyth_bech32.clone();
-            deps.querier.update_wasm(move |query| {
-                match query {
-                    WasmQuery::Smart { contract_addr, msg } if contract_addr == &pyth_bech32_clone => {
-                        let pyth_msg: PythQueryMsg = cosmwasm_std::from_json(msg).unwrap();
-                        match pyth_msg {
-                            PythQueryMsg::PriceFeed { id } => {
-                                let hex_id = id.to_hex();
-                                match feeds.get(&hex_id) {
-                                    Some(resp) => SystemResult::Ok(ContractResult::Ok(
-                                        to_json_binary(resp).unwrap()
-                                    )),
-                                    None => SystemResult::Err(SystemError::InvalidRequest {
-                                        error: format!("feed {} not found", hex_id),
-                                        request: Default::default(),
-                                    }),
-                                }
+            deps.querier.update_wasm(move |query| match query {
+                WasmQuery::Smart { contract_addr, msg } if contract_addr == &pyth_bech32_clone => {
+                    let pyth_msg: PythQueryMsg = cosmwasm_std::from_json(msg).unwrap();
+                    match pyth_msg {
+                        PythQueryMsg::PriceFeed { id } => {
+                            let hex_id = id.to_hex();
+                            match feeds.get(&hex_id) {
+                                Some(resp) => SystemResult::Ok(ContractResult::Ok(
+                                    to_json_binary(resp).unwrap(),
+                                )),
+                                None => SystemResult::Err(SystemError::InvalidRequest {
+                                    error: format!("feed {} not found", hex_id),
+                                    request: Default::default(),
+                                }),
                             }
                         }
                     }
-                    _ => SystemResult::Err(SystemError::NoSuchContract { addr: "unknown".into() }),
                 }
+                _ => SystemResult::Err(SystemError::NoSuchContract {
+                    addr: "unknown".into(),
+                }),
             });
             (deps, pyth_bech32)
         }
 
         /// Create a mock price feed response.
-        fn make_feed_response(feed_id: &str, price: i64, conf: u64, expo: i32, publish_time: i64) -> PriceFeedResponse {
+        fn make_feed_response(
+            feed_id: &str,
+            price: i64,
+            conf: u64,
+            expo: i32,
+            publish_time: i64,
+        ) -> PriceFeedResponse {
             PriceFeedResponse {
                 price_feed: PriceFeed {
                     id: PriceIdentifier::from_hex(feed_id).unwrap(),
-                    price: Price { price, conf, expo, publish_time },
-                    ema_price: Price { price, conf, expo, publish_time },
+                    price: Price {
+                        price,
+                        conf,
+                        expo,
+                        publish_time,
+                    },
+                    ema_price: Price {
+                        price,
+                        conf,
+                        expo,
+                        publish_time,
+                    },
                 },
             }
         }
@@ -595,23 +635,36 @@ mod tests {
             pyth_addr_str: &str,
             feed_id: &str,
             denom: &str,
-            pyth_price: i64, conf: u64, expo: i32, publish_time: i64,
+            pyth_price: i64,
+            conf: u64,
+            expo: i32,
+            publish_time: i64,
             max_confidence_ratio: Decimal,
         ) -> OwnedDeps<MockStorage, MockApi, cosmwasm_std::testing::MockQuerier> {
             let mut feeds = HashMap::new();
-            feeds.insert(feed_id.to_string(), make_feed_response(feed_id, pyth_price, conf, expo, publish_time));
+            feeds.insert(
+                feed_id.to_string(),
+                make_feed_response(feed_id, pyth_price, conf, expo, publish_time),
+            );
             let (mut deps, pyth_bech32) = create_pyth_deps(pyth_addr_str, feeds);
 
             // Store config using the bech32 address that matches what the mock querier expects
-            CONFIG.save(deps.as_mut().storage, &Config {
-                owner: MockApi::default().addr_make("owner"),
-                pyth_contract_addr: cosmwasm_std::Addr::unchecked(pyth_bech32),
-                max_confidence_ratio,
-            }).unwrap();
+            CONFIG
+                .save(
+                    deps.as_mut().storage,
+                    &Config {
+                        owner: MockApi::default().addr_make("owner"),
+                        pyth_contract_addr: cosmwasm_std::Addr::unchecked(pyth_bech32),
+                        max_confidence_ratio,
+                    },
+                )
+                .unwrap();
 
             // Store feed mapping
             let price_id = PriceIdentifier::from_hex(feed_id).unwrap();
-            PRICE_FEEDS.save(deps.as_mut().storage, denom, &price_id).unwrap();
+            PRICE_FEEDS
+                .save(deps.as_mut().storage, denom, &price_id)
+                .unwrap();
 
             deps
         }
@@ -625,10 +678,10 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                1052000000i64, // price
-                1000u64,       // conf
-                -8i32,         // expo
-                1700000000i64, // publish_time
+                1052000000i64,       // price
+                1000u64,             // conf
+                -8i32,               // expo
+                1700000000i64,       // publish_time
                 Decimal::percent(1), // max_confidence_ratio = 0.01
             );
 
@@ -658,7 +711,9 @@ mod tests {
 
             // Query unknown denom
             let result = query_price(deps.as_ref(), mock_env(), "unknown".to_string());
-            assert!(matches!(result.unwrap_err(), ContractError::PriceFeedNotConfigured { denom } if denom == "unknown"));
+            assert!(
+                matches!(result.unwrap_err(), ContractError::PriceFeedNotConfigured { denom } if denom == "unknown")
+            );
         }
 
         #[test]
@@ -670,7 +725,7 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                -100i64,       // negative price
+                -100i64, // negative price
                 1000u64,
                 -8i32,
                 1700000000i64,
@@ -678,7 +733,9 @@ mod tests {
             );
 
             let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
-            assert!(matches!(result.unwrap_err(), ContractError::NegativeOrZeroPrice { denom } if denom == "uatom"));
+            assert!(
+                matches!(result.unwrap_err(), ContractError::NegativeOrZeroPrice { denom } if denom == "uatom")
+            );
         }
 
         #[test]
@@ -690,7 +747,7 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                0i64,          // zero price
+                0i64, // zero price
                 1000u64,
                 -8i32,
                 1700000000i64,
@@ -698,7 +755,9 @@ mod tests {
             );
 
             let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
-            assert!(matches!(result.unwrap_err(), ContractError::NegativeOrZeroPrice { denom } if denom == "uatom"));
+            assert!(
+                matches!(result.unwrap_err(), ContractError::NegativeOrZeroPrice { denom } if denom == "uatom")
+            );
         }
 
         #[test]
@@ -711,15 +770,17 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                10000i64,      // price
-                500u64,        // conf → 500/10000 = 0.05
+                10000i64, // price
+                500u64,   // conf → 500/10000 = 0.05
                 -8i32,
                 1700000000i64,
                 Decimal::from_ratio(1u128, 100u128), // max_confidence_ratio = 0.01
             );
 
             let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
-            assert!(matches!(result.unwrap_err(), ContractError::ConfidenceTooHigh { denom, .. } if denom == "uatom"));
+            assert!(
+                matches!(result.unwrap_err(), ContractError::ConfidenceTooHigh { denom, .. } if denom == "uatom")
+            );
         }
 
         #[test]
@@ -732,8 +793,8 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                10000i64,      // price
-                50u64,         // conf → 50/10000 = 0.005
+                10000i64, // price
+                50u64,    // conf → 50/10000 = 0.005
                 -8i32,
                 1700000000i64,
                 Decimal::from_ratio(1u128, 100u128), // max_confidence_ratio = 0.01
@@ -754,7 +815,7 @@ mod tests {
                 feed_id,
                 "uatom",
                 1052000000i64,
-                0u64,          // zero confidence
+                0u64, // zero confidence
                 -8i32,
                 1700000000i64,
                 Decimal::from_ratio(1u128, 1000u128), // max_confidence_ratio = 0.001 (very strict)
@@ -776,12 +837,15 @@ mod tests {
                 1052000000i64,
                 1000u64,
                 -8i32,
-                -1i64,         // negative timestamp
+                -1i64, // negative timestamp
                 Decimal::percent(1),
             );
 
             let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
-            assert!(matches!(result.unwrap_err(), ContractError::InvalidTimestamp));
+            assert!(matches!(
+                result.unwrap_err(),
+                ContractError::InvalidTimestamp
+            ));
         }
 
         #[test]
@@ -823,27 +887,36 @@ mod tests {
             let pyth_bech32_for_closure = pyth_bech32.clone();
 
             // Create a querier that fails for Pyth queries
-            deps.querier.update_wasm(move |query| {
-                match query {
-                    WasmQuery::Smart { contract_addr, .. } if contract_addr == &pyth_bech32_for_closure => {
-                        SystemResult::Err(SystemError::NoSuchContract { 
-                            addr: pyth_bech32_for_closure.clone() 
-                        })
-                    }
-                    _ => SystemResult::Err(SystemError::NoSuchContract { addr: "unknown".into() }),
+            deps.querier.update_wasm(move |query| match query {
+                WasmQuery::Smart { contract_addr, .. }
+                    if contract_addr == &pyth_bech32_for_closure =>
+                {
+                    SystemResult::Err(SystemError::NoSuchContract {
+                        addr: pyth_bech32_for_closure.clone(),
+                    })
                 }
+                _ => SystemResult::Err(SystemError::NoSuchContract {
+                    addr: "unknown".into(),
+                }),
             });
 
             // Store config
-            CONFIG.save(deps.as_mut().storage, &Config {
-                owner: MockApi::default().addr_make("owner"),
-                pyth_contract_addr: cosmwasm_std::Addr::unchecked(pyth_bech32),
-                max_confidence_ratio: Decimal::percent(1),
-            }).unwrap();
+            CONFIG
+                .save(
+                    deps.as_mut().storage,
+                    &Config {
+                        owner: MockApi::default().addr_make("owner"),
+                        pyth_contract_addr: cosmwasm_std::Addr::unchecked(pyth_bech32),
+                        max_confidence_ratio: Decimal::percent(1),
+                    },
+                )
+                .unwrap();
 
             // Store feed mapping
             let price_id = PriceIdentifier::from_hex(feed_id).unwrap();
-            PRICE_FEEDS.save(deps.as_mut().storage, "uatom", &price_id).unwrap();
+            PRICE_FEEDS
+                .save(deps.as_mut().storage, "uatom", &price_id)
+                .unwrap();
 
             // Query should propagate the error from Pyth
             let result = query_price(deps.as_ref(), mock_env(), "uatom".to_string());
@@ -860,7 +933,7 @@ mod tests {
             // Issue #87: Timestamp conversion edge case - very large timestamp
             let pyth_addr = "pyth";
             let feed_id = "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f8";
-            
+
             // Max u64 timestamp that fits in i64: 9223372036854775807 (i64::MAX)
             let large_timestamp: i64 = i64::MAX;
             let deps = setup_with_pyth(
@@ -910,8 +983,8 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                1000i64,      // price
-                20u64,        // conf → 20/1000 = 0.02 = 2%
+                1000i64, // price
+                20u64,   // conf → 20/1000 = 0.02 = 2%
                 -8i32,
                 1700000000i64,
                 Decimal::from_ratio(2u128, 100u128), // max_confidence_ratio = 0.02
@@ -933,8 +1006,8 @@ mod tests {
                 pyth_addr,
                 feed_id,
                 "uatom",
-                1000i64,      // price
-                21u64,        // conf → 21/1000 = 0.021 = 2.1%
+                1000i64, // price
+                21u64,   // conf → 21/1000 = 0.021 = 2.1%
                 -8i32,
                 1700000000i64,
                 Decimal::from_ratio(2u128, 100u128), // max_confidence_ratio = 0.02
@@ -951,7 +1024,11 @@ mod tests {
     /// Create test addresses for use in tests.
     fn test_addrs() -> (cosmwasm_std::Addr, cosmwasm_std::Addr, cosmwasm_std::Addr) {
         let api = MockApi::default();
-        (api.addr_make("owner"), api.addr_make("pyth"), api.addr_make("new_owner"))
+        (
+            api.addr_make("owner"),
+            api.addr_make("pyth"),
+            api.addr_make("new_owner"),
+        )
     }
 
     /// Returns a valid Pyth feed ID for use in tests.
@@ -974,8 +1051,14 @@ mod tests {
         };
 
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "instantiate"));
-        assert!(res.attributes.iter().any(|a| a.key == "owner" && a.value == owner.to_string()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "instantiate"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "owner" && a.value == owner.to_string()));
 
         // Verify config was saved
         let config = CONFIG.load(deps.as_ref().storage).unwrap();
@@ -1075,7 +1158,10 @@ mod tests {
         };
 
         let res = instantiate(deps.as_mut(), env, info, msg).unwrap();
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "instantiate"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "instantiate"));
 
         // Verify price feed was saved
         let stored_feed = PRICE_FEEDS.load(deps.as_ref().storage, "uatom").unwrap();
@@ -1108,7 +1194,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let (owner, pyth, _) = test_addrs();
-        
+
         // Instantiate first
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1130,8 +1216,14 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "set_price_feed"));
-        assert!(res.attributes.iter().any(|a| a.key == "denom" && a.value == "uatom"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "set_price_feed"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "denom" && a.value == "uatom"));
 
         // Verify price feed was saved
         let stored_feed = PRICE_FEEDS.load(deps.as_ref().storage, "uatom").unwrap();
@@ -1145,7 +1237,7 @@ mod tests {
         let (owner, pyth, _) = test_addrs();
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
-        
+
         // Instantiate first
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1159,13 +1251,7 @@ mod tests {
         // Try to set price feed as non-owner
         let info = message_info(&not_owner, &[]);
         let feed_id = valid_feed_id();
-        let res = execute_set_price_feed(
-            deps.as_mut(),
-            env,
-            info,
-            "uatom".to_string(),
-            feed_id,
-        );
+        let res = execute_set_price_feed(deps.as_mut(), env, info, "uatom".to_string(), feed_id);
 
         assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
     }
@@ -1175,7 +1261,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let (owner, pyth, _) = test_addrs();
-        
+
         // Instantiate with price feed
         let info = message_info(&owner, &[]);
         let feed_id = valid_feed_id();
@@ -1195,7 +1281,10 @@ mod tests {
 
         // Remove price feed as owner
         let res = execute_remove_price_feed(deps.as_mut(), env, info, "uatom".to_string()).unwrap();
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "remove_price_feed"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "remove_price_feed"));
 
         // Verify price feed was removed
         assert!(!PRICE_FEEDS.has(deps.as_ref().storage, "uatom"));
@@ -1206,7 +1295,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let (owner, pyth, _) = test_addrs();
-        
+
         // Instantiate without price feeds
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1220,7 +1309,10 @@ mod tests {
         // Try to remove non-existent price feed
         let info = message_info(&owner, &[]);
         let res = execute_remove_price_feed(deps.as_mut(), env, info, "uatom".to_string());
-        assert!(matches!(res.unwrap_err(), ContractError::PriceFeedNotConfigured { .. }));
+        assert!(matches!(
+            res.unwrap_err(),
+            ContractError::PriceFeedNotConfigured { .. }
+        ));
     }
 
     #[test]
@@ -1230,7 +1322,7 @@ mod tests {
         let (owner, pyth, _) = test_addrs();
         let api = MockApi::default();
         let new_pyth = api.addr_make("new_pyth");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1251,8 +1343,14 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "update_config"));
-        assert!(res.attributes.iter().any(|a| a.key == "pyth_contract_addr" && a.value == new_pyth.to_string()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "update_config"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "pyth_contract_addr" && a.value == new_pyth.to_string()));
 
         // Verify config was updated
         let config = CONFIG.load(deps.as_ref().storage).unwrap();
@@ -1269,7 +1367,12 @@ mod tests {
         )
         .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "max_confidence_ratio" && a.value == Decimal::percent(2).to_string()));
+        assert!(
+            res.attributes
+                .iter()
+                .any(|a| a.key == "max_confidence_ratio"
+                    && a.value == Decimal::percent(2).to_string())
+        );
 
         let config = CONFIG.load(deps.as_ref().storage).unwrap();
         assert_eq!(config.max_confidence_ratio, Decimal::percent(2));
@@ -1282,7 +1385,7 @@ mod tests {
         let (owner, pyth, _) = test_addrs();
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1295,13 +1398,7 @@ mod tests {
 
         // Try to update config as non-owner
         let info = message_info(&not_owner, &[]);
-        let res = execute_update_config(
-            deps.as_mut(),
-            env,
-            info,
-            None,
-            Some(Decimal::percent(2)),
-        );
+        let res = execute_update_config(deps.as_mut(), env, info, None, Some(Decimal::percent(2)));
 
         assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
     }
@@ -1311,7 +1408,7 @@ mod tests {
         let mut deps = mock_dependencies();
         let env = mock_env();
         let (owner, pyth, new_owner) = test_addrs();
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1323,16 +1420,18 @@ mod tests {
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Transfer ownership
-        let res = execute_transfer_ownership(
-            deps.as_mut(),
-            env.clone(),
-            info,
-            new_owner.to_string(),
-        )
-        .unwrap();
+        let res =
+            execute_transfer_ownership(deps.as_mut(), env.clone(), info, new_owner.to_string())
+                .unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "transfer_ownership"));
-        assert!(res.attributes.iter().any(|a| a.key == "pending_owner" && a.value == new_owner.to_string()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "transfer_ownership"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "pending_owner" && a.value == new_owner.to_string()));
 
         // Verify pending owner was set
         let pending = PENDING_OWNER.load(deps.as_ref().storage).unwrap();
@@ -1347,8 +1446,14 @@ mod tests {
         let info = message_info(&new_owner, &[]);
         let res = execute_accept_ownership(deps.as_mut(), env, info).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "action" && a.value == "accept_ownership"));
-        assert!(res.attributes.iter().any(|a| a.key == "new_owner" && a.value == new_owner.to_string()));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "accept_ownership"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "new_owner" && a.value == new_owner.to_string()));
 
         // Verify ownership was transferred
         let config = CONFIG.load(deps.as_ref().storage).unwrap();
@@ -1365,7 +1470,7 @@ mod tests {
         let (owner, pyth, new_owner) = test_addrs();
         let api = MockApi::default();
         let wrong_sender = api.addr_make("wrong_sender");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1377,13 +1482,8 @@ mod tests {
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Transfer ownership
-        execute_transfer_ownership(
-            deps.as_mut(),
-            env.clone(),
-            info,
-            new_owner.to_string(),
-        )
-        .unwrap();
+        execute_transfer_ownership(deps.as_mut(), env.clone(), info, new_owner.to_string())
+            .unwrap();
 
         // Wrong sender tries to accept
         let info = message_info(&wrong_sender, &[]);
@@ -1401,7 +1501,7 @@ mod tests {
         let (owner, pyth, _) = test_addrs();
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
-        
+
         // Instantiate with a price feed
         let info = message_info(&owner, &[]);
         let feed_id = valid_feed_id();
@@ -1431,7 +1531,7 @@ mod tests {
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
         let new_pyth = api.addr_make("new_pyth");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1444,13 +1544,7 @@ mod tests {
 
         // Try to update pyth_contract_addr as non-owner
         let info = message_info(&not_owner, &[]);
-        let res = execute_update_config(
-            deps.as_mut(),
-            env,
-            info,
-            Some(new_pyth.to_string()),
-            None,
-        );
+        let res = execute_update_config(deps.as_mut(), env, info, Some(new_pyth.to_string()), None);
         assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
     }
 
@@ -1462,7 +1556,7 @@ mod tests {
         let (owner, pyth, _) = test_addrs();
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1475,13 +1569,7 @@ mod tests {
 
         // Try to update max_confidence_ratio as non-owner
         let info = message_info(&not_owner, &[]);
-        let res = execute_update_config(
-            deps.as_mut(),
-            env,
-            info,
-            None,
-            Some(Decimal::percent(2)),
-        );
+        let res = execute_update_config(deps.as_mut(), env, info, None, Some(Decimal::percent(2)));
         assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
     }
 
@@ -1493,7 +1581,7 @@ mod tests {
         let (owner, pyth, new_owner) = test_addrs();
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1506,12 +1594,7 @@ mod tests {
 
         // Try to transfer ownership as non-owner
         let info = message_info(&not_owner, &[]);
-        let res = execute_transfer_ownership(
-            deps.as_mut(),
-            env,
-            info,
-            new_owner.to_string(),
-        );
+        let res = execute_transfer_ownership(deps.as_mut(), env, info, new_owner.to_string());
         assert!(matches!(res.unwrap_err(), ContractError::Unauthorized));
     }
 
@@ -1523,7 +1606,7 @@ mod tests {
         let (owner, pyth, _) = test_addrs();
         let api = MockApi::default();
         let random_sender = api.addr_make("random");
-        
+
         // Instantiate
         let info = message_info(&owner, &[]);
         let msg = InstantiateMsg {
@@ -1537,7 +1620,10 @@ mod tests {
         // Try to accept ownership when no transfer is pending
         let info = message_info(&random_sender, &[]);
         let res = execute_accept_ownership(deps.as_mut(), env, info);
-        assert!(matches!(res.unwrap_err(), ContractError::PendingOwnerNotSet));
+        assert!(matches!(
+            res.unwrap_err(),
+            ContractError::PendingOwnerNotSet
+        ));
     }
 
     #[test]
@@ -1549,7 +1635,7 @@ mod tests {
         let (owner, pyth, new_owner) = test_addrs();
         let api = MockApi::default();
         let not_owner = api.addr_make("not_owner");
-        
+
         // Instantiate with a price feed so we can try to remove it
         let info = message_info(&owner, &[]);
         let feed_id = valid_feed_id();
@@ -1573,19 +1659,28 @@ mod tests {
             info_not_owner.clone(),
             ExecuteMsg::SetPriceFeed {
                 denom: "uosmo".to_string(),
-                feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string(),
+                feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9"
+                    .to_string(),
             },
         );
-        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "SetPriceFeed should require owner");
+        assert!(
+            matches!(res.unwrap_err(), ContractError::Unauthorized),
+            "SetPriceFeed should require owner"
+        );
 
         // Test RemovePriceFeed
         let res = execute(
             deps.as_mut(),
             env.clone(),
             info_not_owner.clone(),
-            ExecuteMsg::RemovePriceFeed { denom: "uatom".to_string() },
+            ExecuteMsg::RemovePriceFeed {
+                denom: "uatom".to_string(),
+            },
         );
-        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "RemovePriceFeed should require owner");
+        assert!(
+            matches!(res.unwrap_err(), ContractError::Unauthorized),
+            "RemovePriceFeed should require owner"
+        );
 
         // Test UpdateConfig
         let res = execute(
@@ -1597,7 +1692,10 @@ mod tests {
                 max_confidence_ratio: Some(Decimal::percent(2)),
             },
         );
-        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "UpdateConfig should require owner");
+        assert!(
+            matches!(res.unwrap_err(), ContractError::Unauthorized),
+            "UpdateConfig should require owner"
+        );
 
         // Test TransferOwnership
         let res = execute(
@@ -1608,7 +1706,10 @@ mod tests {
                 new_owner: new_owner.to_string(),
             },
         );
-        assert!(matches!(res.unwrap_err(), ContractError::Unauthorized), "TransferOwnership should require owner");
+        assert!(
+            matches!(res.unwrap_err(), ContractError::Unauthorized),
+            "TransferOwnership should require owner"
+        );
 
         // AcceptOwnership doesn't require owner - it requires pending_owner
         // This is tested separately in test_accept_ownership_wrong_sender
@@ -1680,7 +1781,9 @@ mod tests {
 
         // Query non-existent denom should return error
         let res = query_price_feed(deps.as_ref(), "unonexistent".to_string());
-        assert!(matches!(res.unwrap_err(), ContractError::PriceFeedNotConfigured { denom } if denom == "unonexistent"));
+        assert!(
+            matches!(res.unwrap_err(), ContractError::PriceFeedNotConfigured { denom } if denom == "unonexistent")
+        );
     }
 
     #[test]
@@ -1691,8 +1794,10 @@ mod tests {
         let info = message_info(&owner, &[]);
 
         let feed_id1 = valid_feed_id();
-        let feed_id2 = "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string();
-        let feed_id3 = "d00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fa".to_string();
+        let feed_id2 =
+            "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string();
+        let feed_id3 =
+            "d00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fa".to_string();
 
         let msg = InstantiateMsg {
             owner: owner.to_string(),
@@ -1743,19 +1848,23 @@ mod tests {
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "ubtc".to_string(),
-                    feed_id: "a00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string(),
+                    feed_id: "a00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9"
+                        .to_string(),
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "ueth".to_string(),
-                    feed_id: "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fa".to_string(),
+                    feed_id: "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fa"
+                        .to_string(),
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "uosmo".to_string(),
-                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fb".to_string(),
+                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fb"
+                        .to_string(),
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "uusdc".to_string(),
-                    feed_id: "d00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fc".to_string(),
+                    feed_id: "d00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fc"
+                        .to_string(),
                 },
             ],
         };
@@ -1800,19 +1909,23 @@ mod tests {
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "ubtc".to_string(),
-                    feed_id: "a00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string(),
+                    feed_id: "a00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9"
+                        .to_string(),
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "ueth".to_string(),
-                    feed_id: "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fa".to_string(),
+                    feed_id: "b00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fa"
+                        .to_string(),
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "uosmo".to_string(),
-                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fb".to_string(),
+                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fb"
+                        .to_string(),
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "uusdc".to_string(),
-                    feed_id: "d00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fc".to_string(),
+                    feed_id: "d00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493fc"
+                        .to_string(),
                 },
             ],
         };
@@ -1847,12 +1960,15 @@ mod tests {
                 },
                 crate::msg::PriceFeedConfig {
                     denom: "uatom".to_string(),
-                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9".to_string(),
+                    feed_id: "c00b60f88b03a6a625a8d1c048c3f45ef9e88f1ffb3f1032faea4f0ce7b493f9"
+                        .to_string(),
                 },
             ],
         };
 
         let result = instantiate(deps.as_mut(), env, info, msg);
-        assert!(matches!(result.unwrap_err(), ContractError::DuplicateDenom { denom } if denom == "uatom"));
+        assert!(
+            matches!(result.unwrap_err(), ContractError::DuplicateDenom { denom } if denom == "uatom")
+        );
     }
 }

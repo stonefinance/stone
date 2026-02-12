@@ -86,10 +86,10 @@ pub fn execute_liquidate(
     // collateral_needed = debt_value / collateral_price
     // collateral_with_bonus = collateral_needed * (1 + liquidation_bonus)
     // protocol_fee = collateral_needed * liquidation_protocol_fee
-    let debt_value_256 = u128_to_decimal256(actual_debt_repaid)
-        .checked_mul(decimal_to_decimal256(debt_price))?;
-    let collateral_needed_value_256 = debt_value_256
-        .checked_div(decimal_to_decimal256(collateral_price))?;
+    let debt_value_256 =
+        u128_to_decimal256(actual_debt_repaid).checked_mul(decimal_to_decimal256(debt_price))?;
+    let collateral_needed_value_256 =
+        debt_value_256.checked_div(decimal_to_decimal256(collateral_price))?;
     let collateral_needed = uint256_to_uint128(collateral_needed_value_256.to_uint_floor())?;
 
     let bonus_amount = collateral_needed.checked_mul_floor(params.liquidation_bonus)?;
@@ -134,7 +134,8 @@ pub fn execute_liquidate(
     let state = STATE.load(deps.storage)?;
 
     // Update borrower's debt (scaled)
-    let scaled_debt_decrease = stone_types::amount_to_scaled(final_debt_repaid, state.borrow_index)?;
+    let scaled_debt_decrease =
+        stone_types::amount_to_scaled(final_debt_repaid, state.borrow_index)?;
     let current_debt_scaled = DEBTS
         .may_load(deps.storage, borrower_str)?
         .unwrap_or_default();
@@ -608,13 +609,16 @@ mod tests {
             .find(|a| a.key == "debt_repaid")
             .map(|a| a.value.parse::<u128>().unwrap())
             .expect("debt_repaid attribute should exist");
-        
+
         // Collateral capping kicks in because:
         // collateral_needed = 60, bonus = floor(60*5%) = 3, fee = floor(60*2%) = 1, total = 64
         // With only 50 collateral, it's capped: scale = 50/64
         // scaled_collateral = floor(60 * 50/64) = floor(46.875) = 46
         // scaled_debt = 46 (same numeraire, $1 = $1)
-        assert_eq!(debt_attr, 46u128, "Dust position should liquidate as much as collateral allows");
+        assert_eq!(
+            debt_attr, 46u128,
+            "Dust position should liquidate as much as collateral allows"
+        );
     }
 
     #[test]
@@ -684,7 +688,10 @@ mod tests {
             .expect("debt_repaid attribute should exist");
 
         // With 50% close factor, max liquidatable is 300
-        assert_eq!(debt_attr, 300u128, "Should respect close factor for non-dust positions");
+        assert_eq!(
+            debt_attr, 300u128,
+            "Should respect close factor for non-dust positions"
+        );
 
         // Debt should not be fully cleared
         let remaining_debt = DEBTS
@@ -735,7 +742,10 @@ mod tests {
         // Capped at 100 collateral: scale = 100/107
         // scaled_collateral = floor(100 * 100/107) = floor(93.457) = 93
         // scaled_debt = 93
-        assert_eq!(debt_attr, 93u128, "Position at dust threshold should liquidate up to collateral cap");
+        assert_eq!(
+            debt_attr, 93u128,
+            "Position at dust threshold should liquidate up to collateral cap"
+        );
     }
 
     #[test]
@@ -772,6 +782,9 @@ mod tests {
         // close_factor applies: max_liquidatable = floor(60 * 50%) = 30
         // collateral_needed = 30, bonus = floor(30*5%)=1, fee = floor(30*2%)=0, total = 31
         // 31 < 50 collateral, so not capped
-        assert_eq!(debt_attr, 30u128, "Zero dust threshold should apply close factor");
+        assert_eq!(
+            debt_attr, 30u128,
+            "Zero dust threshold should apply close factor"
+        );
     }
 }

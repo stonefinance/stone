@@ -323,7 +323,8 @@ mod tests {
         let info = message_info(&user1, &[]);
 
         // Withdraw should succeed even when market is disabled
-        let res = execute_withdraw(deps.as_mut(), env, info, Some(Uint128::new(500)), None).unwrap();
+        let res =
+            execute_withdraw(deps.as_mut(), env, info, Some(Uint128::new(500)), None).unwrap();
 
         assert!(!res.messages.is_empty());
         assert!(res

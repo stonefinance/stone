@@ -5,8 +5,8 @@ use crate::health::{
     calculate_health_factor, calculate_liquidation_price, calculate_max_borrow, is_liquidatable,
     query_price,
 };
-use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256};
 use crate::interest::{get_user_collateral, get_user_debt, get_user_supply};
+use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256};
 use crate::state::{CONFIG, PARAMS, STATE};
 use stone_types::{
     IsLiquidatableResponse, MarketConfigResponse, MarketParamsResponse, MarketStateResponse,
@@ -66,11 +66,7 @@ pub fn state(deps: Deps) -> ContractResult<MarketStateResponse> {
     })
 }
 
-pub fn user_position(
-    deps: Deps,
-    env: Env,
-    user: String,
-) -> ContractResult<UserPositionResponse> {
+pub fn user_position(deps: Deps, env: Env, user: String) -> ContractResult<UserPositionResponse> {
     let config = CONFIG.load(deps.storage)?;
 
     let user_addr = deps.api.addr_validate(&user)?;
@@ -91,7 +87,8 @@ pub fn user_position(
 
     // Calculate values using Decimal256 to prevent overflow with large amounts
     let collateral_value = decimal256_to_decimal(
-        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?,
+        u128_to_decimal256(collateral_amount)
+            .checked_mul(decimal_to_decimal256(collateral_price))?,
     )?;
     let supply_value = decimal256_to_decimal(
         u128_to_decimal256(supply_amount).checked_mul(decimal_to_decimal256(debt_price))?,
@@ -161,9 +158,8 @@ pub fn user_collateral(deps: Deps, env: Env, user: String) -> ContractResult<Use
         .may_load(deps.storage, user_addr.as_str())?
         .unwrap_or_default();
 
-    let collateral_price =
-        query_price(deps, &env, &config.oracle_config, &config.collateral_denom)
-            .unwrap_or(Decimal::zero());
+    let collateral_price = query_price(deps, &env, &config.oracle_config, &config.collateral_denom)
+        .unwrap_or(Decimal::zero());
     let value = decimal256_to_decimal(
         u128_to_decimal256(amount).checked_mul(decimal_to_decimal256(collateral_price))?,
     )?;
@@ -253,8 +249,8 @@ mod tests {
     use cosmwasm_std::{from_json, to_json_binary, ContractResult, QuerierResult, WasmQuery};
     use cosmwasm_std::{Timestamp, Uint128};
     use stone_types::{
-        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleType,
-        OracleQueryMsg, PriceResponse,
+        InterestRateModel, MarketConfig, MarketParams, MarketState, OracleConfig, OracleQueryMsg,
+        OracleType, PriceResponse,
     };
 
     // Base timestamp for tests (~Nov 2023)

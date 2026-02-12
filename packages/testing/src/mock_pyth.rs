@@ -1,5 +1,5 @@
 //! Mock Pyth contract for cw-multi-test integration testing.
-//! 
+//!
 //! This mock mimics the real Pyth CosmWasm contract's query interface,
 //! returning price feed data that matches the `PriceFeedResponse` struct
 //! defined in `pyth-oracle-adapter/src/pyth_types.rs`.
@@ -65,7 +65,10 @@ impl PriceIdentifier {
             )));
         }
         let bytes = hex::decode(hex_str).map_err(|e| {
-            cosmwasm_std::StdError::generic_err(format!("Invalid PriceIdentifier hex string: {}", e))
+            cosmwasm_std::StdError::generic_err(format!(
+                "Invalid PriceIdentifier hex string: {}",
+                e
+            ))
         })?;
         let mut array = [0u8; 32];
         array.copy_from_slice(&bytes);
@@ -84,7 +87,8 @@ impl<'de> serde::Deserialize<'de> for PriceIdentifier {
             type Value = PriceIdentifier;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a 64-character hex string representing a 32-byte price identifier")
+                formatter
+                    .write_str("a 64-character hex string representing a 32-byte price identifier")
             }
 
             fn visit_str<E>(self, value: &str) -> Result<PriceIdentifier, E>
@@ -209,8 +213,7 @@ pub fn mock_pyth_execute(
             publish_time,
         } => {
             FEEDS.update(deps.storage, &id, |existing| -> StdResult<_> {
-                let mut feed =
-                    existing.ok_or_else(|| cosmwasm_std::StdError::not_found("feed"))?;
+                let mut feed = existing.ok_or_else(|| cosmwasm_std::StdError::not_found("feed"))?;
                 feed.price = price;
                 feed.conf = conf;
                 feed.publish_time = publish_time;
@@ -265,11 +268,7 @@ pub fn mock_pyth_contract() -> cw_multi_test::ContractWrapper<
 > {
     use cw_multi_test::ContractWrapper;
 
-    ContractWrapper::new(
-        mock_pyth_execute,
-        mock_pyth_instantiate,
-        mock_pyth_query,
-    )
+    ContractWrapper::new(mock_pyth_execute, mock_pyth_instantiate, mock_pyth_query)
 }
 
 #[cfg(test)]

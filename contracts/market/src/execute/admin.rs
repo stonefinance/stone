@@ -327,8 +327,14 @@ pub fn execute_claim_fees(
         .add_attribute("protocol_claimed", claimable_protocol)
         .add_attribute("curator_claimed", claimable_curator)
         .add_attribute("total_claimed", total_claimed)
-        .add_attribute("accrued_protocol_remaining", accrued_protocol.saturating_sub(claimable_protocol))
-        .add_attribute("accrued_curator_remaining", accrued_curator.saturating_sub(claimable_curator)))
+        .add_attribute(
+            "accrued_protocol_remaining",
+            accrued_protocol.saturating_sub(claimable_protocol),
+        )
+        .add_attribute(
+            "accrued_curator_remaining",
+            accrued_curator.saturating_sub(claimable_curator),
+        ))
 }
 
 #[cfg(test)]
@@ -747,7 +753,10 @@ mod tests {
 
         let err = execute_update_params(deps.as_mut(), env, info, updates).unwrap_err();
         assert!(
-            matches!(err, ContractError::Types(stone_types::ContractError::DustDebtThresholdTooHigh { .. })),
+            matches!(
+                err,
+                ContractError::Types(stone_types::ContractError::DustDebtThresholdTooHigh { .. })
+            ),
             "Expected DustDebtThresholdTooHigh error, got {:?}",
             err
         );

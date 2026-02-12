@@ -2,7 +2,9 @@ use cosmwasm_std::{Decimal, Decimal256, Deps, Env, Uint128};
 
 use crate::error::ContractError;
 use crate::interest::{get_user_collateral, get_user_debt};
-use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256, uint256_to_uint128};
+use crate::math256::{
+    decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256, uint256_to_uint128,
+};
 use crate::state::{CONFIG, PARAMS};
 use stone_types::{MarketConfig, MarketParams, OracleConfig, OracleQueryMsg, PriceResponse};
 
@@ -95,7 +97,8 @@ impl PositionHealth {
             return Ok(None);
         }
 
-        let health_factor = self.collateral_value
+        let health_factor = self
+            .collateral_value
             .checked_mul(decimal_to_decimal256(self.liquidation_threshold))?
             .checked_div(self.debt_value)?;
 
@@ -114,7 +117,9 @@ impl PositionHealth {
     /// Calculate the maximum borrow value based on collateral.
     /// max_borrow_value = collateral_value * LTV
     pub fn max_borrow_value(&self) -> Result<Decimal256, ContractError> {
-        Ok(self.collateral_value.checked_mul(decimal_to_decimal256(self.loan_to_value))?)
+        Ok(self
+            .collateral_value
+            .checked_mul(decimal_to_decimal256(self.loan_to_value))?)
     }
 
     /// Calculate the maximum amount that can be borrowed in debt tokens.
@@ -129,7 +134,8 @@ impl PositionHealth {
         let remaining_borrow_value = max_borrow_value.checked_sub(self.debt_value)?;
 
         // Convert value back to debt tokens
-        let max_borrow = remaining_borrow_value.checked_div(decimal_to_decimal256(self.debt_price))?;
+        let max_borrow =
+            remaining_borrow_value.checked_div(decimal_to_decimal256(self.debt_price))?;
 
         // Convert Decimal256 to Uint128 (truncate), capping at Uint128::MAX
         let max_borrow_u256 = max_borrow.to_uint_floor();
@@ -267,8 +273,8 @@ pub fn calculate_position_health_with_config(
 
     let collateral_value = u128_to_decimal256(collateral_amount)
         .checked_mul(decimal_to_decimal256(collateral_price))?;
-    let debt_value = u128_to_decimal256(debt_amount)
-        .checked_mul(decimal_to_decimal256(debt_price))?;
+    let debt_value =
+        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
 
     Ok(PositionHealth {
         collateral_amount,
@@ -308,11 +314,7 @@ pub fn is_liquidatable(deps: Deps, env: &Env, user: &str) -> Result<bool, Contra
 /// Calculate the maximum amount a user can borrow based on their collateral.
 /// max_borrow_value = collateral_value * LTV - current_debt_value
 /// Uses Decimal256 internally to prevent overflow with large token amounts.
-pub fn calculate_max_borrow(
-    deps: Deps,
-    env: &Env,
-    user: &str,
-) -> Result<Uint128, ContractError> {
+pub fn calculate_max_borrow(deps: Deps, env: &Env, user: &str) -> Result<Uint128, ContractError> {
     let position = calculate_position_health(deps, env, user)?;
     position.max_borrow_amount()
 }
@@ -562,7 +564,11 @@ mod tests {
             .save(deps.as_mut().storage, "user1", &large_amount)
             .unwrap();
         crate::state::DEBTS
-            .save(deps.as_mut().storage, "user1", &(large_amount / Uint128::new(2)))
+            .save(
+                deps.as_mut().storage,
+                "user1",
+                &(large_amount / Uint128::new(2)),
+            )
             .unwrap();
 
         let env = mock_env_at_time(BASE_TIMESTAMP);
@@ -739,7 +745,7 @@ mod tests {
 
         let large_collateral = Uint128::new(u128::MAX / 10);
         let large_debt = large_collateral / Uint128::new(20); // 5% of collateral
-        
+
         crate::state::COLLATERAL
             .save(deps.as_mut().storage, "user1", &large_collateral)
             .unwrap();
@@ -793,7 +799,7 @@ mod tests {
         // Very large amounts that could overflow with Decimal
         let large_collateral = Uint128::new(u128::MAX / 10);
         let large_debt = large_collateral / Uint128::new(10);
-        
+
         crate::state::COLLATERAL
             .save(deps.as_mut().storage, "user1", &large_collateral)
             .unwrap();
@@ -913,7 +919,11 @@ mod tests {
     fn test_zero_debt_price_rejection() {
         let mut deps = mock_dependencies();
         // Set zero debt price
-        setup_with_oracle(&mut deps, Decimal::from_ratio(10u128, 1u128), Decimal::zero());
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::zero(),
+        );
 
         // User has collateral and debt
         crate::state::COLLATERAL

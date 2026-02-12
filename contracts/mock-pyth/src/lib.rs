@@ -8,7 +8,9 @@
 //! and responds to `PriceFeed { id }` queries with `PriceFeedResponse`.
 
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult};
+use cosmwasm_std::{
+    entry_point, to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response, StdResult,
+};
 use cw_storage_plus::Map;
 use schemars::JsonSchema;
 use serde::{de::Visitor, Deserialize, Deserializer, Serialize, Serializer};
@@ -44,7 +46,10 @@ impl PriceIdentifier {
             )));
         }
         let bytes = hex::decode(hex_str).map_err(|e| {
-            cosmwasm_std::StdError::generic_err(format!("Invalid PriceIdentifier hex string: {}", e))
+            cosmwasm_std::StdError::generic_err(format!(
+                "Invalid PriceIdentifier hex string: {}",
+                e
+            ))
         })?;
         let mut array = [0u8; 32];
         array.copy_from_slice(&bytes);
@@ -72,7 +77,8 @@ impl<'de> Deserialize<'de> for PriceIdentifier {
             type Value = PriceIdentifier;
 
             fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-                formatter.write_str("a 64-character hex string representing a 32-byte price identifier")
+                formatter
+                    .write_str("a 64-character hex string representing a 32-byte price identifier")
             }
 
             fn visit_str<E>(self, value: &str) -> Result<PriceIdentifier, E>
@@ -240,8 +246,7 @@ pub fn execute(
             publish_time,
         } => {
             FEEDS.update(deps.storage, &id, |existing| -> StdResult<_> {
-                let mut feed =
-                    existing.ok_or_else(|| cosmwasm_std::StdError::not_found("feed"))?;
+                let mut feed = existing.ok_or_else(|| cosmwasm_std::StdError::not_found("feed"))?;
                 feed.price = price;
                 feed.conf = conf;
                 feed.publish_time = publish_time;
