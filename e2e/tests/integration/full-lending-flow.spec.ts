@@ -20,23 +20,31 @@ test.describe('Full Lending Flow @integration', () => {
 
     const market = markets[0];
     const marketAddress = market.marketAddress;
+    const collateralDenom = market.collateralDenom; // e.g., 'ustone' for STONE/USDC market
+    const debtDenom = market.debtDenom; // e.g., 'uusdc' for STONE/USDC market
+
+    console.log(`Testing market: ${market.id}`);
+    console.log(`  Collateral denom: ${collateralDenom}`);
+    console.log(`  Debt denom: ${debtDenom}`);
 
     // 1. Check initial balances
-    const initialAtomBalance = await chainClient.getBalance('uatom');
-    const initialStoneBalance = await chainClient.getBalance('ustone');
-    console.log(`Initial ATOM balance: ${initialAtomBalance.amount}`);
-    console.log(`Initial STONE balance: ${initialStoneBalance.amount}`);
+    const initialCollateralBalance = await chainClient.getBalance(collateralDenom);
+    const initialDebtBalance = await chainClient.getBalance(debtDenom);
+    console.log(`Initial ${collateralDenom} balance: ${initialCollateralBalance.amount}`);
+    console.log(`Initial ${debtDenom} balance: ${initialDebtBalance.amount}`);
 
-    // 2. Supply liquidity (STONE) so we can borrow later
-    const supplyAmount = '1000000000'; // 1000 STONE
-    console.log('Supplying STONE liquidity...');
-    const supplyTx = await chainClient.supply(marketAddress, supplyAmount, 'ustone');
+    // 2. Supply liquidity (debt denom) so we can borrow later
+    // For a STONE/USDC market: supply USDC as liquidity
+    const supplyAmount = '1000000000'; // 1000 units (6 decimals = 1000 USDC)
+    console.log(`Supplying ${debtDenom} liquidity...`);
+    const supplyTx = await chainClient.supply(marketAddress, supplyAmount, debtDenom);
     console.log(`Supply tx: ${supplyTx}`);
 
-    // 3. Supply collateral (ATOM)
-    const collateralAmount = '100000000'; // 100 ATOM
-    console.log('Supplying ATOM collateral...');
-    const collateralTx = await chainClient.supplyCollateral(marketAddress, collateralAmount, 'uatom');
+    // 3. Supply collateral (collateral denom)
+    // For a STONE/USDC market: supply STONE as collateral
+    const collateralAmount = '100000000'; // 100 units
+    console.log(`Supplying ${collateralDenom} collateral...`);
+    const collateralTx = await chainClient.supplyCollateral(marketAddress, collateralAmount, collateralDenom);
     console.log(`Collateral tx: ${collateralTx}`);
 
     // Wait for indexer to catch up
@@ -50,9 +58,10 @@ test.describe('Full Lending Flow @integration', () => {
     expect(BigInt(positionAfterCollateral.collateral_amount)).toBe(BigInt(collateralAmount));
     console.log(`Position after collateral: ${JSON.stringify(positionAfterCollateral)}`);
 
-    // 5. Borrow (STONE) - borrow 50% of max to stay safe
-    const borrowAmount = '50000000'; // 50 STONE
-    console.log('Borrowing STONE...');
+    // 5. Borrow (debt denom) - borrow 50% of max to stay safe
+    // For a STONE/USDC market: borrow USDC
+    const borrowAmount = '50000000'; // 50 units
+    console.log(`Borrowing ${debtDenom}...`);
     const borrowTx = await chainClient.borrow(marketAddress, borrowAmount);
     console.log(`Borrow tx: ${borrowTx}`);
 
@@ -61,16 +70,16 @@ test.describe('Full Lending Flow @integration', () => {
     expect(BigInt(positionAfterBorrow.debt_amount)).toBeGreaterThanOrEqual(BigInt(borrowAmount));
     console.log(`Position after borrow: ${JSON.stringify(positionAfterBorrow)}`);
 
-    // 7. Repay debt
-    console.log('Repaying debt...');
-    const repayTx = await chainClient.repay(marketAddress, borrowAmount, 'ustone');
+    // 7. Repay debt (using debt denom)
+    console.log(`Repaying ${debtDenom} debt...`);
+    const repayTx = await chainClient.repay(marketAddress, borrowAmount, debtDenom);
     console.log(`Repay tx: ${repayTx}`);
 
     // 8. Verify debt is cleared (or minimal due to interest)
     const positionAfterRepay = await chainClient.getPosition(marketAddress);
     console.log(`Position after repay: ${JSON.stringify(positionAfterRepay)}`);
     // Debt should be very small (just accumulated interest)
-    expect(BigInt(positionAfterRepay.debt_amount)).toBeLessThan(BigInt('1000000')); // Less than 1 STONE
+    expect(BigInt(positionAfterRepay.debt_amount)).toBeLessThan(BigInt('1000000')); // Less than 1 unit
 
     // 9. Withdraw collateral
     console.log('Withdrawing collateral...');
