@@ -127,6 +127,69 @@ satisfy adjust timber high purchase tuition stool faith fine install that you un
 - **Staking denom:** `stake`
 - **Test tokens:** `uatom`, `uusdc`, `ustone`
 
+## Oracle Configuration
+
+The local dev stack deploys a **Pyth-compatible oracle** by default, mirroring production:
+
+### Deployed Contracts
+
+1. **mock-pyth** - Simulates Pyth Network price feeds locally
+2. **pyth-oracle-adapter** - Implements Stone's `OracleQueryMsg` interface, queries mock-pyth
+3. Markets use the pyth-oracle-adapter as their oracle
+
+### Architecture
+
+```
+┌─────────────────┐       ┌─────────────────────┐       ┌────────────────┐
+│  Stone Market   │──────▶│  pyth-oracle-adapter │──────▶│    mock-pyth   │
+│                 │       │                     │       │                │
+│  OracleQueryMsg │       │  price_feeds config │       │  simulated     │
+│                 │       │  max_confidence 5%  │       │  Pyth prices   │
+└─────────────────┘       └─────────────────────┘       └────────────────┘
+```
+
+### Price Feeds
+
+| Asset | Feed ID | Mock Price |
+|-------|---------|------------|
+| ATOM  | `b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819` | $10.00 |
+| USDC  | `eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a` | $1.00 |
+| STONE | `4ea5bb4d2f5900cc2e97ba534240950740b4d3b89fe712a94a7304fd2fd92702` | $0.50 |
+
+### Querying the Oracle
+
+```bash
+# Query the pyth-oracle-adapter config
+ORACLE_ADDR=$(cat deployment/result.json | jq -r '.oracleAddress')
+curl -s "http://localhost:1317/cosmwasm/wasm/v1/contract/$ORACLE_ADDR/smart/$(echo -n '{"config":{}}' | base64)" | jq
+
+# Query all price feeds
+curl -s "http://localhost:1317/cosmwasm/wasm/v1/contract/$ORACLE_ADDR/smart/$(echo -n '{"all_price_feeds":{}}' | base64)" | jq
+
+# Query a specific price
+curl -s "http://localhost:1317/cosmwasm/wasm/v1/contract/$ORACLE_ADDR/smart/$(echo -n '{"price":{"denom":"uatom"}}' | base64)" | jq
+```
+
+### Using Mock Oracle Instead
+
+To use the simple mock oracle (for testing scenarios that don't need Pyth):
+
+```bash
+# Override in docker-compose
+ORACLE_TYPE=mock docker compose -f docker-compose.e2e.yml up -d deployer
+
+# Or set in environment
+export ORACLE_TYPE=mock
+make e2e-up
+```
+
+### Configuration Files
+
+Oracle configuration is in `deploy/`:
+- `local.json` / `stone-local-1.json` - Local dev config (empty `pythContractAddress` triggers mock-pyth deployment)
+- `neutron-1.json` - Mainnet config (uses real Pyth contract)
+- `pion-1.json` - Testnet config
+
 ## Verifying the Chain
 
 ```bash
