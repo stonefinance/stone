@@ -71,15 +71,20 @@ test.describe('Full Lending Flow @integration', () => {
     console.log(`Position after borrow: ${JSON.stringify(positionAfterBorrow)}`);
 
     // 7. Repay debt (using debt denom)
-    console.log(`Repaying ${debtDenom} debt...`);
-    const repayTx = await chainClient.repay(marketAddress, borrowAmount, debtDenom);
+    // IMPORTANT: Repay the ACTUAL debt amount (which includes accrued interest), not just the borrowed amount
+    // Otherwise the health factor check will fail when withdrawing collateral
+    const actualDebt = positionAfterBorrow.debt_amount;
+    // Add a small buffer (1%) to cover any interest accrued during the repay transaction
+    const repayAmount = (BigInt(actualDebt) * BigInt(101) / BigInt(100)).toString();
+    console.log(`Repaying ${debtDenom} debt (actual: ${actualDebt}, repaying: ${repayAmount})...`);
+    const repayTx = await chainClient.repay(marketAddress, repayAmount, debtDenom);
     console.log(`Repay tx: ${repayTx}`);
 
-    // 8. Verify debt is cleared (or minimal due to interest)
+    // 8. Verify debt is fully cleared
     const positionAfterRepay = await chainClient.getPosition(marketAddress);
     console.log(`Position after repay: ${JSON.stringify(positionAfterRepay)}`);
-    // Debt should be very small (just accumulated interest)
-    expect(BigInt(positionAfterRepay.debt_amount)).toBeLessThan(BigInt('1000000')); // Less than 1 unit
+    // Debt should be zero (overpayment is returned to user)
+    expect(BigInt(positionAfterRepay.debt_amount)).toBe(BigInt(0));
 
     // 9. Withdraw collateral
     console.log('Withdrawing collateral...');

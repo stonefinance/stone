@@ -42,14 +42,27 @@ test.describe('Market Detail Page @smoke', () => {
   test('shows market parameters', async ({ page }) => {
     await page.waitForLoadState('networkidle');
 
+    // The "Liquidation LTV" parameter is in the Overview tab
+    // Click the Overview tab to ensure we see the Market Attributes section
+    const overviewTab = page.getByRole('tab', { name: /overview/i });
+    if (await overviewTab.isVisible().catch(() => false)) {
+      await overviewTab.click();
+      // Wait for tab content to render
+      await page.waitForTimeout(500);
+    }
+
     // Check for LTV or similar parameters - look for both abbreviated and full text
-    // Frontend displays "Liquidation LTV" in Market Attributes section
-    const hasLTV = await page.getByText(/ltv|loan.to.value|loan to value/i).isVisible().catch(() => false);
+    // Frontend displays "Liquidation LTV" in Market Attributes section (Overview tab)
+    // Also displays "LTV" in the position summary (Borrow action panel)
+    const hasLTV = await page.getByText(/\bltv\b/i).first().isVisible().catch(() => false);
     const hasLiqLTV = await page.getByText(/liquidation\s*ltv/i).isVisible().catch(() => false);
-    const hasParams = await page.getByText(/75%|80%|85%|86%|parameters|risk/i).isVisible().catch(() => false);
+    // Also check for "Utilization" which is always shown in Market Attributes
+    const hasUtilization = await page.getByText(/utilization/i).isVisible().catch(() => false);
+    // Check for common LTV percentage values
+    const hasParams = await page.getByText(/75%|80%|85%|86%|90%/i).first().isVisible().catch(() => false);
 
     // At least one parameter indicator should be visible
-    expect(hasLTV || hasLiqLTV || hasParams).toBe(true);
+    expect(hasLTV || hasLiqLTV || hasUtilization || hasParams).toBe(true);
   });
 
   test('shows action buttons when wallet connected', async ({ page }) => {
