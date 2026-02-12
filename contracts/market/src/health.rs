@@ -1,10 +1,10 @@
-use cosmwasm_std::{Decimal, Deps, Env, Uint128};
+use cosmwasm_std::{Decimal, Decimal256, Deps, Env, Uint128};
 
 use crate::error::ContractError;
 use crate::interest::{get_user_collateral, get_user_debt};
 use crate::math256::{decimal256_to_decimal, decimal_to_decimal256, u128_to_decimal256, uint256_to_uint128};
 use crate::state::{CONFIG, PARAMS};
-use stone_types::{OracleConfig, OracleQueryMsg, PriceResponse};
+use stone_types::{MarketConfig, MarketParams, OracleConfig, OracleQueryMsg, PriceResponse};
 
 /// Query price from oracle for a denom.
 /// Validates that the price is not stale and not zero.
@@ -59,6 +59,233 @@ pub fn query_price(
     Ok(response.price)
 }
 
+// ============================================================================
+// Core Position Health Data Structure
+// ============================================================================
+
+/// Represents a user's position health data with all relevant values calculated.
+/// This is the single source of truth for position health calculations.
+/// All values use Decimal256 internally to prevent overflow with large token amounts.
+#[derive(Debug, Clone)]
+pub struct PositionHealth {
+    /// Raw collateral amount in tokens
+    pub collateral_amount: Uint128,
+    /// Raw debt amount in tokens
+    pub debt_amount: Uint128,
+    /// Collateral value in USD (collateral_amount * collateral_price)
+    pub collateral_value: Decimal256,
+    /// Debt value in USD (debt_amount * debt_price)
+    pub debt_value: Decimal256,
+    /// Price of collateral token (needed for recalculating collateral value)
+    pub collateral_price: Decimal,
+    /// Price of debt token (needed for converting values back to tokens)
+    pub debt_price: Decimal,
+    /// Loan-to-Value ratio from market params
+    pub loan_to_value: Decimal,
+    /// Liquidation threshold from market params
+    pub liquidation_threshold: Decimal,
+}
+
+impl PositionHealth {
+    /// Calculate health factor for this position.
+    /// Returns None if position has no debt (always healthy).
+    /// Health factor = (collateral_value * liquidation_threshold) / debt_value
+    pub fn health_factor(&self) -> Result<Option<Decimal>, ContractError> {
+        if self.debt_amount.is_zero() {
+            return Ok(None);
+        }
+
+        let health_factor = self.collateral_value
+            .checked_mul(decimal_to_decimal256(self.liquidation_threshold))?
+            .checked_div(self.debt_value)?;
+
+        Ok(Some(decimal256_to_decimal(health_factor)?))
+    }
+
+    /// Check if this position is liquidatable.
+    /// A position is liquidatable when health_factor < 1.0
+    pub fn is_liquidatable(&self) -> Result<bool, ContractError> {
+        match self.health_factor()? {
+            Some(hf) => Ok(hf < Decimal::one()),
+            None => Ok(false),
+        }
+    }
+
+    /// Calculate the maximum borrow value based on collateral.
+    /// max_borrow_value = collateral_value * LTV
+    pub fn max_borrow_value(&self) -> Result<Decimal256, ContractError> {
+        Ok(self.collateral_value.checked_mul(decimal_to_decimal256(self.loan_to_value))?)
+    }
+
+    /// Calculate the maximum amount that can be borrowed in debt tokens.
+    /// max_borrow = (collateral_value * LTV - debt_value) / debt_price
+    pub fn max_borrow_amount(&self) -> Result<Uint128, ContractError> {
+        let max_borrow_value = self.max_borrow_value()?;
+
+        if max_borrow_value <= self.debt_value {
+            return Ok(Uint128::zero());
+        }
+
+        let remaining_borrow_value = max_borrow_value.checked_sub(self.debt_value)?;
+
+        // Convert value back to debt tokens
+        let max_borrow = remaining_borrow_value.checked_div(decimal_to_decimal256(self.debt_price))?;
+
+        // Convert Decimal256 to Uint128 (truncate), capping at Uint128::MAX
+        let max_borrow_u256 = max_borrow.to_uint_floor();
+        match uint256_to_uint128(max_borrow_u256) {
+            Ok(value) => Ok(value),
+            Err(_) => Ok(Uint128::MAX), // Cap at Uint128::MAX if too large
+        }
+    }
+
+    /// Calculate the liquidation price for collateral.
+    /// This is the collateral price at which the position becomes liquidatable.
+    /// liquidation_price = debt_value / (collateral_amount * liquidation_threshold)
+    pub fn liquidation_price(&self) -> Result<Option<Decimal>, ContractError> {
+        if self.debt_amount.is_zero() || self.collateral_amount.is_zero() {
+            return Ok(None);
+        }
+
+        let denominator = u128_to_decimal256(self.collateral_amount)
+            .checked_mul(decimal_to_decimal256(self.liquidation_threshold))?;
+        let liquidation_price = self.debt_value.checked_div(denominator)?;
+
+        Ok(Some(decimal256_to_decimal(liquidation_price)?))
+    }
+
+    /// Create a modified position with additional debt.
+    /// Used to check if a borrow would be allowed.
+    pub fn with_additional_debt(&self, additional_debt: Uint128) -> Result<Self, ContractError> {
+        let new_debt_amount = self.debt_amount.checked_add(additional_debt)?;
+        let new_debt_value = u128_to_decimal256(new_debt_amount)
+            .checked_mul(decimal_to_decimal256(self.debt_price))?;
+
+        Ok(Self {
+            collateral_amount: self.collateral_amount,
+            debt_amount: new_debt_amount,
+            collateral_value: self.collateral_value,
+            debt_value: new_debt_value,
+            collateral_price: self.collateral_price,
+            debt_price: self.debt_price,
+            loan_to_value: self.loan_to_value,
+            liquidation_threshold: self.liquidation_threshold,
+        })
+    }
+
+    /// Create a modified position with reduced collateral.
+    /// Used to check if a withdrawal would be allowed.
+    pub fn with_reduced_collateral(&self, withdraw_amount: Uint128) -> Result<Self, ContractError> {
+        if withdraw_amount > self.collateral_amount {
+            return Err(ContractError::NoCollateral);
+        }
+
+        let new_collateral_amount = self.collateral_amount.checked_sub(withdraw_amount)?;
+        let new_collateral_value = u128_to_decimal256(new_collateral_amount)
+            .checked_mul(decimal_to_decimal256(self.collateral_price))?;
+
+        Ok(Self {
+            collateral_amount: new_collateral_amount,
+            debt_amount: self.debt_amount,
+            collateral_value: new_collateral_value,
+            debt_value: self.debt_value,
+            collateral_price: self.collateral_price,
+            debt_price: self.debt_price,
+            loan_to_value: self.loan_to_value,
+            liquidation_threshold: self.liquidation_threshold,
+        })
+    }
+
+    /// Check if adding more debt would exceed LTV.
+    /// Returns Ok(()) if the borrow is allowed, Err if it exceeds LTV.
+    pub fn check_borrow_allowed(&self, borrow_amount: Uint128) -> Result<(), ContractError> {
+        let position_after = self.with_additional_debt(borrow_amount)?;
+        let max_borrow_value = position_after.max_borrow_value()?;
+
+        if position_after.debt_value > max_borrow_value {
+            return Err(ContractError::ExceedsLtv {
+                max_borrow: decimal256_to_decimal(max_borrow_value)?.to_string(),
+                requested: decimal256_to_decimal(position_after.debt_value)?.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Check if withdrawing collateral would make the position unhealthy.
+    /// Uses LTV for withdrawal check (more conservative than liquidation threshold).
+    /// Returns Ok(()) if the withdrawal is allowed, Err otherwise.
+    ///
+    /// Note: This method assumes the caller has verified there is debt. If no debt exists,
+    /// use the public `check_withdrawal_allowed` function which skips oracle queries entirely.
+    pub fn check_withdrawal_allowed(&self, withdraw_amount: Uint128) -> Result<(), ContractError> {
+        let position_after = self.with_reduced_collateral(withdraw_amount)?;
+        let max_debt_value = position_after.max_borrow_value()?;
+
+        if position_after.debt_value > max_debt_value {
+            let health_factor = position_after.health_factor()?.unwrap_or(Decimal::zero());
+            return Err(ContractError::InsufficientCollateral {
+                health_factor: health_factor.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Core Position Health Calculator
+// ============================================================================
+
+/// Load all position health data for a user.
+/// This is the core function that consolidates all health-related data loading.
+pub fn calculate_position_health(
+    deps: Deps,
+    env: &Env,
+    user: &str,
+) -> Result<PositionHealth, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    let params = PARAMS.load(deps.storage)?;
+
+    calculate_position_health_with_config(deps, env, user, &config, &params)
+}
+
+/// Load position health data with provided config and params.
+/// Useful when caller already has config/params loaded.
+pub fn calculate_position_health_with_config(
+    deps: Deps,
+    env: &Env,
+    user: &str,
+    config: &MarketConfig,
+    params: &MarketParams,
+) -> Result<PositionHealth, ContractError> {
+    let collateral_amount = get_user_collateral(deps.storage, user)?;
+    let debt_amount = get_user_debt(deps.storage, user)?;
+
+    let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
+    let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
+
+    let collateral_value = u128_to_decimal256(collateral_amount)
+        .checked_mul(decimal_to_decimal256(collateral_price))?;
+    let debt_value = u128_to_decimal256(debt_amount)
+        .checked_mul(decimal_to_decimal256(debt_price))?;
+
+    Ok(PositionHealth {
+        collateral_amount,
+        debt_amount,
+        collateral_value,
+        debt_value,
+        collateral_price,
+        debt_price,
+        loan_to_value: params.loan_to_value,
+        liquidation_threshold: params.liquidation_threshold,
+    })
+}
+
+// ============================================================================
+// Public API Functions (maintain existing signatures for backward compatibility)
+// ============================================================================
+
 /// Calculate health factor for a user.
 /// Returns None if user has no debt (always healthy).
 /// Health factor = (collateral_value * liquidation_threshold) / debt_value
@@ -68,39 +295,14 @@ pub fn calculate_health_factor(
     env: &Env,
     user: &str,
 ) -> Result<Option<Decimal>, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
-
-    let collateral_amount = get_user_collateral(deps.storage, user)?;
-    let debt_amount = get_user_debt(deps.storage, user)?;
-
-    if debt_amount.is_zero() {
-        return Ok(None);
-    }
-
-    let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
-    let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
-
-    // Use Decimal256 for intermediate calculations to prevent overflow
-    let collateral_value =
-        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?;
-    let debt_value =
-        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
-
-    let health_factor = collateral_value
-        .checked_mul(decimal_to_decimal256(params.liquidation_threshold))?
-        .checked_div(debt_value)?;
-
-    // Convert back to Decimal for the final result
-    Ok(Some(decimal256_to_decimal(health_factor)?))
+    let position = calculate_position_health(deps, env, user)?;
+    position.health_factor()
 }
 
 /// Check if a position is liquidatable.
 pub fn is_liquidatable(deps: Deps, env: &Env, user: &str) -> Result<bool, ContractError> {
-    match calculate_health_factor(deps, env, user)? {
-        Some(hf) => Ok(hf < Decimal::one()),
-        None => Ok(false),
-    }
+    let position = calculate_position_health(deps, env, user)?;
+    position.is_liquidatable()
 }
 
 /// Calculate the maximum amount a user can borrow based on their collateral.
@@ -111,40 +313,8 @@ pub fn calculate_max_borrow(
     env: &Env,
     user: &str,
 ) -> Result<Uint128, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
-
-    let collateral_amount = get_user_collateral(deps.storage, user)?;
-    let debt_amount = get_user_debt(deps.storage, user)?;
-
-    let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
-    let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
-
-    // Use Decimal256 for intermediate calculations to prevent overflow
-    let collateral_value =
-        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?;
-    let debt_value =
-        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
-
-    let max_borrow_value =
-        collateral_value.checked_mul(decimal_to_decimal256(params.loan_to_value))?;
-
-    if max_borrow_value <= debt_value {
-        return Ok(Uint128::zero());
-    }
-
-    let remaining_borrow_value = max_borrow_value.checked_sub(debt_value)?;
-
-    // Convert value back to debt tokens
-    // remaining_borrow = remaining_value / debt_price
-    let max_borrow = remaining_borrow_value.checked_div(decimal_to_decimal256(debt_price))?;
-
-    // Convert Decimal256 to Uint128 (truncate), capping at Uint128::MAX
-    let max_borrow_u256 = max_borrow.to_uint_floor();
-    match uint256_to_uint128(max_borrow_u256) {
-        Ok(value) => Ok(value),
-        Err(_) => Ok(Uint128::MAX), // Cap at Uint128::MAX if too large
-    }
+    let position = calculate_position_health(deps, env, user)?;
+    position.max_borrow_amount()
 }
 
 /// Check if a borrow would exceed LTV.
@@ -155,33 +325,8 @@ pub fn check_borrow_allowed(
     user: &str,
     borrow_amount: Uint128,
 ) -> Result<(), ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
-
-    let collateral_amount = get_user_collateral(deps.storage, user)?;
-    let current_debt = get_user_debt(deps.storage, user)?;
-
-    let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
-    let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
-
-    // Use Decimal256 for intermediate calculations to prevent overflow
-    let collateral_value =
-        u128_to_decimal256(collateral_amount).checked_mul(decimal_to_decimal256(collateral_price))?;
-    let new_debt_total = current_debt.checked_add(borrow_amount)?;
-    let new_debt_value =
-        u128_to_decimal256(new_debt_total).checked_mul(decimal_to_decimal256(debt_price))?;
-
-    let max_borrow_value =
-        collateral_value.checked_mul(decimal_to_decimal256(params.loan_to_value))?;
-
-    if new_debt_value > max_borrow_value {
-        return Err(ContractError::ExceedsLtv {
-            max_borrow: decimal256_to_decimal(max_borrow_value)?.to_string(),
-            requested: decimal256_to_decimal(new_debt_value)?.to_string(),
-        });
-    }
-
-    Ok(())
+    let position = calculate_position_health(deps, env, user)?;
+    position.check_borrow_allowed(borrow_amount)
 }
 
 /// Check if a collateral withdrawal would make the position unhealthy.
@@ -192,47 +337,16 @@ pub fn check_withdrawal_allowed(
     user: &str,
     withdraw_amount: Uint128,
 ) -> Result<(), ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
-
-    let collateral_amount = get_user_collateral(deps.storage, user)?;
     let debt_amount = get_user_debt(deps.storage, user)?;
 
-    // If no debt, any withdrawal is allowed
+    // If no debt, any withdrawal is allowed (no oracle query needed, no validation)
     if debt_amount.is_zero() {
         return Ok(());
     }
 
-    // Check we're not withdrawing more than we have
-    if withdraw_amount > collateral_amount {
-        return Err(ContractError::NoCollateral);
-    }
-
-    let new_collateral = collateral_amount.checked_sub(withdraw_amount)?;
-
-    let collateral_price = query_price(deps, env, &config.oracle_config, &config.collateral_denom)?;
-    let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
-
-    // Use Decimal256 for intermediate calculations to prevent overflow
-    let new_collateral_value =
-        u128_to_decimal256(new_collateral).checked_mul(decimal_to_decimal256(collateral_price))?;
-    let debt_value =
-        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
-
-    // Use LTV for withdrawal check (more conservative than liquidation threshold)
-    let max_debt_value =
-        new_collateral_value.checked_mul(decimal_to_decimal256(params.loan_to_value))?;
-
-    if debt_value > max_debt_value {
-        let health_factor = new_collateral_value
-            .checked_mul(decimal_to_decimal256(params.liquidation_threshold))?
-            .checked_div(debt_value)?;
-        return Err(ContractError::InsufficientCollateral {
-            health_factor: decimal256_to_decimal(health_factor)?.to_string(),
-        });
-    }
-
-    Ok(())
+    // Only query prices and load full position when there's debt
+    let position = calculate_position_health(deps, env, user)?;
+    position.check_withdrawal_allowed(withdraw_amount)
 }
 
 /// Calculate liquidation price for collateral.
@@ -244,28 +358,8 @@ pub fn calculate_liquidation_price(
     env: &Env,
     user: &str,
 ) -> Result<Option<Decimal>, ContractError> {
-    let config = CONFIG.load(deps.storage)?;
-    let params = PARAMS.load(deps.storage)?;
-
-    let collateral_amount = get_user_collateral(deps.storage, user)?;
-    let debt_amount = get_user_debt(deps.storage, user)?;
-
-    if debt_amount.is_zero() || collateral_amount.is_zero() {
-        return Ok(None);
-    }
-
-    let debt_price = query_price(deps, env, &config.oracle_config, &config.debt_denom)?;
-
-    // Use Decimal256 for intermediate calculations to prevent overflow
-    let debt_value =
-        u128_to_decimal256(debt_amount).checked_mul(decimal_to_decimal256(debt_price))?;
-
-    // liquidation_price = debt_value / (collateral_amount * liquidation_threshold)
-    let denominator = u128_to_decimal256(collateral_amount)
-        .checked_mul(decimal_to_decimal256(params.liquidation_threshold))?;
-    let liquidation_price = debt_value.checked_div(denominator)?;
-
-    Ok(Some(decimal256_to_decimal(liquidation_price)?))
+    let position = calculate_position_health(deps, env, user)?;
+    position.liquidation_price()
 }
 
 #[cfg(test)]
@@ -877,5 +971,83 @@ mod tests {
             "Expected OraclePriceFuture error, got {:?}",
             result
         );
+    }
+
+    // ============================================================================
+    // Additional tests for PositionHealth struct methods
+    // ============================================================================
+
+    #[test]
+    fn test_position_health_with_additional_debt() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
+            .unwrap();
+        crate::state::DEBTS
+            .save(deps.as_mut().storage, "user1", &Uint128::new(4000))
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let position = calculate_position_health(deps.as_ref(), &env, "user1").unwrap();
+
+        // Original position has 4000 debt
+        assert_eq!(position.debt_amount, Uint128::new(4000));
+
+        // After adding 1000 debt
+        let new_position = position.with_additional_debt(Uint128::new(1000)).unwrap();
+        assert_eq!(new_position.debt_amount, Uint128::new(5000));
+        assert_eq!(new_position.collateral_amount, position.collateral_amount);
+    }
+
+    #[test]
+    fn test_position_health_with_reduced_collateral() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
+            .unwrap();
+        crate::state::DEBTS
+            .save(deps.as_mut().storage, "user1", &Uint128::new(4000))
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let position = calculate_position_health(deps.as_ref(), &env, "user1").unwrap();
+
+        // After reducing collateral by 200
+        let new_position = position.with_reduced_collateral(Uint128::new(200)).unwrap();
+        assert_eq!(new_position.collateral_amount, Uint128::new(800));
+        assert_eq!(new_position.debt_amount, position.debt_amount);
+    }
+
+    #[test]
+    fn test_position_health_with_reduced_collateral_exceeds_available() {
+        let mut deps = mock_dependencies();
+        setup_with_oracle(
+            &mut deps,
+            Decimal::from_ratio(10u128, 1u128),
+            Decimal::one(),
+        );
+
+        crate::state::COLLATERAL
+            .save(deps.as_mut().storage, "user1", &Uint128::new(1000))
+            .unwrap();
+
+        let env = mock_env_at_time(BASE_TIMESTAMP);
+        let position = calculate_position_health(deps.as_ref(), &env, "user1").unwrap();
+
+        // Try to reduce collateral by more than available
+        let result = position.with_reduced_collateral(Uint128::new(1001));
+        assert!(matches!(result, Err(ContractError::NoCollateral)));
     }
 }
