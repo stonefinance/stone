@@ -40,6 +40,14 @@ export function Header() {
                   Faucet
                 </Link>
               )}
+              {isLocal && (
+                <Link
+                  href="/debug/oracle"
+                  className="text-sm font-medium text-yellow-600 hover:text-yellow-500 transition-colors"
+                >
+                  🔮 Oracle
+                </Link>
+              )}
             </nav>
           </div>
 
