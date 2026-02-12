@@ -46,6 +46,7 @@ export const MARKET_SUMMARY_FIELDS = gql`
     collateralDenom
     debtDenom
     curator
+    oracle
     loanToValue
     liquidationThreshold
     borrowRate
