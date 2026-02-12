@@ -631,6 +631,7 @@ mod tests {
         }
 
         /// Setup deps with config and a price feed stored.
+        #[allow(clippy::too_many_arguments)]
         fn setup_with_pyth(
             pyth_addr_str: &str,
             feed_id: &str,

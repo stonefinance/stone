@@ -438,7 +438,7 @@ mod tests {
         // Since the check is `conf_ratio > max_confidence_ratio`,
         // a ratio exactly equal to max should NOT trigger the error
         assert!(
-            !(ratio > max_confidence_ratio),
+            ratio <= max_confidence_ratio,
             "ratio {} should NOT be > max_confidence_ratio {} (they are equal)",
             ratio,
             max_confidence_ratio
@@ -509,7 +509,7 @@ mod tests {
         let very_strict_max = Decimal::from_ratio(1u128, 10000u128); // 0.0001
         assert_eq!(ratio, Decimal::zero(), "ratio should be zero when conf=0");
         assert!(
-            !(ratio > very_strict_max),
+            ratio <= very_strict_max,
             "zero ratio should not exceed any positive max_ratio"
         );
     }
