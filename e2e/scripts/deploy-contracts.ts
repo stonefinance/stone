@@ -453,9 +453,12 @@ async function main() {
   );
 
   // Parse market address from events
-  const market1Address = market1Result.logs[0]?.events
-    .find(e => e.type === 'wasm')
-    ?.attributes.find(a => a.key === 'market_address')?.value || '';
+  // The factory uses a two-phase pattern: create_market → submessage instantiates market → reply emits market_address
+  // Events are at top-level result.events (not logs[0].events), and we need the wasm event with action=market_instantiated
+  const market1Address = market1Result.events
+    .filter((e: { type: string }) => e.type === 'wasm')
+    .flatMap((e: { attributes: Array<{ key: string; value: string }> }) => e.attributes)
+    .find((a: { key: string; value: string }) => a.key === 'market_address')?.value || '';
 
   testMarkets.push({
     marketId: '1',
@@ -503,9 +506,11 @@ async function main() {
     [{ denom: 'stake', amount: '1000000' }]
   );
 
-  const market2Address = market2Result.logs[0]?.events
-    .find(e => e.type === 'wasm')
-    ?.attributes.find(a => a.key === 'market_address')?.value || '';
+  // Parse market address from events (same pattern as market1)
+  const market2Address = market2Result.events
+    .filter((e: { type: string }) => e.type === 'wasm')
+    .flatMap((e: { attributes: Array<{ key: string; value: string }> }) => e.attributes)
+    .find((a: { key: string; value: string }) => a.key === 'market_address')?.value || '';
 
   testMarkets.push({
     marketId: '2',
