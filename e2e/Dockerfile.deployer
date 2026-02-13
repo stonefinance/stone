@@ -15,7 +15,7 @@ RUN npm ci
 
 # Copy deployment script and config files
 COPY e2e/scripts/deploy-contracts.ts ./scripts/
-COPY deploy/ ./deploy/
+COPY e2e/deploy/ ./deploy/
 
 # Create deployment output directory
 RUN mkdir -p /deployment
