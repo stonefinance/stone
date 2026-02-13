@@ -102,7 +102,7 @@ function loadPythConfig(): PythDeploymentConfig | null {
 
   // Try to load config based on chain ID
   const configPaths = [
-    `/app/deploy/${CHAIN_ID}.json`,
+    `/app/e2e/deploy/${CHAIN_ID}.json`,
     `./deploy/${CHAIN_ID}.json`,
   ];
 

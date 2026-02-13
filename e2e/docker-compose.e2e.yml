@@ -48,7 +48,7 @@ services:
       CHAIN_ID: stone-local-1
       # Pyth oracle is the default. Set ORACLE_TYPE=mock for simple mock oracle.
       ORACLE_TYPE: pyth
-      PYTH_CONFIG_PATH: /app/deploy/stone-local-1.json
+      PYTH_CONFIG_PATH: /app/e2e/deploy/stone-local-1.json
     volumes:
       - ../artifacts:/artifacts:ro
       - deployment_state:/deployment
