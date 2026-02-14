@@ -6,6 +6,9 @@
 //!
 //! The contract stores price feeds keyed by their 64-character hex feed ID
 //! and responds to `PriceFeed { id }` queries with `PriceFeedResponse`.
+//!
+//! Supports both single and batch price updates to simulate the real
+//! Pyth pull model where prices are submitted externally.
 
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{
@@ -166,10 +169,31 @@ pub struct PriceFeedInit {
     pub ema_conf: Option<u64>,
 }
 
+/// Single price feed update for batch operations.
+/// Simulates the real Pyth UpdatePriceFeeds message format.
+#[cw_serde]
+pub struct PriceFeedUpdate {
+    /// 64-character hex feed ID.
+    pub id: String,
+    /// Price value.
+    pub price: i64,
+    /// Confidence interval.
+    pub conf: u64,
+    /// Exponent (price = raw_price * 10^expo).
+    pub expo: i32,
+    /// Unix timestamp when this price was published.
+    pub publish_time: i64,
+    /// EMA price (optional, defaults to same as price if not provided).
+    pub ema_price: Option<i64>,
+    /// EMA confidence (optional, defaults to same as conf if not provided).
+    pub ema_conf: Option<u64>,
+}
+
 /// Execute messages for the mock Pyth contract.
 #[cw_serde]
 pub enum ExecuteMsg {
-    /// Update a price feed (for simulating price movements).
+    /// Update a single price feed (for simulating price movements).
+    /// Backward compatible with existing usage.
     UpdateFeed {
         /// Feed ID (64-character hex).
         id: String,
@@ -179,6 +203,13 @@ pub enum ExecuteMsg {
         conf: u64,
         /// New publish timestamp.
         publish_time: i64,
+    },
+    /// Batch update multiple price feeds.
+    /// Simulates the real Pyth UpdatePriceFeeds message.
+    /// This creates feeds if they don't exist (unlike UpdateFeed which requires existing feed).
+    UpdatePriceFeeds {
+        /// List of price feed updates.
+        feeds: Vec<PriceFeedUpdate>,
     },
 }
 
@@ -245,6 +276,7 @@ pub fn execute(
             conf,
             publish_time,
         } => {
+            // UpdateFeed requires existing feed (backward compatible behavior)
             FEEDS.update(deps.storage, &id, |existing| -> StdResult<_> {
                 let mut feed = existing.ok_or_else(|| cosmwasm_std::StdError::not_found("feed"))?;
                 feed.price = price;
@@ -255,6 +287,50 @@ pub fn execute(
             Ok(Response::new()
                 .add_attribute("action", "update_feed")
                 .add_attribute("feed_id", id))
+        }
+        ExecuteMsg::UpdatePriceFeeds { feeds } => {
+            let mut updated_count = 0u32;
+            let mut created_count = 0u32;
+
+            for update in feeds {
+                let existing = FEEDS.may_load(deps.storage, &update.id)?;
+
+                match existing {
+                    Some(mut feed) => {
+                        // Update existing feed
+                        feed.price = update.price;
+                        feed.conf = update.conf;
+                        feed.expo = update.expo;
+                        feed.publish_time = update.publish_time;
+                        if let Some(ema_price) = update.ema_price {
+                            feed.ema_price = ema_price;
+                        }
+                        if let Some(ema_conf) = update.ema_conf {
+                            feed.ema_conf = ema_conf;
+                        }
+                        FEEDS.save(deps.storage, &update.id, &feed)?;
+                        updated_count += 1;
+                    }
+                    None => {
+                        // Create new feed
+                        let feed = StoredFeed {
+                            price: update.price,
+                            conf: update.conf,
+                            expo: update.expo,
+                            publish_time: update.publish_time,
+                            ema_price: update.ema_price.unwrap_or(update.price),
+                            ema_conf: update.ema_conf.unwrap_or(update.conf),
+                        };
+                        FEEDS.save(deps.storage, &update.id, &feed)?;
+                        created_count += 1;
+                    }
+                }
+            }
+
+            Ok(Response::new()
+                .add_attribute("action", "update_price_feeds")
+                .add_attribute("updated", updated_count.to_string())
+                .add_attribute("created", created_count.to_string()))
         }
     }
 }
@@ -304,8 +380,24 @@ mod tests {
         "b00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string()
     }
 
+    fn usdc_feed_id() -> String {
+        "eaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a".to_string()
+    }
+
+    fn stone_feed_id() -> String {
+        "4ea5bb4d2f5900cc2e97ba534240950740b4d3b89fe712a94a7304fd2fd92702".to_string()
+    }
+
     fn atom_feed_id_bytes() -> [u8; 32] {
         hex::decode(atom_feed_id()).unwrap().try_into().unwrap()
+    }
+
+    fn usdc_feed_id_bytes() -> [u8; 32] {
+        hex::decode(usdc_feed_id()).unwrap().try_into().unwrap()
+    }
+
+    fn stone_feed_id_bytes() -> [u8; 32] {
+        hex::decode(stone_feed_id()).unwrap().try_into().unwrap()
     }
 
     #[test]
@@ -418,5 +510,311 @@ mod tests {
         };
         let res = query(deps.as_ref(), env, query_msg);
         assert!(res.is_err());
+    }
+
+    // ==========================================================================
+    // Tests for UpdatePriceFeeds (batch update)
+    // ==========================================================================
+
+    #[test]
+    fn test_update_price_feeds_updates_existing() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        // Initialize with one feed
+        let msg = InstantiateMsg {
+            feeds: vec![PriceFeedInit {
+                id: atom_feed_id(),
+                price: 1_000_000_000i64,
+                conf: 1_000_000u64,
+                expo: -8,
+                publish_time: 1_700_000_000i64,
+                ema_price: None,
+                ema_conf: None,
+            }],
+        };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Update via batch
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![PriceFeedUpdate {
+                id: atom_feed_id(),
+                price: 1_100_000_000i64,
+                conf: 1_100_000u64,
+                expo: -8,
+                publish_time: 1_700_001_000i64,
+                ema_price: Some(1_090_000_000i64),
+                ema_conf: Some(1_050_000u64),
+            }],
+        };
+        let res = execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
+
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "action" && a.value == "update_price_feeds"));
+        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "1"));
+        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "0"));
+
+        // Query and verify
+        let query_msg = QueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env, query_msg).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+
+        assert_eq!(response.price_feed.price.price, 1_100_000_000i64);
+        assert_eq!(response.price_feed.price.conf, 1_100_000u64);
+        assert_eq!(response.price_feed.price.publish_time, 1_700_001_000i64);
+        assert_eq!(response.price_feed.ema_price.price, 1_090_000_000i64);
+        assert_eq!(response.price_feed.ema_price.conf, 1_050_000u64);
+    }
+
+    #[test]
+    fn test_update_price_feeds_creates_new() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        // Initialize empty
+        let msg = InstantiateMsg { feeds: vec![] };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Create via batch update
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![
+                PriceFeedUpdate {
+                    id: atom_feed_id(),
+                    price: 1_000_000_000i64,
+                    conf: 1_000_000u64,
+                    expo: -8,
+                    publish_time: 1_700_000_000i64,
+                    ema_price: None,
+                    ema_conf: None,
+                },
+                PriceFeedUpdate {
+                    id: usdc_feed_id(),
+                    price: 100_000_000i64,
+                    conf: 100_000u64,
+                    expo: -8,
+                    publish_time: 1_700_000_000i64,
+                    ema_price: None,
+                    ema_conf: None,
+                },
+            ],
+        };
+        let res = execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
+
+        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "0"));
+        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "2"));
+
+        // Query both feeds
+        let query_atom = QueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env.clone(), query_atom).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+        assert_eq!(response.price_feed.price.price, 1_000_000_000i64);
+
+        let query_usdc = QueryMsg::PriceFeed {
+            id: PriceIdentifier(usdc_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env, query_usdc).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+        assert_eq!(response.price_feed.price.price, 100_000_000i64);
+    }
+
+    #[test]
+    fn test_update_price_feeds_mixed() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        // Initialize with one feed
+        let msg = InstantiateMsg {
+            feeds: vec![PriceFeedInit {
+                id: atom_feed_id(),
+                price: 1_000_000_000i64,
+                conf: 1_000_000u64,
+                expo: -8,
+                publish_time: 1_700_000_000i64,
+                ema_price: None,
+                ema_conf: None,
+            }],
+        };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Batch: update existing + create new
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![
+                PriceFeedUpdate {
+                    id: atom_feed_id(),
+                    price: 1_100_000_000i64,
+                    conf: 1_100_000u64,
+                    expo: -8,
+                    publish_time: 1_700_001_000i64,
+                    ema_price: None,
+                    ema_conf: None,
+                },
+                PriceFeedUpdate {
+                    id: usdc_feed_id(),
+                    price: 100_000_000i64,
+                    conf: 100_000u64,
+                    expo: -8,
+                    publish_time: 1_700_001_000i64,
+                    ema_price: None,
+                    ema_conf: None,
+                },
+                PriceFeedUpdate {
+                    id: stone_feed_id(),
+                    price: 50_000_000i64,
+                    conf: 500_000u64,
+                    expo: -8,
+                    publish_time: 1_700_001_000i64,
+                    ema_price: None,
+                    ema_conf: None,
+                },
+            ],
+        };
+        let res = execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
+
+        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "1"));
+        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "2"));
+
+        // Verify all three feeds exist
+        let query_atom = QueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env.clone(), query_atom).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+        assert_eq!(response.price_feed.price.price, 1_100_000_000i64);
+
+        let query_usdc = QueryMsg::PriceFeed {
+            id: PriceIdentifier(usdc_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env.clone(), query_usdc).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+        assert_eq!(response.price_feed.price.price, 100_000_000i64);
+
+        let query_stone = QueryMsg::PriceFeed {
+            id: PriceIdentifier(stone_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env, query_stone).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+        assert_eq!(response.price_feed.price.price, 50_000_000i64);
+    }
+
+    #[test]
+    fn test_update_price_feeds_empty() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        let msg = InstantiateMsg { feeds: vec![] };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Empty batch update should succeed
+        let update_msg = ExecuteMsg::UpdatePriceFeeds { feeds: vec![] };
+        let res = execute(deps.as_mut(), env, info, update_msg).unwrap();
+
+        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "0"));
+        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "0"));
+    }
+
+    #[test]
+    fn test_update_price_feeds_preserves_ema_if_not_provided() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        // Initialize with specific EMA values
+        let msg = InstantiateMsg {
+            feeds: vec![PriceFeedInit {
+                id: atom_feed_id(),
+                price: 1_000_000_000i64,
+                conf: 1_000_000u64,
+                expo: -8,
+                publish_time: 1_700_000_000i64,
+                ema_price: Some(990_000_000i64),
+                ema_conf: Some(900_000u64),
+            }],
+        };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Update without providing EMA values
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![PriceFeedUpdate {
+                id: atom_feed_id(),
+                price: 1_100_000_000i64,
+                conf: 1_100_000u64,
+                expo: -8,
+                publish_time: 1_700_001_000i64,
+                ema_price: None, // Don't update EMA
+                ema_conf: None,
+            }],
+        };
+        execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
+
+        // Verify EMA values were preserved
+        let query_msg = QueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env, query_msg).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+
+        assert_eq!(response.price_feed.price.price, 1_100_000_000i64);
+        assert_eq!(response.price_feed.ema_price.price, 990_000_000i64); // Preserved
+        assert_eq!(response.price_feed.ema_price.conf, 900_000u64); // Preserved
+    }
+
+    #[test]
+    fn test_update_price_feeds_updates_expo() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        // Initialize with expo = -8
+        let msg = InstantiateMsg {
+            feeds: vec![PriceFeedInit {
+                id: atom_feed_id(),
+                price: 1_000_000_000i64,
+                conf: 1_000_000u64,
+                expo: -8,
+                publish_time: 1_700_000_000i64,
+                ema_price: None,
+                ema_conf: None,
+            }],
+        };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Update with different expo
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![PriceFeedUpdate {
+                id: atom_feed_id(),
+                price: 10_000i64,
+                conf: 10u64,
+                expo: -2, // Different expo
+                publish_time: 1_700_001_000i64,
+                ema_price: None,
+                ema_conf: None,
+            }],
+        };
+        execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
+
+        // Verify expo was updated
+        let query_msg = QueryMsg::PriceFeed {
+            id: PriceIdentifier(atom_feed_id_bytes()),
+        };
+        let res = query(deps.as_ref(), env, query_msg).unwrap();
+        let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
+
+        assert_eq!(response.price_feed.price.expo, -2);
     }
 }

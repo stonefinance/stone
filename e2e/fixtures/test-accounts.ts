@@ -34,4 +34,9 @@ export const CHAIN_CONFIG = {
   stakeDenom: 'stake',
   feeDenom: 'stake',
   gasPrice: '0.025stake',
+  // Deployer account (same as validator for local dev)
+  deployer: {
+    mnemonic: VALIDATOR_MNEMONIC,
+    address: 'wasm1phaxpevm5wecex2jyaqty2a4v02qj7qmauqnty',
+  },
 };
