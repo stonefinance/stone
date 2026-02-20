@@ -1,7 +1,27 @@
-import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
+import { ExecuteResult, SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
 import { DirectSecp256k1HdWallet } from '@cosmjs/proto-signing';
 import { GasPrice } from '@cosmjs/stargate';
 import * as fs from 'fs';
+
+/**
+ * Extracts the market address from the wasm events in an ExecuteResult.
+ * Throws an error if the market_address attribute is not found.
+ */
+function extractMarketAddress(result: ExecuteResult): string {
+  const wasmEvents = result.events.filter((e) => e.type === 'wasm');
+  const allWasmAttributes = wasmEvents.flatMap((e) => e.attributes);
+  const marketAddressAttr = allWasmAttributes.find((a) => a.key === 'market_address');
+
+  if (!marketAddressAttr?.value) {
+    const availableKeys = allWasmAttributes.map((a) => a.key).join(', ');
+    throw new Error(
+      `market_address not found in wasm events. ` +
+      `Available wasm attributes: [${availableKeys || 'none'}]`
+    );
+  }
+
+  return marketAddressAttr.value;
+}
 
 const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'http://localhost:26657';
 const CHAIN_ID = process.env.CHAIN_ID || 'stone-local-1';
@@ -453,9 +473,9 @@ async function main() {
   );
 
   // Parse market address from events
-  const market1Address = market1Result.logs[0]?.events
-    .find(e => e.type === 'wasm')
-    ?.attributes.find(a => a.key === 'market_address')?.value || '';
+  // The factory uses a two-phase pattern: create_market → submessage instantiates market → reply emits market_address
+  // Events are at top-level result.events (not logs[0].events), and we need the wasm event with action=market_instantiated
+  const market1Address = extractMarketAddress(market1Result);
 
   testMarkets.push({
     marketId: '1',
@@ -503,9 +523,8 @@ async function main() {
     [{ denom: 'stake', amount: '1000000' }]
   );
 
-  const market2Address = market2Result.logs[0]?.events
-    .find(e => e.type === 'wasm')
-    ?.attributes.find(a => a.key === 'market_address')?.value || '';
+  // Parse market address from events (same pattern as market1)
+  const market2Address = extractMarketAddress(market2Result);
 
   testMarkets.push({
     marketId: '2',
