@@ -36,33 +36,26 @@ function loadDeployment(): {
   };
 }
 
+// Load deployment once at module level to determine if we should skip
+const deployment = loadDeployment();
+const pythNotDeployed = !deployment.pythContractAddress;
+
 test.describe('Mock Pyth Oracle Flow', () => {
   let chainClient: ChainClient;
   let pythClient: MockPythClient;
-  let deployment: ReturnType<typeof loadDeployment>;
 
-  test.beforeAll(async () => {
-    // Skip if not running with Pyth oracle
-    deployment = loadDeployment();
-    if (!deployment.pythContractAddress) {
-      test.skip();
-      return;
-    }
+  test.beforeAll(async ({}, testInfo) => {
+    test.skip(pythNotDeployed, 'Pyth contract not deployed - skipping all tests');
 
     chainClient = await ChainClient.connect(CHAIN_CONFIG.deployer.mnemonic);
     pythClient = new MockPythClient(
       chainClient.client,
       chainClient.address,
-      deployment.pythContractAddress
+      deployment.pythContractAddress!
     );
   });
 
   test('should query initial price from mock Pyth', async () => {
-    if (!deployment.pythContractAddress) {
-      test.skip();
-      return;
-    }
-
     // Query ATOM price
     const response = await pythClient.getPrice(FEED_IDS.ATOM_USD);
 
@@ -78,11 +71,6 @@ test.describe('Mock Pyth Oracle Flow', () => {
   });
 
   test('should update price via batch update', async () => {
-    if (!deployment.pythContractAddress) {
-      test.skip();
-      return;
-    }
-
     // Get initial price
     const initialResponse = await pythClient.getPrice(FEED_IDS.ATOM_USD);
     const initialPrice = parsePrice(initialResponse).price;
@@ -102,11 +90,6 @@ test.describe('Mock Pyth Oracle Flow', () => {
   });
 
   test('should update multiple prices in batch', async () => {
-    if (!deployment.pythContractAddress) {
-      test.skip();
-      return;
-    }
-
     // Set multiple prices at once
     const prices = {
       [FEED_IDS.ATOM_USD]: 12.34,
@@ -128,10 +111,7 @@ test.describe('Mock Pyth Oracle Flow', () => {
   });
 
   test('should verify pyth adapter reflects price updates', async () => {
-    if (!deployment.pythContractAddress || !deployment.pythAdapterAddress) {
-      test.skip();
-      return;
-    }
+    test.skip(!deployment.pythAdapterAddress, 'Pyth adapter not deployed');
 
     // Set a specific ATOM price
     const targetPrice = 15.5;
@@ -141,7 +121,7 @@ test.describe('Mock Pyth Oracle Flow', () => {
     const adapterResponse = await chainClient.queryContract<{
       price: string;
       updated_at: number;
-    }>(deployment.pythAdapterAddress, {
+    }>(deployment.pythAdapterAddress!, {
       price: { denom: 'uatom' },
     });
 
@@ -155,11 +135,6 @@ test.describe('Mock Pyth Oracle Flow', () => {
   });
 
   test('should handle getHumanPrice convenience method', async () => {
-    if (!deployment.pythContractAddress) {
-      test.skip();
-      return;
-    }
-
     // Set a known price
     const expectedPrice = 8.88;
     await pythClient.setPrice(FEED_IDS.ATOM_USD, expectedPrice);

@@ -292,6 +292,24 @@ pub fn execute(
             let mut updated_count = 0u32;
             let mut created_count = 0u32;
 
+            // Validate all feed IDs before processing
+            for update in &feeds {
+                if update.id.len() != 64 {
+                    return Err(cosmwasm_std::StdError::generic_err(format!(
+                        "Invalid feed ID length: expected 64 characters, got {} for feed ID: {}",
+                        update.id.len(),
+                        &update.id[..update.id.len().min(16)]
+                    )));
+                }
+                // Validate hex characters
+                if !update.id.chars().all(|c| c.is_ascii_hexdigit()) {
+                    return Err(cosmwasm_std::StdError::generic_err(format!(
+                        "Invalid feed ID format: must be hex string, got invalid characters in: {}",
+                        &update.id[..update.id.len().min(16)]
+                    )));
+                }
+            }
+
             for update in feeds {
                 let existing = FEEDS.may_load(deps.storage, &update.id)?;
 
@@ -840,5 +858,62 @@ mod tests {
         let response: PriceFeedResponse = cosmwasm_std::from_json(&res).unwrap();
 
         assert_eq!(response.price_feed.price.expo, -2);
+    }
+
+    #[test]
+    fn test_update_price_feeds_rejects_invalid_id_length() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        let msg = InstantiateMsg { feeds: vec![] };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Try to update with a feed ID that is too short (32 chars instead of 64)
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![PriceFeedUpdate {
+                id: "b00b60f88b03a6a625a8d1c048c3f666".to_string(),
+                price: 1_000_000_000i64,
+                conf: 1_000_000u64,
+                expo: -8,
+                publish_time: 1_700_000_000i64,
+                ema_price: None,
+                ema_conf: None,
+            }],
+        };
+        let res = execute(deps.as_mut(), env.clone(), info.clone(), update_msg);
+        assert!(res.is_err());
+        let err_msg = format!("{}", res.unwrap_err());
+        assert!(err_msg.contains("Invalid feed ID length"));
+    }
+
+    #[test]
+    fn test_update_price_feeds_rejects_non_hex_id() {
+        let mut deps = mock_dependencies();
+        let env = mock_env();
+        let creator = test_addr();
+        let info = message_info(&creator, &[]);
+
+        let msg = InstantiateMsg { feeds: vec![] };
+        instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
+
+        // Try to update with a feed ID containing invalid hex characters
+        let invalid_id = "g00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string(); // 'g' is not hex
+        let update_msg = ExecuteMsg::UpdatePriceFeeds {
+            feeds: vec![PriceFeedUpdate {
+                id: invalid_id,
+                price: 1_000_000_000i64,
+                conf: 1_000_000u64,
+                expo: -8,
+                publish_time: 1_700_000_000i64,
+                ema_price: None,
+                ema_conf: None,
+            }],
+        };
+        let res = execute(deps.as_mut(), env, info, update_msg);
+        assert!(res.is_err());
+        let err_msg = format!("{}", res.unwrap_err());
+        assert!(err_msg.contains("Invalid feed ID format"));
     }
 }

@@ -53,14 +53,14 @@ export interface PriceFeedResponse {
   price_feed: {
     id: string;
     price: {
-      price: string;
-      conf: string;
+      price: number;
+      conf: number;
       expo: number;
       publish_time: number;
     };
     ema_price: {
-      price: string;
-      conf: string;
+      price: number;
+      conf: number;
       expo: number;
       publish_time: number;
     };
@@ -257,11 +257,21 @@ export class MockPythClient {
    *
    * @param feedId - 64-character hex feed ID
    * @returns Price feed response
+   * @throws Error if feed not found or query fails
    */
   async getPrice(feedId: string): Promise<PriceFeedResponse> {
-    return this.client.queryContractSmart(this.pythContractAddress, {
-      price_feed: { id: feedId },
-    });
+    try {
+      return await this.client.queryContractSmart(this.pythContractAddress, {
+        price_feed: { id: feedId },
+      });
+    } catch (error) {
+      // Check if this is a "not found" error from the contract
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('not found') || errorMessage.includes('Feed not found')) {
+        throw new Error(`Price feed not found for ID: ${feedId}`);
+      }
+      throw new Error(`Failed to query price feed: ${errorMessage}`);
+    }
   }
 
   /**
@@ -328,9 +338,9 @@ export function parsePrice(response: PriceFeedResponse): {
   const expo = priceData.expo;
 
   return {
-    price: Number(priceData.price) * Math.pow(10, expo),
-    conf: Number(priceData.conf) * Math.pow(10, expo),
-    emaPrice: Number(emaData.price) * Math.pow(10, expo),
+    price: priceData.price * Math.pow(10, expo),
+    conf: priceData.conf * Math.pow(10, expo),
+    emaPrice: emaData.price * Math.pow(10, expo),
     publishTime: new Date(priceData.publish_time * 1000),
   };
 }
