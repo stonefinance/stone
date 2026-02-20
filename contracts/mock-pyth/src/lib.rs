@@ -555,8 +555,14 @@ mod tests {
             .attributes
             .iter()
             .any(|a| a.key == "action" && a.value == "update_price_feeds"));
-        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "1"));
-        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "0"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "updated" && a.value == "1"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "created" && a.value == "0"));
 
         // Query and verify
         let query_msg = QueryMsg::PriceFeed {
@@ -608,8 +614,14 @@ mod tests {
         };
         let res = execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "0"));
-        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "2"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "updated" && a.value == "0"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "created" && a.value == "2"));
 
         // Query both feeds
         let query_atom = QueryMsg::PriceFeed {
@@ -682,8 +694,14 @@ mod tests {
         };
         let res = execute(deps.as_mut(), env.clone(), info, update_msg).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "1"));
-        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "2"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "updated" && a.value == "1"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "created" && a.value == "2"));
 
         // Verify all three feeds exist
         let query_atom = QueryMsg::PriceFeed {
@@ -722,8 +740,14 @@ mod tests {
         let update_msg = ExecuteMsg::UpdatePriceFeeds { feeds: vec![] };
         let res = execute(deps.as_mut(), env, info, update_msg).unwrap();
 
-        assert!(res.attributes.iter().any(|a| a.key == "updated" && a.value == "0"));
-        assert!(res.attributes.iter().any(|a| a.key == "created" && a.value == "0"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "updated" && a.value == "0"));
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "created" && a.value == "0"));
     }
 
     #[test]
