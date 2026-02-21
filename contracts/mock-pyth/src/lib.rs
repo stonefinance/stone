@@ -899,7 +899,8 @@ mod tests {
         instantiate(deps.as_mut(), env.clone(), info.clone(), msg).unwrap();
 
         // Try to update with a feed ID containing invalid hex characters
-        let invalid_id = "g00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string(); // 'g' is not hex
+        let invalid_id =
+            "g00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819".to_string(); // 'g' is not hex
         let update_msg = ExecuteMsg::UpdatePriceFeeds {
             feeds: vec![PriceFeedUpdate {
                 id: invalid_id,
