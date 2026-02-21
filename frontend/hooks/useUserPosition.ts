@@ -18,8 +18,11 @@ import { getPositionType } from '@/lib/utils/position';
 function transformPosition(position: PositionFieldsFragment): UserPosition {
   // Note: GraphQL returns amounts as strings (BigInt)
   // healthFactor is returned from GraphQL when available
-  // collateralValue, supplyValue, debtValue, maxBorrowValue, liquidationPrice
-  // require oracle price integration (Phase 4)
+  //
+  // Price-dependent values (collateralValue, supplyValue, debtValue, liquidationPrice)
+  // are set to placeholders here since this hook doesn't have access to oracle prices.
+  // maxBorrowValue is calculated in the market page component where Pyth prices
+  // are already fetched (see app/markets/[id]/page.tsx).
 
   const healthFactor = position.healthFactor
     ? parseFloat(position.healthFactor)
@@ -28,14 +31,14 @@ function transformPosition(position: PositionFieldsFragment): UserPosition {
   return {
     marketId: position.market.id,
     collateralAmount: position.collateral,
-    collateralValue: 0, // Requires oracle price - placeholder
+    collateralValue: 0, // Calculated where oracle prices are available
     supplyAmount: position.supplyAmount,
-    supplyValue: 0, // Requires oracle price - placeholder
+    supplyValue: 0, // Calculated where oracle prices are available
     debtAmount: position.debtAmount,
-    debtValue: 0, // Requires oracle price - placeholder
+    debtValue: 0, // Calculated where oracle prices are available
     healthFactor,
-    maxBorrowValue: 0, // Requires oracle price - placeholder
-    liquidationPrice: undefined, // Requires oracle price - placeholder
+    maxBorrowValue: 0, // Calculated in page component with Pyth prices
+    liquidationPrice: undefined, // Calculated where oracle prices are available
   };
 }
 
