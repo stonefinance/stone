@@ -115,6 +115,25 @@ export default function MarketDetailPage() {
   const oraclePriceRatio =
     collateralPrice && debtPrice ? collateralPrice / debtPrice : null;
 
+  // Calculate max borrow amount using Pyth oracle prices
+  // This is calculated in the page component since prices are already fetched here
+  const maxBorrowAmount = useMemo(() => {
+    if (!position || !market?.params?.loan_to_value || !collateralPrice || !debtPrice) {
+      return 0;
+    }
+    const collateralValue = parseFloat(microToBase(position.collateralAmount)) * collateralPrice;
+    // NOTE: loan_to_value is stored as a decimal in the contract (e.g., "0.75" = 75% LTV)
+    // NOT as a percentage (e.g., "75"). See: packages/types/src/market.rs
+    const maxLTV = parseFloat(market.params.loan_to_value);
+    const currentDebt = parseFloat(microToBase(position.debtAmount));
+
+    const maxBorrowValue = (collateralValue * maxLTV) / debtPrice;
+    const availableToBorrow = Math.max(0, maxBorrowValue - currentDebt);
+
+    // 95% safety buffer to avoid liquidation edge cases
+    return availableToBorrow * 0.95;
+  }, [position, market, collateralPrice, debtPrice]);
+
   useEffect(() => {
     if (initializedTab) return;
     if (positionType === 'supply') {
@@ -842,15 +861,15 @@ export default function MarketDetailPage() {
                         />
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                           <span className="text-sm text-muted-foreground">
-                            {position?.maxBorrowValue ? formatDisplayAmount(position.maxBorrowValue, 2) : '0.00'} {market.debtDenom}
+                            {maxBorrowAmount > 0 ? formatDisplayAmount(maxBorrowAmount, 2) : '0.00'} {market.debtDenom}
                           </span>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-6 px-2 text-xs"
                             onClick={() => {
-                              if (position?.maxBorrowValue) {
-                                setBorrowAmount(position.maxBorrowValue.toString());
+                              if (maxBorrowAmount > 0) {
+                                setBorrowAmount(maxBorrowAmount.toFixed(6));
                               }
                             }}
                           >
