@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Info, Copy, ExternalLink, AlertTriangle } from 'lucide-react';
 import { formatDisplayAmount, formatRelativeTime, shortenAddress } from '@/lib/utils/format';
@@ -55,9 +56,12 @@ export function OracleAttributes({
       : null;
 
   // Check if individual price is stale (for display)
-  const collateralStale = collateralRaw
-    ? Math.floor(Date.now() / 1000) - collateralRaw.publishTime > PYTH_STALENESS_THRESHOLD_SECONDS
-    : false;
+  // Linter requires Date.now() to be in useState, not during render
+  const [now] = useState(() => Math.floor(Date.now() / 1000));
+  const collateralStale = useMemo(() => {
+    if (!collateralRaw) return false;
+    return now - collateralRaw.publishTime > PYTH_STALENESS_THRESHOLD_SECONDS;
+  }, [collateralRaw, now]);
 
   const formatLargeUSD = (value: number) => {
     if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;

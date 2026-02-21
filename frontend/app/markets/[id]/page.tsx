@@ -122,6 +122,8 @@ export default function MarketDetailPage() {
       return 0;
     }
     const collateralValue = parseFloat(microToBase(position.collateralAmount)) * collateralPrice;
+    // NOTE: loan_to_value is stored as a decimal in the contract (e.g., "0.75" = 75% LTV)
+    // NOT as a percentage (e.g., "75"). See: packages/types/src/market.rs
     const maxLTV = parseFloat(market.params.loan_to_value);
     const currentDebt = parseFloat(microToBase(position.debtAmount));
 

@@ -75,6 +75,8 @@ function transformMarketDetail(market: MarketFieldsFragment): MarketDetail {
       oracle: market.oracle,
     },
     params: {
+      // loan_to_value comes from contract as decimal (e.g., "0.75" = 75%), NOT percentage
+      // See: packages/types/src/market.rs - stored as cosmwasm_std::Decimal
       loan_to_value: market.loanToValue,
       liquidation_threshold: market.liquidationThreshold,
       liquidation_bonus: market.liquidationBonus,
