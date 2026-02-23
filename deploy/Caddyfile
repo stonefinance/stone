@@ -1,0 +1,39 @@
+# Caddy reverse proxy configuration for Stone Indexer
+#
+# Caddy automatically handles:
+# - HTTPS certificate provisioning (Let's Encrypt)
+# - Certificate renewal
+# - HTTP to HTTPS redirect
+#
+# The {$DOMAIN} variable is set via environment variable.
+
+{$DOMAIN} {
+    # Proxy all traffic to the indexer service
+    reverse_proxy indexer:4000
+
+    # Enable gzip compression
+    encode gzip
+
+    # Security headers
+    header {
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+        # XSS protection
+        X-XSS-Protection "1; mode=block"
+        # Referrer policy
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Request logging
+    log {
+        output stdout
+        format json
+    }
+}
+
+# Health check endpoint (for load balancers)
+:80 {
+    respond /health 200
+}
