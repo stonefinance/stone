@@ -1,0 +1,94 @@
+# Production Docker Compose for Stone Indexer
+#
+# This configuration is designed for production deployment with:
+# - No database ports exposed to the host (Docker network only)
+# - Strong passwords via environment variables
+# - Automatic restarts
+# - Caddy reverse proxy for HTTPS
+#
+# Usage:
+#   1. Copy .env.example to .env and configure
+#   2. docker compose -f docker-compose.prod.yml up -d
+#
+# See docs/DEPLOYMENT.md for full deployment guide.
+
+services:
+  # PostgreSQL database
+  # NOT exposed to host - only accessible via Docker network
+  postgres:
+    image: postgres:16-alpine
+    container_name: stone-postgres-prod
+    restart: unless-stopped
+    # No 'ports:' - database is only accessible within Docker network
+    # Services connect via: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-stone}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stone-internal
+
+  # Blockchain indexer
+  indexer:
+    image: ${INDEXER_IMAGE:-ghcr.io/stonefinance/stone-indexer:latest}
+    container_name: stone-indexer-prod
+    restart: unless-stopped
+    # Not exposed directly - Caddy handles external traffic
+    expose:
+      - "4000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      RPC_ENDPOINT: ${RPC_ENDPOINT:?RPC_ENDPOINT is required}
+      CHAIN_ID: ${CHAIN_ID:?CHAIN_ID is required}
+      START_BLOCK_HEIGHT: ${START_BLOCK_HEIGHT:-1}
+      POLL_INTERVAL_MS: ${POLL_INTERVAL_MS:-1000}
+      API_PORT: 4000
+      ENABLE_SUBSCRIPTIONS: "true"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - stone-internal
+
+  # Caddy reverse proxy for HTTPS termination
+  caddy:
+    image: caddy:2-alpine
+    container_name: stone-caddy-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - indexer
+    networks:
+      - stone-internal
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  stone-internal:
+    driver: bridge
